@@ -4,7 +4,9 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "predev": "panda cssgen",
     "dev": "vite",
+    "prebuild": "panda cssgen",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview"

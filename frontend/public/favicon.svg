@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="S favicon">
+  <defs>
+    <linearGradient id="favicon-gradient" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#858489" />
+      <stop offset="25%" stop-color="#e7e4ef" />
+      <stop offset="50%" stop-color="#858489" />
+      <stop offset="75%" stop-color="#b9b9b9" />
+      <stop offset="100%" stop-color="#858489" />
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="5" fill="#2a2a2a" />
+  <text
+    x="14"
+    y="42"
+    fill="url(#favicon-gradient)"
+    font-family="'Roboto Mono', 'Roboto Mono Variable', ui-monospace, monospace"
+    font-size="36"
+    font-weight="800"
+    letter-spacing="-0.03em"
+  >
+    S
+  </text>
+  <rect x="13" y="46" width="28" height="3.5" fill="url(#favicon-gradient)" />
+</svg>
