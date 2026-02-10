@@ -1,0 +1,9 @@
+version: "3.9"
+
+services:
+  backend:
+    build: ../backend
+    ports:
+      - "8001:8001"
+    volumes:
+      - ../data:/data
