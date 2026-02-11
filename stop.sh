@@ -15,5 +15,5 @@ else
 fi
 
 echo "[+] Stopping solaudity (Docker Compose)"
-"${DOCKER_COMPOSE[@]}" -f "$COMPOSE_FILE" down
+"${DOCKER_COMPOSE[@]}" -f "$COMPOSE_FILE" --profile "*" stop
 echo "[+] Stopped"
