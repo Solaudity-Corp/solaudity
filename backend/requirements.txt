@@ -1,3 +1,8 @@
 fastapi
 uvicorn
 pydantic
+sqlmodel
+alembic
+bcrypt
+python-jose
+python-multipart
