@@ -62,7 +62,7 @@ function App() {
             backgroundColor="#24252a"
             gradientStops={['#858489', '#e7e4ef', '#858489', '#b9b9b9', '#858489']}
             underlineColor="#b9b9b9"
-            cornerRadius={10}
+            cornerRadius={3}
           />
 
           <Card.Root
