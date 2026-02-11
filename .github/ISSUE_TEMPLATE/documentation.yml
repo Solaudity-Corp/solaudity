@@ -1,0 +1,18 @@
+name: 📝 Documentation
+description: Documentation improvement or addition
+labels: ["documentation"]
+projects: ["solaudity/1"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve our documentation!
+  
+  - type: textarea
+    id: what-needs-doc
+    attributes:
+      label: What needs to be documented?
+      description: Describe what needs to be documented or improved
+      placeholder: "Example: The audit pipeline setup process needs better documentation"
+    validations:
+      required: true

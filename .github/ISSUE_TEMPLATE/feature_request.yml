@@ -1,0 +1,27 @@
+name: ✨ Feature request
+description: Suggest a new feature
+labels: ["feature"]
+projects: ["solaudity/1"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting a new feature!
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What's the feature?
+      placeholder: "Example: Add support for..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: why
+    attributes:
+      label: Why?
+      description: What's it for?
+      placeholder: "Example: This would help with..."
+    validations:
+      required: true
