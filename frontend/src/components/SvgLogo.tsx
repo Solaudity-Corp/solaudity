@@ -54,7 +54,7 @@ export function SvgLogo({
   }, [text])
 
   const fontSize = Math.min(height * 0.6, width * 0.14)
-  const paddingX = width * 0.07
+  const centerX = width / 2
   const baselineY = height * 0.664
   const underlineThickness = Math.max(2, fontSize * 0.08)
   const underlineOffset = fontSize * 0.1
@@ -171,13 +171,14 @@ export function SvgLogo({
       <rect width={width} height={height} rx={cornerRadius} fill={backgroundColor} />
 
       <text
-        x={paddingX}
+        x={centerX}
         y={baselineY}
         fill={`url(#${gradientId})`}
         fontFamily="'Roboto Mono', 'Roboto Mono Variable', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace"
         fontSize={fontSize}
         fontWeight={800}
         letterSpacing="-0.03em"
+        textAnchor="middle"
         dominantBaseline="alphabetic"
         textDecoration="underline"
         style={{
