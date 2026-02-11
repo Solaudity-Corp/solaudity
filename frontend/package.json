@@ -4,9 +4,10 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "predev": "panda cssgen",
+    "panda:generate": "panda codegen && panda cssgen",
+    "predev": "npm run panda:generate",
     "dev": "vite",
-    "prebuild": "panda cssgen",
+    "prebuild": "npm run panda:generate",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview"
