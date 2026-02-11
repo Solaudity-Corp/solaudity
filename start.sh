@@ -3,6 +3,13 @@ set -euo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMPOSE_FILE="$PROJECT_ROOT/docker/docker-compose.yml"
+MODE="${1:-prod}"
+
+if [ "$MODE" != "prod" ] && [ "$MODE" != "dev" ]; then
+  echo "[-] Invalid mode: $MODE"
+  echo "[i] Usage: ./start.sh [prod|dev]"
+  exit 1
+fi
 
 mkdir -p "$PROJECT_ROOT/data"
 
@@ -16,8 +23,17 @@ else
   exit 1
 fi
 
+if [ "$MODE" = "dev" ]; then
+  echo "[+] Starting backend + frontend-dev (Docker Compose)"
+  "${DOCKER_COMPOSE[@]}" -f "$COMPOSE_FILE" --profile dev up -d --build --remove-orphans backend frontend-dev
+  echo "[+] Started in dev mode"
+  echo "[i] Backend:  http://localhost:8001"
+  echo "[i] Frontend: http://localhost:5173 (live reload in Docker)"
+  exit 0
+fi
+
 echo "[+] Starting backend + frontend (Docker Compose)"
-"${DOCKER_COMPOSE[@]}" -f "$COMPOSE_FILE" up -d --build
+"${DOCKER_COMPOSE[@]}" -f "$COMPOSE_FILE" --profile prod up -d --build --remove-orphans backend frontend
 
 echo "[+] Started"
 echo "[i] Backend:  http://localhost:8001"

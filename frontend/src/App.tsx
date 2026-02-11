@@ -62,14 +62,14 @@ function App() {
             backgroundColor="#24252a"
             gradientStops={['#858489', '#e7e4ef', '#858489', '#b9b9b9', '#858489']}
             underlineColor="#b9b9b9"
-            cornerRadius={3}
+            cornerRadius={10}
           />
 
           <Card.Root
             variant="outline"
             className={css({
               width: '100%',
-              borderRadius: '3px',
+              borderRadius: '10px',
               borderColor: 'rgba(185, 185, 189, 0.26)',
               borderWidth: '1px',
               bg: 'rgba(36, 36, 40, 0.82)',
@@ -112,7 +112,7 @@ function App() {
                     autoComplete="username"
                     className={css({
                       bg: 'rgba(20, 20, 24, 0.94)',
-                      borderRadius: '2px',
+                      borderRadius: '6px',
                       borderColor: 'rgba(176, 176, 184, 0.46)',
                       color: '#e7e4ef',
                       _placeholder: { color: 'rgba(167, 167, 174, 0.52)' },
@@ -136,7 +136,7 @@ function App() {
                     autoComplete="current-password"
                     className={css({
                       bg: 'rgba(20, 20, 24, 0.94)',
-                      borderRadius: '2px',
+                      borderRadius: '6px',
                       borderColor: 'rgba(176, 176, 184, 0.46)',
                       color: '#e7e4ef',
                       _placeholder: { color: 'rgba(167, 167, 174, 0.52)' },
@@ -165,7 +165,7 @@ function App() {
                   type="submit"
                   className={css({
                     bg: '#b9b9b9',
-                    borderRadius: '2px',
+                    borderRadius: '6px',
                     color: '#121214',
                     fontWeight: '700',
                     border: '0',

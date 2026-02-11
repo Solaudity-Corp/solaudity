@@ -4,7 +4,11 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "panda:generate": "panda codegen && panda cssgen",
+    "panda:codegen": "panda codegen",
+    "panda:css": "panda cssgen",
+    "panda:codegen:watch": "panda codegen --watch",
+    "panda:css:watch": "panda cssgen --watch",
+    "panda:generate": "npm run panda:codegen && npm run panda:css",
     "predev": "npm run panda:generate",
     "dev": "vite",
     "prebuild": "npm run panda:generate",
