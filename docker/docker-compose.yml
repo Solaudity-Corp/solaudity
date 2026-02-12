@@ -5,6 +5,8 @@ services:
       - "8001:8001"
     volumes:
       - ../data:/data
+    environment:
+      - DB_PATH=/data/solaudity.db
 
   frontend:
     build: ../frontend
