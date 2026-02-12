@@ -1,10 +1,11 @@
 :root {
   font-family: "Roboto Mono Variable", "Roboto Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-  line-height: 1.5;
+  font-size: 17px;
+  line-height: 1.58;
   font-weight: 400;
   color-scheme: dark;
-  color: #e7e4ef;
-  background-color: #121214;
+  color: rgba(231, 228, 239, 0.91);
+  background-color: #101014;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -20,8 +21,8 @@
 body {
   margin: 0;
   min-height: 100vh;
-  background: #121214;
-  color: #e7e4ef;
+  background: #101014;
+  color: rgba(231, 228, 239, 0.91);
   color-scheme: dark;
 }
 

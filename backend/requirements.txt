@@ -6,3 +6,4 @@ alembic
 bcrypt
 python-jose
 python-multipart
+python-dotenv
