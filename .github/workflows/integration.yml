@@ -1,0 +1,81 @@
+name: Integration
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  integration:
+    name: Docker Build & Integration
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          load: true
+          tags: docker-backend:latest
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,scope=backend,mode=max
+
+      - name: Build frontend image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          load: true
+          tags: docker-frontend:latest
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,scope=frontend,mode=max
+
+      - name: Start services
+        run: docker compose -f docker/docker-compose.yml --profile prod up -d --no-build
+
+      - name: Health check backend
+        run: curl --retry 15 --retry-delay 3 --retry-all-errors -sf http://localhost:8001/health
+
+      - name: Health check frontend
+        run: curl --retry 15 --retry-delay 3 --retry-all-errors -sf http://localhost:5173/
+
+      - name: Trivy scan frontend image
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: docker-frontend:latest
+          format: sarif
+          output: trivy-frontend.sarif
+          severity: CRITICAL,HIGH
+
+      - name: Trivy scan backend image
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: docker-backend:latest
+          format: sarif
+          output: trivy-backend.sarif
+          severity: CRITICAL,HIGH
+
+      - name: Upload frontend Trivy results
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-frontend.sarif
+          category: trivy-frontend
+
+      - name: Upload backend Trivy results
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-backend.sarif
+          category: trivy-backend
+
+      - name: Cleanup
+        if: always()
+        run: docker compose -f docker/docker-compose.yml --profile prod down -v --rmi local
