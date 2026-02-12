@@ -1,5 +1,13 @@
-import bcrypt
+from jose import jwt
+import dotenv,os,bcrypt
+from datetime import datetime, timezone, timedelta
+dotenv.load_dotenv()
 
+SECRET_KEY = os.getenv("SECRET_KEY")
+if not SECRET_KEY:
+    raise RuntimeError("SECRET_KEY is not set. Example: SECRET_KEY=your_secret_key_here")
+ALGORITHM = os.getenv("ALGORITHM", "HS256")
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 30))
 
 def hash_password(password:str) -> str:
     """Hash a password using bcrypt."""
@@ -15,3 +23,34 @@ def verify_password(password:str, hash:str) -> bool:
     """
     return bcrypt.checkpw(password.encode('utf-8'), hash.encode('utf-8'))
 
+def create_access_token(data: dict) -> str:
+    """Create a JWT access token."""
+    to_encode = data.copy()
+    
+    to_encode.update({"exp": datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)})
+    
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    
+    
+def verify_access_token(token:str) -> dict:
+    """Verify a JWT access token and return the decoded data. 
+    Raises an exception if the token is invalid or expired. """
+    
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username: str = payload.get("username")
+        
+        if username is None: 
+            return None
+        
+        return payload
+    
+    except jwt.JWTError:
+        return None
+    
+
+data = {"username": "testuser"} 
+token = create_access_token(data)
+print("Generated Token:", token) 
+decoded_data = verify_access_token(token) 
+print("Decoded Data:", decoded_data)
