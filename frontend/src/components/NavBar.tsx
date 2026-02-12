@@ -1,9 +1,25 @@
 import { css } from 'styled-system/css'
 import { Box, Flex, Stack } from 'styled-system/jsx'
 import { Settings2 } from 'lucide-react'
+import { NavLink } from './ui'
 import { SvgLogo } from './SvgLogo'
 
-export function NavBar() {
+export type MenuSection = 'audits' | 'reports' | 'activity'
+
+interface NavBarProps {
+  activeSection: MenuSection
+  searchValue: string
+  onSearchChange: (value: string) => void
+  onNavigate: (section: MenuSection) => void
+}
+
+const links: Array<{ label: string; section: MenuSection }> = [
+  { label: 'Audits', section: 'audits' },
+  { label: 'Reports', section: 'reports' },
+  { label: 'Activity', section: 'activity' },
+]
+
+export function NavBar({ activeSection, searchValue, onSearchChange, onNavigate }: NavBarProps) {
   const controlRadius = '8px'
 
   return (
@@ -58,19 +74,14 @@ export function NavBar() {
           </Box>
 
           <Flex align="center" gap={{ base: '2', md: '5' }} ml={{ base: '1', md: '3' }}>
-            {['Audits', 'Reports', 'Activity'].map((item) => (
-              <a
-                key={item}
-                href="#"
-                className={css({
-                  color: 'rgba(231, 228, 239, 0.8)',
-                  fontSize: 'sm',
-                  textDecoration: 'none',
-                  _hover: { color: '#ffffff' },
-                })}
+            {links.map((item) => (
+              <NavLink
+                key={item.section}
+                active={activeSection === item.section}
+                onClick={() => onNavigate(item.section)}
               >
-                {item}
-              </a>
+                {item.label}
+              </NavLink>
             ))}
           </Flex>
         </Flex>
@@ -78,7 +89,10 @@ export function NavBar() {
         <Flex align="center" gap="3" ml="auto">
           <input
             type="text"
-            placeholder="Search..."
+            placeholder="Search audits, chain, repo..."
+            aria-label="Search audits"
+            value={searchValue}
+            onChange={(event) => onSearchChange(event.target.value)}
             className={css({
               w: { base: '44', md: '56' },
               h: '10',
