@@ -48,7 +48,7 @@ export default function Login() {
           <SvgLogo
             width={280}
             height={68}
-            backgroundColor="#24252a"
+            backgroundColor="transparent"
             gradientStops={['#858489', '#e7e4ef', '#858489', '#b9b9b9', '#858489']}
             underlineColor="#b9b9b9"
             cornerRadius={3}
