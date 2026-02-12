@@ -14,11 +14,13 @@ const baseClass = css({
   border: 'none',
   fontFamily: 'inherit',
   fontSize: 'sm',
+  lineHeight: '1.5',
+  fontWeight: '500',
   cursor: 'pointer',
   position: 'relative',
   pb: '0.5',
   px: '0.5',
-  color: 'rgba(231, 228, 239, 0.78)',
+  color: 'rgba(231, 228, 239, 0.67)',
   transition: 'color 140ms ease, opacity 140ms ease',
   outline: 'none',
   '&::after': {
@@ -44,7 +46,7 @@ const baseClass = css({
 })
 
 const activeClass = css({
-  color: '#ffffff',
+  color: 'rgba(231, 228, 239, 0.92)',
   '&::after': {
     transform: 'scaleX(1)',
   },

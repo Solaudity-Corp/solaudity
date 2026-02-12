@@ -31,7 +31,7 @@ export default function Menu({ path, onNavigate }: MenuProps) {
       minH="100vh"
       direction="column"
       className={css({
-        background: '#121214',
+        background: '#101014',
       })}
     >
       <NavBar
@@ -43,22 +43,23 @@ export default function Menu({ path, onNavigate }: MenuProps) {
       {activeSection === 'audits' && <AuditsWorkspace searchQuery={search} />}
 
       {activeSection !== 'audits' && (
-        <Flex flex="1" px={{ base: '4', md: '8' }} py={{ base: '4', md: '6' }}>
+        <Flex flex="1" px={{ base: '4', md: '8' }} py={{ base: '5', md: '7' }}>
           <Card.Root
             variant="outline"
             className={css({
               width: '100%',
               borderRadius: '18px',
-              borderColor: 'rgba(185, 185, 189, 0.24)',
-              bg: 'rgba(25, 25, 30, 0.8)',
+              borderColor: 'rgba(185, 185, 189, 0.14)',
+              bg: 'rgba(24, 24, 29, 0.82)',
+              boxShadow: '0 12px 28px rgba(0, 0, 0, 0.3)',
               minH: '320px',
             })}
           >
             <Card.Header>
-              <Card.Title className={css({ color: '#f3f0fb', fontSize: 'xl' })}>
+              <Card.Title className={css({ color: 'rgba(231, 228, 239, 0.91)', fontSize: 'calc(1.25rem + 2px)', fontWeight: '700' })}>
                 {activeSection === 'reports' ? 'Reports' : 'Activity'}
               </Card.Title>
-              <Card.Description className={css({ color: 'rgba(204, 204, 212, 0.8)' })}>
+              <Card.Description className={css({ color: 'rgba(204, 204, 212, 0.66)', lineHeight: '1.62' })}>
                 {activeSection === 'reports'
                   ? 'This section can aggregate finalized audit reports and export options.'
                   : 'This section can display timeline events: opened audits, uploads, and status changes.'}
@@ -66,14 +67,15 @@ export default function Menu({ path, onNavigate }: MenuProps) {
             </Card.Header>
             <Card.Body>
               <Stack gap="3">
-                <Box className={css({ color: 'rgba(223, 223, 231, 0.84)', fontSize: 'sm' })}>
+                <Box className={css({ color: 'rgba(223, 223, 231, 0.91)', fontSize: 'sm', lineHeight: '1.62' })}>
                   UI scaffold is ready. You can now wire this section to backend endpoints when available.
                 </Box>
                 <Box
                   className={css({
-                    color: 'rgba(185, 185, 193, 0.84)',
+                    color: 'rgba(185, 185, 193, 0.65)',
                     fontSize: 'sm',
-                    border: '1px dashed rgba(185, 185, 189, 0.34)',
+                    lineHeight: '1.62',
+                    border: '1px dashed rgba(185, 185, 189, 0.24)',
                     borderRadius: '12px',
                     px: '4',
                     py: '3',

@@ -9,11 +9,12 @@ const logoGradient =
   'linear-gradient(90deg, #858489 0%, #e7e4ef 28%, #858489 52%, #b9b9b9 72%, #858489 100%)'
 
 const baseClass = css({
-  color: '#f0edf7',
+  color: 'rgba(231, 228, 239, 0.91)',
   textDecoration: 'none',
   position: 'relative',
   display: 'inline-flex',
   alignItems: 'center',
+  lineHeight: '1.5',
   gap: '1',
   maxW: '100%',
   overflowWrap: 'anywhere',
