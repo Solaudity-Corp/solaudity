@@ -23,5 +23,3 @@ body:
       label: Why?
       description: What's it for?
       placeholder: "Example: This would help with..."
-    validations:
-      required: true
