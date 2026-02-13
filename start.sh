@@ -36,5 +36,4 @@ echo "[+] Starting backend + frontend (Docker Compose)"
 "${DOCKER_COMPOSE[@]}" -f "$COMPOSE_FILE" --profile prod up -d --build --remove-orphans backend frontend
 
 echo "[+] Started"
-echo "[i] Backend:  http://localhost:8001"
-echo "[i] Frontend: http://localhost:5173"
+echo "[i] Website: http://localhost:5173"

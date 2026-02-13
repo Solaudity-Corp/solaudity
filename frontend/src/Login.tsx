@@ -28,7 +28,7 @@ export default function Login() {
       })
 
       if (!response.ok) {
-        setStatus({ kind: 'error', message: 'Invalid credentials.' })
+        setStatus({ kind: 'error', message: 'Invalid username or password.' })
         return
       }
 
@@ -159,7 +159,7 @@ export default function Login() {
                     fontWeight: '700',
                     border: '0',
                     _hover: {
-                      bg: '#c8c8c8',
+                      bg: '#e9e5e5ff',
                     },
                   })}
                 >
