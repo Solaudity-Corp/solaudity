@@ -7,7 +7,6 @@ on:
 
 permissions:
   contents: read
-  security-events: write
   actions: read
   pull-requests: write
 
@@ -300,60 +299,69 @@ jobs:
             echo "::warning::PR comment skipped — summary file is empty"
           fi
 
-  codeql:
-    name: CodeQL
+  # CodeQL requires GitHub Advanced Security (paid, not available on free plan)
+  # codeql:
+  #   name: CodeQL
+  #   runs-on: ubuntu-latest
+  #   strategy:
+  #     matrix:
+  #       language: [javascript, python]
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - name: Initialize CodeQL
+  #       uses: github/codeql-action/init@v3
+  #       with:
+  #         languages: ${{ matrix.language }}
+  #         queries: security-extended
+  #     - name: Autobuild
+  #       uses: github/codeql-action/autobuild@v3
+  #     - name: Perform CodeQL analysis
+  #       uses: github/codeql-action/analyze@v3
+  #       with:
+  #         category: "/language:${{ matrix.language }}"
+
+  semgrep:
+    name: Semgrep SAST
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        language: [javascript, python]
     steps:
       - uses: actions/checkout@v4
 
-      - name: Initialize CodeQL
-        id: init
-        uses: github/codeql-action/init@v3
+      - name: Run Semgrep
+        id: semgrep
+        uses: returntocorp/semgrep-action@v1
         with:
-          languages: ${{ matrix.language }}
-          queries: security-extended
-
-      - name: Autobuild
-        id: autobuild
-        uses: github/codeql-action/autobuild@v3
-
-      - name: Perform CodeQL analysis
-        id: analyze
-        uses: github/codeql-action/analyze@v3
-        with:
-          category: "/language:${{ matrix.language }}"
+          config: >-
+            p/default
+            p/javascript
+            p/typescript
+            p/python
+            p/security-audit
+            p/owasp-top-ten
+        continue-on-error: true
 
       - name: Generate summary
         if: always()
         run: |
-          echo "## CodeQL Analysis — ${{ matrix.language }}" >> $GITHUB_STEP_SUMMARY
+          echo "## Semgrep SAST Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| Step | Status |" >> $GITHUB_STEP_SUMMARY
           echo "|------|--------|" >> $GITHUB_STEP_SUMMARY
 
-          if [ "${{ steps.init.outcome }}" == "success" ]; then
-            echo "| Initialize | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ steps.semgrep.outcome }}" == "success" ]; then
+            echo "| Semgrep Scan | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
           else
-            echo "| Initialize | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
-          fi
-
-          if [ "${{ steps.autobuild.outcome }}" == "success" ]; then
-            echo "| Autobuild | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "| Autobuild | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
-          fi
-
-          if [ "${{ steps.analyze.outcome }}" == "success" ]; then
-            echo "| Analysis | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "| Analysis | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
+            echo "| Semgrep Scan | ❌ Findings detected |" >> $GITHUB_STEP_SUMMARY
           fi
 
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "> Detailed findings available in the [Security tab](https://github.com/${{ github.repository }}/security/code-scanning)" >> $GITHUB_STEP_SUMMARY
+
+      - name: Check results
+        if: always()
+        run: |
+          if [ "${{ steps.semgrep.outcome }}" == "failure" ]; then
+            echo "Semgrep found security issues"
+            exit 1
+          fi
 
       - name: Comment PR with summary
         if: always()
