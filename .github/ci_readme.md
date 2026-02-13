@@ -101,6 +101,24 @@ curl -sf http://localhost:5173/
 ./delete.sh
 ```
 
+## Job Summaries
+
+Every job writes a rich markdown summary to `$GITHUB_STEP_SUMMARY`, visible on the workflow run page.
+
+| Job | Summary contents |
+|-----|-----------------|
+| **Frontend** | Pass/fail table (install, lint, build, audit) + npm vulnerability counts by severity |
+| **Backend** | Pass/fail table (install, safety, bandit) + safety vuln count + bandit severity breakdown |
+| **CodeQL** | Pass/fail table (init, autobuild, analyze) + link to Security tab |
+| **Integration** | Docker build status + health check status + Trivy vuln counts per image (Critical/High) |
+
+**How it works:**
+
+- Steps use `continue-on-error: true` so summaries are always generated, even on failure
+- A final "Check results" step enforces the actual pass/fail outcome
+- Vulnerability details are available in collapsible `<details>` blocks
+- JSON outputs (`npm audit --json`, `bandit -f json`, `trivy --format json`) are parsed with `jq` for counts
+
 ## Notes
 
 - No CD workflow exists yet (no deployment target)

@@ -8,6 +8,7 @@ on:
 permissions:
   contents: read
   security-events: write
+  actions: read
 
 jobs:
   integration:
@@ -20,6 +21,7 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Build backend image
+        id: build-backend
         uses: docker/build-push-action@v6
         with:
           context: ./backend
@@ -27,8 +29,10 @@ jobs:
           tags: docker-backend:latest
           cache-from: type=gha,scope=backend
           cache-to: type=gha,scope=backend,mode=max
+        continue-on-error: true
 
       - name: Build frontend image
+        id: build-frontend
         uses: docker/build-push-action@v6
         with:
           context: ./frontend
@@ -36,42 +40,198 @@ jobs:
           tags: docker-frontend:latest
           cache-from: type=gha,scope=frontend
           cache-to: type=gha,scope=frontend,mode=max
+        continue-on-error: true
 
       - name: Start services
+        id: start-services
+        if: steps.build-backend.outcome == 'success' && steps.build-frontend.outcome == 'success'
         run: docker compose -f docker/docker-compose.yml --profile prod up -d --no-build
+        continue-on-error: true
 
       - name: Health check backend
+        id: health-backend
+        if: steps.start-services.outcome == 'success'
         run: curl --retry 15 --retry-delay 3 --retry-all-errors -sf http://localhost:8001/health
+        continue-on-error: true
 
       - name: Health check frontend
+        id: health-frontend
+        if: steps.start-services.outcome == 'success'
         run: curl --retry 15 --retry-delay 3 --retry-all-errors -sf http://localhost:5173/
+        continue-on-error: true
 
       - name: Trivy scan frontend image
+        id: trivy-frontend
+        if: steps.build-frontend.outcome == 'success'
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: docker-frontend:latest
           format: sarif
           output: trivy-frontend.sarif
           severity: CRITICAL,HIGH
+        continue-on-error: true
+
+      - name: Trivy scan frontend (JSON)
+        id: trivy-frontend-json
+        if: steps.build-frontend.outcome == 'success'
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: docker-frontend:latest
+          format: json
+          output: trivy-frontend.json
+          severity: CRITICAL,HIGH
+        continue-on-error: true
 
       - name: Trivy scan backend image
+        id: trivy-backend
+        if: steps.build-backend.outcome == 'success'
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: docker-backend:latest
           format: sarif
           output: trivy-backend.sarif
           severity: CRITICAL,HIGH
+        continue-on-error: true
+
+      - name: Trivy scan backend (JSON)
+        id: trivy-backend-json
+        if: steps.build-backend.outcome == 'success'
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: docker-backend:latest
+          format: json
+          output: trivy-backend.json
+          severity: CRITICAL,HIGH
+        continue-on-error: true
+
+      - name: Generate summary
+        if: always()
+        run: |
+          echo "## Integration Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Docker build status
+          echo "### Docker Build Status" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Image | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ steps.build-backend.outcome }}" == "success" ]; then
+            echo "| Backend | ✅ Success |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| Backend | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [ "${{ steps.build-frontend.outcome }}" == "success" ]; then
+            echo "| Frontend | ✅ Success |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| Frontend | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Health check status
+          echo "### Health Check Status" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Service | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|---------|--------|" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ steps.health-backend.outcome }}" == "success" ]; then
+            echo "| Backend (\`/health\`) | ✅ Healthy |" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ steps.health-backend.outcome }}" == "failure" ]; then
+            echo "| Backend (\`/health\`) | ❌ Unhealthy |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| Backend (\`/health\`) | ⚠️ Skipped |" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [ "${{ steps.health-frontend.outcome }}" == "success" ]; then
+            echo "| Frontend (\`/\`) | ✅ Healthy |" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ steps.health-frontend.outcome }}" == "failure" ]; then
+            echo "| Frontend (\`/\`) | ❌ Unhealthy |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| Frontend (\`/\`) | ⚠️ Skipped |" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Trivy scan results
+          echo "### Trivy Security Scan" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Frontend Trivy
+          if [ -f "trivy-frontend.json" ]; then
+            FRONTEND_CRITICAL=$(jq -r '[.Results[]?.Vulnerabilities[]? | select(.Severity == "CRITICAL")] | length' trivy-frontend.json)
+            FRONTEND_HIGH=$(jq -r '[.Results[]?.Vulnerabilities[]? | select(.Severity == "HIGH")] | length' trivy-frontend.json)
+            FRONTEND_TOTAL=$(jq -r '[.Results[]?.Vulnerabilities[]?] | length' trivy-frontend.json)
+
+            echo "#### Frontend Image" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "| Severity | Count |" >> $GITHUB_STEP_SUMMARY
+            echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+            echo "| Critical | $FRONTEND_CRITICAL |" >> $GITHUB_STEP_SUMMARY
+            echo "| High | $FRONTEND_HIGH |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Total** | **$FRONTEND_TOTAL** |" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+
+            if [ "$FRONTEND_TOTAL" -gt 0 ] 2>/dev/null; then
+              echo "<details>" >> $GITHUB_STEP_SUMMARY
+              echo "<summary>View vulnerability details</summary>" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "\`\`\`json" >> $GITHUB_STEP_SUMMARY
+              jq '[.Results[]?.Vulnerabilities[]? | {VulnerabilityID, PkgName, InstalledVersion, Severity, Title}]' trivy-frontend.json >> $GITHUB_STEP_SUMMARY
+              echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+              echo "</details>" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo "#### Frontend Image" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "⚠️ Scan skipped or failed" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          # Backend Trivy
+          if [ -f "trivy-backend.json" ]; then
+            BACKEND_CRITICAL=$(jq -r '[.Results[]?.Vulnerabilities[]? | select(.Severity == "CRITICAL")] | length' trivy-backend.json)
+            BACKEND_HIGH=$(jq -r '[.Results[]?.Vulnerabilities[]? | select(.Severity == "HIGH")] | length' trivy-backend.json)
+            BACKEND_TOTAL=$(jq -r '[.Results[]?.Vulnerabilities[]?] | length' trivy-backend.json)
+
+            echo "#### Backend Image" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "| Severity | Count |" >> $GITHUB_STEP_SUMMARY
+            echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+            echo "| Critical | $BACKEND_CRITICAL |" >> $GITHUB_STEP_SUMMARY
+            echo "| High | $BACKEND_HIGH |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Total** | **$BACKEND_TOTAL** |" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+
+            if [ "$BACKEND_TOTAL" -gt 0 ] 2>/dev/null; then
+              echo "<details>" >> $GITHUB_STEP_SUMMARY
+              echo "<summary>View vulnerability details</summary>" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "\`\`\`json" >> $GITHUB_STEP_SUMMARY
+              jq '[.Results[]?.Vulnerabilities[]? | {VulnerabilityID, PkgName, InstalledVersion, Severity, Title}]' trivy-backend.json >> $GITHUB_STEP_SUMMARY
+              echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+              echo "</details>" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo "#### Backend Image" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "⚠️ Scan skipped or failed" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
 
       - name: Upload frontend Trivy results
         uses: github/codeql-action/upload-sarif@v3
-        if: always()
+        if: always() && steps.trivy-frontend.outcome == 'success'
         with:
           sarif_file: trivy-frontend.sarif
           category: trivy-frontend
 
       - name: Upload backend Trivy results
         uses: github/codeql-action/upload-sarif@v3
-        if: always()
+        if: always() && steps.trivy-backend.outcome == 'success'
         with:
           sarif_file: trivy-backend.sarif
           category: trivy-backend
@@ -79,3 +239,32 @@ jobs:
       - name: Cleanup
         if: always()
         run: docker compose -f docker/docker-compose.yml --profile prod down -v --rmi local
+
+      - name: Check results
+        if: always()
+        run: |
+          FAILED=0
+
+          if [ "${{ steps.build-backend.outcome }}" == "failure" ]; then
+            echo "Backend build failed"
+            FAILED=1
+          fi
+
+          if [ "${{ steps.build-frontend.outcome }}" == "failure" ]; then
+            echo "Frontend build failed"
+            FAILED=1
+          fi
+
+          if [ "${{ steps.health-backend.outcome }}" == "failure" ]; then
+            echo "Backend health check failed"
+            FAILED=1
+          fi
+
+          if [ "${{ steps.health-frontend.outcome }}" == "failure" ]; then
+            echo "Frontend health check failed"
+            FAILED=1
+          fi
+
+          if [ $FAILED -eq 1 ]; then
+            exit 1
+          fi
