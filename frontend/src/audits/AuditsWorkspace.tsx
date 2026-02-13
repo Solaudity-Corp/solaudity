@@ -606,15 +606,7 @@ export function AuditsWorkspace({ searchQuery }: AuditsWorkspaceProps) {
           <Flex align={{ base: 'flex-start', md: 'center' }} justify="space-between" wrap="wrap" gap="3">
             <Button
               onClick={openCreateAuditModal}
-              className={css({
-                bg: '#e7e4ef',
-                color: '#17171a',
-                borderRadius: '10px',
-                px: '7',
-                fontWeight: '700',
-                border: '1px solid rgba(231, 228, 239, 0.9)',
-                _hover: { bg: '#f2effb' },
-              })}
+              className="btn-primary"
             >
               <Plus size={16} />
               New Audit
@@ -760,16 +752,7 @@ export function AuditsWorkspace({ searchQuery }: AuditsWorkspaceProps) {
                     onClick={() => {
                       void loadAudits()
                     }}
-                    className={css({
-                      mt: '3',
-                      h: '8',
-                      minW: '0',
-                      px: '3',
-                      bg: 'transparent',
-                      border: `1px solid ${ui.borderSoft}`,
-                      color: ui.textPrimary,
-                      _hover: { bg: 'rgba(33, 33, 39, 0.75)' },
-                    })}
+                    className={cx(css({ mt: '3' }), 'btn-secondary')}
                   >
                     Retry
                   </Button>
@@ -829,11 +812,11 @@ export function AuditsWorkspace({ searchQuery }: AuditsWorkspaceProps) {
                         },
                       }),
                       isActive &&
-                        css({
-                          borderColor: 'rgba(143, 230, 255, 0.5)',
-                          background: 'rgba(0, 162, 199, 0.08)',
-                          boxShadow: '0 0 0 1px rgba(0, 162, 199, 0.22) inset, 0 6px 16px rgba(0, 0, 0, 0.22)',
-                        }),
+                      css({
+                        borderColor: 'rgba(143, 230, 255, 0.5)',
+                        background: 'rgba(0, 162, 199, 0.08)',
+                        boxShadow: '0 0 0 1px rgba(0, 162, 199, 0.22) inset, 0 6px 16px rgba(0, 0, 0, 0.22)',
+                      }),
                     )}
                   >
                     <Flex align="center" justify="space-between" gap="2">
@@ -878,15 +861,15 @@ export function AuditsWorkspace({ searchQuery }: AuditsWorkspaceProps) {
                             },
                           }),
                           audit.is_pinned &&
-                            css({
-                              transform: 'rotate(0deg)',
-                              borderColor: 'rgba(185, 185, 189, 0.4)',
-                              background: 'rgba(54, 54, 62, 0.72)',
-                              color: ui.textPrimary,
-                              '& svg': {
-                                fill: 'currentColor',
-                              },
-                            }),
+                          css({
+                            transform: 'rotate(0deg)',
+                            borderColor: 'rgba(185, 185, 189, 0.4)',
+                            background: 'rgba(54, 54, 62, 0.72)',
+                            color: ui.textPrimary,
+                            '& svg': {
+                              fill: 'currentColor',
+                            },
+                          }),
                         )}
                       >
                         <Pin size={14} strokeWidth={2.2} />
@@ -1126,16 +1109,7 @@ export function AuditsWorkspace({ searchQuery }: AuditsWorkspaceProps) {
                   <Button
                     type="button"
                     onClick={openDeleteModal}
-                    className={css({
-                      bg: '#c62222',
-                      border: '1px solidrgb(148, 30, 30)',
-                      color: '#fff1f2',
-                      fontWeight: '700',
-                      _hover: {
-                        bg: '#b91c1c',
-                        borderColor: '#f87171',
-                      },
-                    })}
+                    className="btn-danger"
                   >
                     <Trash2 size={14} />
                     Delete Audit
@@ -1502,27 +1476,14 @@ export function AuditsWorkspace({ searchQuery }: AuditsWorkspaceProps) {
                   type="button"
                   disabled={isSubmittingCreate}
                   onClick={closeCreateAuditModal}
-                  className={css({
-                    bg: 'transparent',
-                    border: `1px solid ${ui.borderSoft}`,
-                    color: ui.textSecondary,
-                    _hover: { bg: 'rgba(33, 33, 39, 0.75)', color: ui.textPrimary },
-                  })}
+                  className="btn-secondary"
                 >
                   Cancel
                 </Button>
                 <Button
                   loading={isSubmittingCreate}
                   type="submit"
-                  className={css({
-                    bg: '#e7e4ef',
-                    color: '#17171a',
-                    borderRadius: '10px',
-                    px: '5',
-                    fontWeight: '700',
-                    border: '1px solid rgba(231, 228, 239, 0.9)',
-                    _hover: { bg: '#f2effb' },
-                  })}
+                  className="btn-primary"
                 >
                   Create Audit
                 </Button>
