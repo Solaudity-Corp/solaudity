@@ -4,12 +4,15 @@ import { Box, Flex, Stack } from 'styled-system/jsx'
 import { Button, Card, Field, Input } from './components/ui'
 import { SvgLogo } from './components/SvgLogo'
 
-type AuthStatus =
-  | { kind: 'success'; message: string }
-  | { kind: 'error'; message: string }
-  | null
+type AuthStatus = { kind: 'success'; message: string } | { kind: 'error'; message: string } | null
 
-const titles = ['Protocol Security', 'Smart Contract Audit', 'On-Chain Monitor', 'DeFi Protection']
+const titles = [
+  'Protocol Security',
+  'Smart Contract Audit',
+  'On-Chain Monitor',
+  'DeFi Protection',
+  'EVM Security'
+]
 
 export default function Login() {
   const [username, setUsername] = useState('admin')
@@ -21,32 +24,22 @@ export default function Login() {
   const [displayedTitle, setDisplayedTitle] = useState('')
   const [isDeleting, setIsDeleting] = useState(false)
 
-  // Typing effect for the title
   useEffect(() => {
     const currentFullTitle = titles[titleIndex]
-
-    // Typing speed
     const timeout = setTimeout(() => {
       if (!isDeleting) {
-        // Typing
         setDisplayedTitle(currentFullTitle.substring(0, displayedTitle.length + 1))
-
-        // Finished typing, wait before deleting
         if (displayedTitle === currentFullTitle) {
           setTimeout(() => setIsDeleting(true), 2000)
         }
       } else {
-        // Deleting
         setDisplayedTitle(currentFullTitle.substring(0, displayedTitle.length - 1))
-
-        // Finished deleting, move to next title
         if (displayedTitle === '') {
           setIsDeleting(false)
           setTitleIndex((prev) => (prev + 1) % titles.length)
         }
       }
-    }, isDeleting ? 50 : 100) // Deleting is faster
-
+    }, isDeleting ? 50 : 50)
     return () => clearTimeout(timeout)
   }, [displayedTitle, isDeleting, titleIndex])
 
@@ -78,153 +71,35 @@ export default function Login() {
 
   return (
     <Flex minH="100vh" align="center" justify="center" px={{ base: '4', md: '8' }} py="12" position="relative" overflow="hidden">
-      {/* Animated Background */}
-      <Box
-        position="absolute"
-        top="0"
-        left="0"
-        right="0"
-        bottom="0"
-        zIndex="0"
-        overflow="hidden"
-        bg="#050505"
-      >
-        {/* Abstract Grid Pulse */}
+      <Box position="absolute" top="0" left="0" right="0" bottom="0" zIndex="0" overflow="hidden" bg="#0f0f12ff">
         <div className={css({
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
+          position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
           backgroundImage: 'radial-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px)',
           backgroundSize: '40px 40px',
           maskImage: 'radial-gradient(circle at 50% 50%, black 40%, transparent 80%)',
           animation: 'pulse-grid 8s infinite alternate ease-in-out',
         })} />
 
-        {/* Solana Purple Orb */}
-        <div className={css({
-          position: 'absolute',
-          top: '-15%',
-          left: '-15%',
-          width: '70vw',
-          height: '70vw',
-          background: 'radial-gradient(circle, rgba(153, 69, 255, 0.18) 0%, rgba(0,0,0,0) 70%)',
-          filter: 'blur(60px)',
-          animation: 'orb-move-1 15s infinite alternate ease-in-out',
-        })} />
-
-        {/* Solana Green Orb */}
-        <div className={css({
-          position: 'absolute',
-          bottom: '-15%',
-          right: '-15%',
-          width: '60vw',
-          height: '60vw',
-          background: 'radial-gradient(circle, rgba(20, 241, 149, 0.12) 0%, rgba(0,0,0,0) 70%)',
-          filter: 'blur(60px)',
-          animation: 'orb-move-2 18s infinite alternate-reverse ease-in-out',
-        })} />
-
-        {/* Accent Blue Orb */}
-        <div className={css({
-          position: 'absolute',
-          top: '30%',
-          left: '50%',
-          transform: 'translateX(-50%)',
-          width: '50vw',
-          height: '50vw',
-          background: 'radial-gradient(circle, rgba(41, 126, 255, 0.08) 0%, rgba(0,0,0,0) 60%)',
-          filter: 'blur(80px)',
-          animation: 'orb-move-3 22s infinite alternate ease-in-out',
-        })} />
-
-        <style dangerouslySetInnerHTML={{
-          __html: `
-          @keyframes orb-move-1 {
-            0% { transform: translate(0, 0) rotate(0deg); }
-            100% { transform: translate(15%, 20%) rotate(10deg); }
-          }
-          @keyframes orb-move-2 {
-            0% { transform: translate(0, 0) scale(1); }
-            100% { transform: translate(-15%, -20%) scale(1.1); }
-          }
-           @keyframes orb-move-3 {
-            0% { transform: translate(-50%, 0) scale(1); opacity: 0.5; }
-            50% { transform: translate(-40%, 10%) scale(1.2); opacity: 0.8; }
-            100% { transform: translate(-60%, -5%) scale(1); opacity: 0.5; }
-          }
-          @keyframes pulse-grid {
-             0% { opacity: 0.4; transform: scale(1); }
-             100% { opacity: 0.7; transform: scale(1.05); }
-          }
-        `}} />
       </Box>
 
       <Box className={css({ width: '100%', maxWidth: '500px', position: 'relative', zIndex: 1 })}>
         <Stack gap="4" align="center">
-          <SvgLogo
-            width={280}
-            height={68}
-            backgroundColor="transparent"
-            gradientStops={['#858489', '#e7e4ef', '#858489', '#b9b9b9', '#858489']}
-            underlineColor="#b9b9b9"
-            cornerRadius={3}
-          />
+          <SvgLogo width={280} height={68} backgroundColor="transparent" gradientStops={['#858489', '#e7e4ef', '#858489', '#b9b9b9', '#858489']} underlineColor="#b9b9b9" cornerRadius={3} />
 
-          <Card.Root
-            variant="outline"
-            className={css({
-              width: '100%',
-              borderRadius: '16px',
-              borderColor: 'rgba(255, 255, 255, 0.08)',
-              borderWidth: '1px',
-              bg: 'rgba(20, 20, 24, 0.4)',
-              boxShadow: '0 8px 32px 0 rgba(0, 0, 0, 0.36)',
-              backdropFilter: 'blur(16px)',
-              transition: 'all 0.3s ease',
-              _hover: {
-                borderColor: 'rgba(255, 255, 255, 0.15)',
-                boxShadow: '0 8px 32px 0 rgba(0, 0, 0, 0.5)',
-              }
-            })}
-          >
+          <Card.Root variant="outline" className={css({
+            width: '100%', borderRadius: '16px', borderColor: 'rgba(255, 255, 255, 0.15)', borderWidth: '1px',
+            bg: 'rgba(20, 20, 24, 0.4)', boxShadow: '0 8px 32px 0 rgba(0, 0, 0, 0.36)', backdropFilter: 'blur(16px)',
+            transition: 'all 0.3s ease', _hover: { boxShadow: '0 8px 32px 0 rgba(0, 0, 0, 0.5)' }
+          })}>
             <Card.Header>
-              <Card.Title
-                className={css({
-                  color: 'rgba(239, 239, 242, 0.75)', // Less brightness
-                  fontSize: '2xl',
-                  fontWeight: '700',
-                  letterSpacing: '-0.02em',
-                  minHeight: '1.5em', // reserve space for text
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '2',
-                  textShadow: '0 0 20px rgba(0,0,0,0.5)', // Adds depth and slight dimming effect via contrast
-                })}
-              >
+              <Card.Title className={css({
+                color: 'rgba(239, 239, 242, 0.75)', fontSize: '2xl', fontWeight: '700', letterSpacing: '-0.02em',
+                minHeight: '1.5em', display: 'flex', alignItems: 'center', gap: '2', textShadow: '0 0 20px rgba(0,0,0,0.5)',
+              })}>
                 {displayedTitle}
-                <span className={css({
-                  display: 'inline-block',
-                  width: '2px',
-                  height: '1.2em',
-                  bg: '#e7e4ef',
-                  animation: 'cursor-blink 1s infinite'
-                })} />
+                <span className={css({ display: 'inline-block', width: '2px', height: '1.2em', bg: '#e7e4ef', animation: 'cursor-blink 1s infinite' })} />
               </Card.Title>
-              <style dangerouslySetInnerHTML={{
-                __html: `
-                @keyframes cursor-blink {
-                  0%, 100% { opacity: 1; }
-                  50% { opacity: 0; }
-                }
-              `}} />
-              <Card.Description
-                className={css({
-                  color: 'rgba(210, 210, 218, 0.72)',
-                  fontSize: 'sm',
-                })}
-              >
+              <Card.Description className={css({ color: 'rgba(210, 210, 218, 0.72)', fontSize: 'sm' })}>
                 Sign in to access your security workspace
               </Card.Description>
             </Card.Header>
@@ -232,76 +107,34 @@ export default function Login() {
             <Card.Body>
               <form onSubmit={submit} className={css({ display: 'grid', gap: '4' })}>
                 <Field.Root>
-                  <Field.Label className={css({ color: 'rgba(224, 224, 231, 0.86)' })}>
-                    Username
-                  </Field.Label>
-                  <Input
-                    placeholder="admin"
-                    value={username}
-                    onChange={(event) => setUsername(event.target.value)}
-                    autoComplete="username"
+                  <Field.Label className={css({ color: 'rgba(224, 224, 231, 0.86)' })}>Username</Field.Label>
+                  <Input placeholder="admin" value={username} onChange={(event) => setUsername(event.target.value)} autoComplete="username"
                     className={css({
-                      bg: 'rgba(10, 10, 12, 0.6)',
-                      borderRadius: '8px',
-                      borderColor: 'rgba(255, 255, 255, 0.1)',
-                      color: '#e7e4ef',
-                      _placeholder: { color: 'rgba(167, 167, 174, 0.52)' },
-                      transition: 'all 0.2s',
-                      _focusVisible: {
-                        borderColor: '#e7e4ef',
-                        bg: 'rgba(10, 10, 12, 0.8)',
-                        boxShadow: '0 0 0 1px rgba(231, 228, 239, 0.42)',
-                      },
+                      bg: 'rgba(10, 10, 12, 0.6)', borderRadius: '8px', borderColor: 'rgba(255, 255, 255, 0.1)', color: '#e7e4ef',
+                      _placeholder: { color: 'rgba(167, 167, 174, 0.52)' }, transition: 'all 0.2s',
+                      _focusVisible: { borderColor: '#e7e4ef', bg: 'rgba(10, 10, 12, 0.8)', boxShadow: '0 0 0 1px rgba(231, 228, 239, 0.42)' },
                     })}
                   />
                 </Field.Root>
 
                 <Field.Root>
-                  <Field.Label className={css({ color: 'rgba(224, 224, 231, 0.86)' })}>
-                    Password
-                  </Field.Label>
-                  <Input
-                    type="password"
-                    placeholder="admin"
-                    value={password}
-                    onChange={(event) => setPassword(event.target.value)}
-                    autoComplete="current-password"
+                  <Field.Label className={css({ color: 'rgba(224, 224, 231, 0.86)' })}>Password</Field.Label>
+                  <Input type="password" placeholder="admin" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password"
                     className={css({
-                      bg: 'rgba(10, 10, 12, 0.6)',
-                      borderRadius: '8px',
-                      borderColor: 'rgba(255, 255, 255, 0.1)',
-                      color: '#e7e4ef',
-                      _placeholder: { color: 'rgba(167, 167, 174, 0.52)' },
-                      transition: 'all 0.2s',
-                      _focusVisible: {
-                        borderColor: '#e7e4ef',
-                        bg: 'rgba(10, 10, 12, 0.8)',
-                        boxShadow: '0 0 0 1px rgba(231, 228, 239, 0.42)',
-                      },
+                      bg: 'rgba(10, 10, 12, 0.6)', borderRadius: '8px', borderColor: 'rgba(255, 255, 255, 0.1)', color: '#e7e4ef',
+                      _placeholder: { color: 'rgba(167, 167, 174, 0.52)' }, transition: 'all 0.2s',
+                      _focusVisible: { borderColor: '#e7e4ef', bg: 'rgba(10, 10, 12, 0.8)', boxShadow: '0 0 0 1px rgba(231, 228, 239, 0.42)' },
                     })}
                   />
                 </Field.Root>
 
                 {status && (
-                  <Box
-                    className={css({
-                      fontSize: 'sm',
-                      color:
-                        status.kind === 'success' ? 'rgba(110, 255, 192, 0.92)' : 'rgba(255, 123, 143, 0.96)',
-                    })}
-                  >
+                  <Box className={css({ fontSize: 'sm', color: status.kind === 'success' ? 'rgba(110, 255, 192, 0.92)' : 'rgba(255, 123, 143, 0.96)' })}>
                     {status.message}
                   </Box>
                 )}
 
-                <Button
-                  loading={loading}
-                  type="submit"
-                  className="btn-primary"
-                  width="100%"
-                >
-                  Sign in
-                </Button>
+                <Button loading={loading} type="submit" className="btn-primary" width="100%">Sign in</Button>
               </form>
             </Card.Body>
           </Card.Root>
@@ -310,5 +143,3 @@ export default function Login() {
     </Flex>
   )
 }
-
-
