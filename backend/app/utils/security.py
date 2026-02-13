@@ -47,10 +47,3 @@ def verify_access_token(token:str) -> dict:
     
     except jwt.JWTError:
         return None
-    
-
-data = {"username": "testuser"} 
-token = create_access_token(data)
-print("Generated Token:", token) 
-decoded_data = verify_access_token(token) 
-print("Decoded Data:", decoded_data)
