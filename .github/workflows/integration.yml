@@ -274,4 +274,9 @@ jobs:
         if: always()
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh pr comment ${{ github.event.pull_request.number }} --body-file $GITHUB_STEP_SUMMARY
+        run: |
+          if [ -s "$GITHUB_STEP_SUMMARY" ]; then
+            gh pr comment ${{ github.event.pull_request.number }} --body-file "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::warning::PR comment skipped — summary file is empty"
+          fi
