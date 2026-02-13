@@ -9,6 +9,7 @@ permissions:
   contents: read
   security-events: write
   actions: read
+  pull-requests: write
 
 jobs:
   frontend:
@@ -146,6 +147,12 @@ jobs:
             exit 1
           fi
 
+      - name: Comment PR with summary
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh pr comment ${{ github.event.pull_request.number }} --body-file $GITHUB_STEP_SUMMARY
+
   backend:
     name: Backend
     runs-on: ubuntu-latest
@@ -277,6 +284,12 @@ jobs:
             exit 1
           fi
 
+      - name: Comment PR with summary
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh pr comment ${{ github.event.pull_request.number }} --body-file $GITHUB_STEP_SUMMARY
+
   codeql:
     name: CodeQL
     runs-on: ubuntu-latest
@@ -331,3 +344,9 @@ jobs:
 
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "> Detailed findings available in the [Security tab](https://github.com/${{ github.repository }}/security/code-scanning)" >> $GITHUB_STEP_SUMMARY
+
+      - name: Comment PR with summary
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh pr comment ${{ github.event.pull_request.number }} --body-file $GITHUB_STEP_SUMMARY
