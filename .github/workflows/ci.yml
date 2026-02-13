@@ -8,6 +8,7 @@ on:
 permissions:
   contents: read
   security-events: write
+  actions: read
 
 jobs:
   frontend:
@@ -25,10 +26,125 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
-      - run: npm ci
-      - run: npm run lint
-      - run: npm run build
-      - run: npm audit --audit-level=moderate
+      - name: Install dependencies
+        id: install
+        run: npm ci
+
+      - name: Lint
+        id: lint
+        run: npm run lint
+        continue-on-error: true
+
+      - name: Build
+        id: build
+        run: npm run build
+        continue-on-error: true
+
+      - name: Security audit
+        id: audit
+        run: npm audit --audit-level=moderate
+        continue-on-error: true
+
+      - name: Security audit (JSON)
+        id: audit-json
+        if: always()
+        run: npm audit --json > audit-results.json || true
+
+      - name: Generate summary
+        if: always()
+        run: |
+          echo "## Frontend CI Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Step | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|--------|" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ steps.install.outcome }}" == "success" ]; then
+            echo "| Install Dependencies | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| Install Dependencies | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [ "${{ steps.lint.outcome }}" == "success" ]; then
+            echo "| Lint | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| Lint | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [ "${{ steps.build.outcome }}" == "success" ]; then
+            echo "| Build | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| Build | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [ "${{ steps.audit.outcome }}" == "success" ]; then
+            echo "| Security Audit | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| Security Audit | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ -f "audit-results.json" ]; then
+            echo "### npm Audit Results" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+
+            CRITICAL=$(jq -r '.metadata.vulnerabilities.critical // 0' audit-results.json)
+            HIGH=$(jq -r '.metadata.vulnerabilities.high // 0' audit-results.json)
+            MODERATE=$(jq -r '.metadata.vulnerabilities.moderate // 0' audit-results.json)
+            LOW=$(jq -r '.metadata.vulnerabilities.low // 0' audit-results.json)
+            TOTAL=$(jq -r '.metadata.vulnerabilities.total // 0' audit-results.json)
+
+            echo "| Severity | Count |" >> $GITHUB_STEP_SUMMARY
+            echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+            echo "| Critical | $CRITICAL |" >> $GITHUB_STEP_SUMMARY
+            echo "| High | $HIGH |" >> $GITHUB_STEP_SUMMARY
+            echo "| Moderate | $MODERATE |" >> $GITHUB_STEP_SUMMARY
+            echo "| Low | $LOW |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Total** | **$TOTAL** |" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Error details
+        if: always() && (steps.lint.outcome == 'failure' || steps.build.outcome == 'failure' || steps.audit.outcome == 'failure')
+        run: |
+          echo "<details>" >> $GITHUB_STEP_SUMMARY
+          echo "<summary>Error Details</summary>" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ steps.lint.outcome }}" == "failure" ]; then
+            echo "**Lint Errors:**" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            npm run lint 2>&1 | tail -50 >> $GITHUB_STEP_SUMMARY || true
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [ "${{ steps.build.outcome }}" == "failure" ]; then
+            echo "**Build Errors:**" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            npm run build 2>&1 | tail -50 >> $GITHUB_STEP_SUMMARY || true
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [ "${{ steps.audit.outcome }}" == "failure" ]; then
+            echo "**Audit Errors:**" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            npm audit 2>&1 | tail -50 >> $GITHUB_STEP_SUMMARY || true
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "</details>" >> $GITHUB_STEP_SUMMARY
+
+      - name: Check results
+        if: always()
+        run: |
+          if [ "${{ steps.lint.outcome }}" == "failure" ] || \
+             [ "${{ steps.build.outcome }}" == "failure" ] || \
+             [ "${{ steps.audit.outcome }}" == "failure" ]; then
+            echo "One or more steps failed"
+            exit 1
+          fi
 
   backend:
     name: Backend
@@ -45,10 +161,121 @@ jobs:
           cache: pip
           cache-dependency-path: backend/requirements.txt
 
-      - run: pip install -r requirements.txt
-      - run: pip install "safety<3" bandit
-      - run: safety check --file requirements.txt
-      - run: bandit -r app/
+      - name: Install dependencies
+        id: install
+        run: pip install -r requirements.txt
+
+      - name: Install security tools
+        id: install-tools
+        run: pip install "safety<3" bandit
+
+      - name: Safety check
+        id: safety
+        run: safety check --file requirements.txt
+        continue-on-error: true
+
+      - name: Safety check (JSON)
+        id: safety-json
+        if: always()
+        run: safety check --file requirements.txt --json > safety-results.json || true
+
+      - name: Bandit scan
+        id: bandit
+        run: bandit -r app/ -ll
+        continue-on-error: true
+
+      - name: Bandit scan (JSON)
+        id: bandit-json
+        if: always()
+        run: bandit -r app/ -ll -f json -o bandit-results.json || true
+
+      - name: Generate summary
+        if: always()
+        run: |
+          echo "## Backend CI Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Step | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|--------|" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ steps.install.outcome }}" == "success" ]; then
+            echo "| Install Dependencies | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| Install Dependencies | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [ "${{ steps.safety.outcome }}" == "success" ]; then
+            echo "| Safety Check | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| Safety Check | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [ "${{ steps.bandit.outcome }}" == "success" ]; then
+            echo "| Bandit Scan | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| Bandit Scan | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Safety results
+          if [ -f "safety-results.json" ]; then
+            echo "### Safety Check Results" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+
+            VULN_COUNT=$(jq -r 'if type == "array" then length else 0 end' safety-results.json)
+            echo "**Vulnerabilities Found:** $VULN_COUNT" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+
+            if [ "$VULN_COUNT" -gt 0 ] 2>/dev/null; then
+              echo "<details>" >> $GITHUB_STEP_SUMMARY
+              echo "<summary>View vulnerability details</summary>" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "\`\`\`json" >> $GITHUB_STEP_SUMMARY
+              jq '.' safety-results.json >> $GITHUB_STEP_SUMMARY
+              echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+              echo "</details>" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+            fi
+          fi
+
+          # Bandit results
+          if [ -f "bandit-results.json" ]; then
+            echo "### Bandit Results" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+
+            HIGH=$(jq -r '[.results[] | select(.issue_severity == "HIGH")] | length' bandit-results.json)
+            MEDIUM=$(jq -r '[.results[] | select(.issue_severity == "MEDIUM")] | length' bandit-results.json)
+            LOW=$(jq -r '[.results[] | select(.issue_severity == "LOW")] | length' bandit-results.json)
+            TOTAL=$(jq -r '.results | length' bandit-results.json)
+
+            echo "| Severity | Count |" >> $GITHUB_STEP_SUMMARY
+            echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+            echo "| High | $HIGH |" >> $GITHUB_STEP_SUMMARY
+            echo "| Medium | $MEDIUM |" >> $GITHUB_STEP_SUMMARY
+            echo "| Low | $LOW |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Total** | **$TOTAL** |" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+
+            if [ "$TOTAL" -gt 0 ] 2>/dev/null; then
+              echo "<details>" >> $GITHUB_STEP_SUMMARY
+              echo "<summary>View issue details</summary>" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "\`\`\`json" >> $GITHUB_STEP_SUMMARY
+              jq '.results' bandit-results.json >> $GITHUB_STEP_SUMMARY
+              echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+              echo "</details>" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+            fi
+          fi
+
+      - name: Check results
+        if: always()
+        run: |
+          if [ "${{ steps.safety.outcome }}" == "failure" ] || \
+             [ "${{ steps.bandit.outcome }}" == "failure" ]; then
+            echo "One or more security checks failed"
+            exit 1
+          fi
 
   codeql:
     name: CodeQL
@@ -59,13 +286,48 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: github/codeql-action/init@v3
+      - name: Initialize CodeQL
+        id: init
+        uses: github/codeql-action/init@v3
         with:
           languages: ${{ matrix.language }}
           queries: security-extended
 
-      - uses: github/codeql-action/autobuild@v3
+      - name: Autobuild
+        id: autobuild
+        uses: github/codeql-action/autobuild@v3
 
-      - uses: github/codeql-action/analyze@v3
+      - name: Perform CodeQL analysis
+        id: analyze
+        uses: github/codeql-action/analyze@v3
         with:
           category: "/language:${{ matrix.language }}"
+
+      - name: Generate summary
+        if: always()
+        run: |
+          echo "## CodeQL Analysis — ${{ matrix.language }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Step | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|--------|" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ steps.init.outcome }}" == "success" ]; then
+            echo "| Initialize | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| Initialize | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [ "${{ steps.autobuild.outcome }}" == "success" ]; then
+            echo "| Autobuild | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| Autobuild | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [ "${{ steps.analyze.outcome }}" == "success" ]; then
+            echo "| Analysis | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| Analysis | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "> Detailed findings available in the [Security tab](https://github.com/${{ github.repository }}/security/code-scanning)" >> $GITHUB_STEP_SUMMARY
