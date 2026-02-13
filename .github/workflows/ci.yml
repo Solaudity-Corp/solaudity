@@ -102,6 +102,24 @@ jobs:
             echo "| Low | $LOW |" >> $GITHUB_STEP_SUMMARY
             echo "| **Total** | **$TOTAL** |" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
+
+            HIGH_PLUS=$((CRITICAL + HIGH))
+            if [ "$HIGH_PLUS" -gt 5 ] 2>/dev/null; then
+              echo "> **PR blocked:** $HIGH_PLUS critical/high vulnerabilities found (threshold: 5)" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "FRONTEND_VULN_BLOCKED=true" >> "$GITHUB_ENV"
+            fi
+
+            echo "### Remediation" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+            echo "cd frontend" >> $GITHUB_STEP_SUMMARY
+            echo "npm audit fix              # auto-fix compatible updates" >> $GITHUB_STEP_SUMMARY
+            echo "npm audit fix --force      # force major version bumps (review changes)" >> $GITHUB_STEP_SUMMARY
+            echo "npm update <package>       # update a specific package" >> $GITHUB_STEP_SUMMARY
+            echo "npm audit                  # re-check after fixing" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
           fi
 
       - name: Error details
@@ -139,10 +157,18 @@ jobs:
       - name: Check results
         if: always()
         run: |
+          FAILED=0
           if [ "${{ steps.lint.outcome }}" == "failure" ] || \
              [ "${{ steps.build.outcome }}" == "failure" ] || \
              [ "${{ steps.audit.outcome }}" == "failure" ]; then
             echo "One or more steps failed"
+            FAILED=1
+          fi
+          if [ "$FRONTEND_VULN_BLOCKED" == "true" ]; then
+            echo "Too many critical/high vulnerabilities (>5)"
+            FAILED=1
+          fi
+          if [ $FAILED -eq 1 ]; then
             exit 1
           fi
 
@@ -279,12 +305,48 @@ jobs:
             fi
           fi
 
+          # Count all HIGH+ vulns (safety + bandit HIGH)
+          SAFETY_COUNT=0
+          BANDIT_HIGH=0
+          if [ -f "safety-results.json" ]; then
+            SAFETY_COUNT=$(jq -r 'if type == "array" then length else 0 end' safety-results.json)
+          fi
+          if [ -f "bandit-results.json" ]; then
+            BANDIT_HIGH=$(jq -r '[.results[] | select(.issue_severity == "HIGH")] | length' bandit-results.json)
+          fi
+          BACKEND_HIGH_PLUS=$((SAFETY_COUNT + BANDIT_HIGH))
+
+          if [ "$BACKEND_HIGH_PLUS" -gt 5 ] 2>/dev/null; then
+            echo "> **PR blocked:** $BACKEND_HIGH_PLUS critical/high vulnerabilities found (threshold: 5)" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "BACKEND_VULN_BLOCKED=true" >> "$GITHUB_ENV"
+          fi
+
+          echo "### Remediation" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+          echo "cd backend" >> $GITHUB_STEP_SUMMARY
+          echo "pip install --upgrade <package>       # upgrade a vulnerable package" >> $GITHUB_STEP_SUMMARY
+          echo "pip install --upgrade -r requirements.txt  # upgrade all packages" >> $GITHUB_STEP_SUMMARY
+          echo "safety check --file requirements.txt  # re-check after fixing" >> $GITHUB_STEP_SUMMARY
+          echo "bandit -r app/                        # re-run static analysis" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
       - name: Check results
         if: always()
         run: |
+          FAILED=0
           if [ "${{ steps.safety.outcome }}" == "failure" ] || \
              [ "${{ steps.bandit.outcome }}" == "failure" ]; then
             echo "One or more security checks failed"
+            FAILED=1
+          fi
+          if [ "$BACKEND_VULN_BLOCKED" == "true" ]; then
+            echo "Too many critical/high vulnerabilities (>5)"
+            FAILED=1
+          fi
+          if [ $FAILED -eq 1 ]; then
             exit 1
           fi
 

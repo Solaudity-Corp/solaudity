@@ -6,7 +6,7 @@ Two GitHub Actions workflows run on every pull request to `main`.
 
 | Workflow | File | Jobs | Purpose |
 |----------|------|------|---------|
-| **CI** | `ci.yml` | frontend, backend, codeql | Fast feedback: lint, build, security scans |
+| **CI** | `ci.yml` | frontend, backend, semgrep | Fast feedback: lint, build, security scans |
 | **Integration** | `integration.yml` | integration | Docker build (cached), health checks, Trivy |
 
 Both run in parallel on PRs. Branch protection should require both to pass before merge.
@@ -31,13 +31,15 @@ Runs in `backend/` with Python 3.11:
 3. `safety check --file requirements.txt` - check for known CVEs
 4. `bandit -r app/` - static security analysis of Python code
 
-### CodeQL
+### Semgrep SAST
 
-Matrix job (JavaScript + Python):
+Free static analysis replacing CodeQL (which requires GitHub Advanced Security, a paid feature):
 
-1. Initialize CodeQL with `security-extended` queries
-2. Autobuild
-3. Analyze and upload results to Security tab
+1. Runs `returntocorp/semgrep-action@v1` on the full codebase
+2. Uses community rulesets: `p/default`, `p/javascript`, `p/typescript`, `p/python`, `p/security-audit`, `p/owasp-top-ten`
+3. Covers OWASP Top 10, injection flaws, XSS, insecure patterns, and more
+
+No account or token required — fully open-source.
 
 ## Integration (`integration.yml`)
 
@@ -48,8 +50,9 @@ Uses **Docker layer caching** (`type=gha`) via `docker/build-push-action` to avo
 3. `docker compose up --no-build` - start services using pre-built images
 4. Health-check backend (`localhost:8001/health`) and frontend (`localhost:5173/`)
 5. Trivy scans on both Docker images (CRITICAL + HIGH severity)
-6. Upload SARIF results to GitHub Security tab
-7. Compose down + cleanup (runs even if earlier steps fail)
+6. Compose down + cleanup (runs even if earlier steps fail)
+
+> **Note:** SARIF upload to GitHub's Security tab is commented out — it requires GitHub Advanced Security (paid). Trivy results are still reported in PR comments and job summaries.
 
 ### How the cache works
 
@@ -81,9 +84,15 @@ bandit -r app/
 
 Container image vulnerabilities usually require updating base images or system packages in the Dockerfiles.
 
-### CodeQL
+### Semgrep
 
-Review findings in the repository **Security** tab. Address or suppress with justification.
+```bash
+# Install semgrep locally
+pip install semgrep
+
+# Run with the same rulesets as CI
+semgrep --config p/default --config p/javascript --config p/typescript --config p/python --config p/security-audit --config p/owasp-top-ten .
+```
 
 ## Running Checks Locally
 
@@ -94,6 +103,9 @@ cd frontend && npm ci && npm run lint && npm run build && npm audit --audit-leve
 # Backend
 cd backend && pip install -r requirements.txt && pip install "safety<3" bandit && safety check --file requirements.txt && bandit -r app/
 
+# Semgrep
+pip install semgrep && semgrep --config p/default --config p/owasp-top-ten .
+
 # Integration (requires Docker)
 ./start.sh prod
 curl -sf http://localhost:8001/health
@@ -103,13 +115,13 @@ curl -sf http://localhost:5173/
 
 ## Job Summaries
 
-Every job writes a rich markdown summary to `$GITHUB_STEP_SUMMARY`, visible on the workflow run page.
+Every job writes a rich markdown summary to `$GITHUB_STEP_SUMMARY`, visible on the workflow run page. Summaries are also posted as PR comments (guarded against empty content).
 
 | Job | Summary contents |
 |-----|-----------------|
 | **Frontend** | Pass/fail table (install, lint, build, audit) + npm vulnerability counts by severity |
 | **Backend** | Pass/fail table (install, safety, bandit) + safety vuln count + bandit severity breakdown |
-| **CodeQL** | Pass/fail table (init, autobuild, analyze) + link to Security tab |
+| **Semgrep** | Pass/fail status for SAST scan |
 | **Integration** | Docker build status + health check status + Trivy vuln counts per image (Critical/High) |
 
 **How it works:**
@@ -118,8 +130,11 @@ Every job writes a rich markdown summary to `$GITHUB_STEP_SUMMARY`, visible on t
 - A final "Check results" step enforces the actual pass/fail outcome
 - Vulnerability details are available in collapsible `<details>` blocks
 - JSON outputs (`npm audit --json`, `bandit -f json`, `trivy --format json`) are parsed with `jq` for counts
+- PR comment steps check for non-empty summary before posting to avoid `Body cannot be blank` errors
 
 ## Notes
 
 - No CD workflow exists yet (no deployment target)
+- CodeQL job is commented out in `ci.yml` — can be re-enabled if GitHub Advanced Security is purchased
+- SARIF upload steps are commented out in `integration.yml` for the same reason
 - Issue templates live in `ISSUE_TEMPLATE/` and are unrelated to CI

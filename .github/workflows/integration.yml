@@ -222,6 +222,43 @@ jobs:
             echo "" >> $GITHUB_STEP_SUMMARY
           fi
 
+          # Count all HIGH+ vulns across both images
+          TRIVY_HIGH_PLUS=0
+          if [ -f "trivy-frontend.json" ]; then
+            FE_COUNT=$(jq -r '[.Results[]?.Vulnerabilities[]? | select(.Severity == "CRITICAL" or .Severity == "HIGH")] | length' trivy-frontend.json)
+            TRIVY_HIGH_PLUS=$((TRIVY_HIGH_PLUS + FE_COUNT))
+          fi
+          if [ -f "trivy-backend.json" ]; then
+            BE_COUNT=$(jq -r '[.Results[]?.Vulnerabilities[]? | select(.Severity == "CRITICAL" or .Severity == "HIGH")] | length' trivy-backend.json)
+            TRIVY_HIGH_PLUS=$((TRIVY_HIGH_PLUS + BE_COUNT))
+          fi
+
+          if [ "$TRIVY_HIGH_PLUS" -gt 5 ] 2>/dev/null; then
+            echo "> **PR blocked:** $TRIVY_HIGH_PLUS critical/high image vulnerabilities found (threshold: 5)" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "TRIVY_VULN_BLOCKED=true" >> "$GITHUB_ENV"
+          fi
+
+          echo "### Remediation" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+          echo "# Frontend (nginx-based)" >> $GITHUB_STEP_SUMMARY
+          echo "# Update base image in frontend/Dockerfile:" >> $GITHUB_STEP_SUMMARY
+          echo "#   FROM node:22-alpine AS build" >> $GITHUB_STEP_SUMMARY
+          echo "#   FROM nginx:stable-alpine" >> $GITHUB_STEP_SUMMARY
+          echo "docker pull node:22-alpine && docker pull nginx:stable-alpine" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "# Backend (python-based)" >> $GITHUB_STEP_SUMMARY
+          echo "# Update base image in backend/Dockerfile:" >> $GITHUB_STEP_SUMMARY
+          echo "#   FROM python:3.11-slim" >> $GITHUB_STEP_SUMMARY
+          echo "docker pull python:3.11-slim" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "# For OS-level packages inside containers, add to Dockerfile:" >> $GITHUB_STEP_SUMMARY
+          echo "#   RUN apk upgrade --no-cache   (alpine)" >> $GITHUB_STEP_SUMMARY
+          echo "#   RUN apt-get update && apt-get upgrade -y   (debian)" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
       # SARIF upload requires GitHub Advanced Security (paid, not available on free plan)
       # - name: Upload frontend Trivy results
       #   uses: github/codeql-action/upload-sarif@v3
@@ -263,6 +300,11 @@ jobs:
 
           if [ "${{ steps.health-frontend.outcome }}" == "failure" ]; then
             echo "Frontend health check failed"
+            FAILED=1
+          fi
+
+          if [ "$TRIVY_VULN_BLOCKED" == "true" ]; then
+            echo "Too many critical/high image vulnerabilities (>5)"
             FAILED=1
           fi
 
