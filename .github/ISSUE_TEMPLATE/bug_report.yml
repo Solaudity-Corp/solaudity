@@ -1,0 +1,54 @@
+name: 🚨 Bug
+description: Report a bug
+labels: ["bug"]
+projects: ["solaudity/1"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug!
+
+  - type: textarea
+    id: describe-bug
+    attributes:
+      label: Describe the bug
+      description: A clear description of what the bug is
+      placeholder: "Example: The audit report fails to generate when..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: how-to-reproduce
+    attributes:
+      label: How to reproduce
+      description: Steps to reproduce the behavior
+      placeholder: |
+        1. Go to '...'
+        2. Click on '...'
+        3. See error
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: OS
+      placeholder: "Example: Ubuntu 22.04"
+    validations:
+      required: false
+
+  - type: input
+    id: docker
+    attributes:
+      label: Docker
+      placeholder: "Example: 24.0.5"
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs-screenshots
+    attributes:
+      label: Logs/Screenshots
+      description: Add logs or screenshots if relevant
+    validations:
+      required: false

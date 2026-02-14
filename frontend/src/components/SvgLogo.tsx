@@ -35,7 +35,7 @@ export function SvgLogo({
   gradientStops,
   underlineColor,
   cornerRadius = 0,
-  hoverTexts = ['S3cAuditX', 'RugTr4ceX', 'TxW4tch3r', 'Bl0ckGu4d', 'Sn1ffCh41n'],
+  hoverTexts = ['S3cAuditX', 'RugTr4ceX', 'TxW4tch3r', 'Bl0ckGu4d', 'Sn1ffCh41n', 'Aud1t1x  '],
   className,
 }: SvgLogoProps) {
   const rawId = useId()

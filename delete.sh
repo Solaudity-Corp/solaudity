@@ -14,6 +14,10 @@ else
   exit 1
 fi
 
-echo "[+] Stopping solaudity (Docker Compose)"
-"${DOCKER_COMPOSE[@]}" -f "$COMPOSE_FILE" --profile "*" stop
-echo "[+] Stopped"
+echo "[+] Deleting solaudity resources (Containers, Volumes, Images)"
+# Target all profiles to ensure we catch dev and prod containers
+# -v / --volumes: Remove named volumes declared in the `volumes` section of the Compose file and anonymous volumes attached to containers.
+# --rmi all: Remove all images used by any service.
+"${DOCKER_COMPOSE[@]}" -f "$COMPOSE_FILE" --profile "*" down -v --rmi all --remove-orphans
+
+echo "[+] cleanup complete"

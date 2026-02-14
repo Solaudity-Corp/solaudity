@@ -1,24 +1,38 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="S favicon">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="SolAudity S dot mark">
   <defs>
-    <linearGradient id="favicon-gradient" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" stop-color="#858489" />
-      <stop offset="25%" stop-color="#e7e4ef" />
-      <stop offset="50%" stop-color="#858489" />
-      <stop offset="75%" stop-color="#b9b9b9" />
-      <stop offset="100%" stop-color="#858489" />
+    <linearGradient id="glyphGradient" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%"   stop-color="#ffffff"/>
+      <stop offset="55%"  stop-color="#a6a6a6"/>
+      <stop offset="100%" stop-color="#ffffff"/>
     </linearGradient>
+
+    <linearGradient id="lineGradient" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%"   stop-color="#ffffff"/>
+      <stop offset="50%"  stop-color="#a6a6a6"/>
+      <stop offset="100%" stop-color="#ffffff"/>
+    </linearGradient>
+
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#000000" flood-opacity="0.25"/>
+    </filter>
   </defs>
-  <rect width="64" height="64" rx="5" fill="#2a2a2a" />
-  <text
-    x="14"
-    y="42"
-    fill="url(#favicon-gradient)"
-    font-family="'Roboto Mono', 'Roboto Mono Variable', ui-monospace, monospace"
-    font-size="36"
-    font-weight="800"
-    letter-spacing="-0.03em"
-  >
-    S
-  </text>
-  <rect x="13" y="46" width="28" height="3.5" fill="url(#favicon-gradient)" />
+
+  <rect width="256" height="256" fill="#2a2a2a"/>
+
+  <g filter="url(#softShadow)">
+    <text
+      x="72"
+      y="156"
+      fill="url(#glyphGradient)"
+      font-family="Roboto Mono, 'Roboto Mono Variable', 'Segoe UI', Arial, sans-serif"
+      font-size="150"
+      font-weight="620"
+      letter-spacing="-0.04em"
+    >S</text>
+
+    <!-- DOT moved more to the right (inside the S) -->
+    <circle cx="177" cy="147" r="11" fill="url(#glyphGradient)"/>
+
+    <rect x="76" y="164" width="112" height="11" fill="url(#lineGradient)"/>
+  </g>
 </svg>
