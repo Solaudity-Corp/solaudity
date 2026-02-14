@@ -2,6 +2,8 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+from app.api.auth import auth
+
 app = FastAPI()
 
 app.add_middleware(
@@ -10,6 +12,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Register auth router
+app.include_router(auth.router)
 
 @app.get("/health")
 def health():
