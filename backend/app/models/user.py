@@ -52,3 +52,9 @@ class UserRead(UserBase):
     id: int
     date_created: datetime
     updated_at: datetime
+    
+    
+# Used for the Login endpoint input
+class UserLogin(SQLModel):
+    username: str
+    password: str
