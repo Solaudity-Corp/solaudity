@@ -1,28 +1,32 @@
-import { useState, useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { css } from 'styled-system/css'
 import { Box, Flex, Stack } from 'styled-system/jsx'
 import { Button, Card, Field, Input } from './components/ui'
 import { SvgLogo } from './components/SvgLogo'
-import { AuthApiError, loginUser } from './auth'
+import { AuthApiError, loginUser, registerUser } from './auth'
 
 type AuthStatus = { kind: 'success'; message: string } | { kind: 'error'; message: string } | null
 
-interface LoginProps {
-  onLoginSuccess: () => void
-  onNavigateRegister: () => void
+interface RegisterProps {
+  onRegisterSuccess: () => void
+  onNavigateLogin: () => void
 }
 
 const titles = [
-  'Protocol Security',
-  'Smart Contract Audit',
-  'On-Chain Monitor',
-  'DeFi Protection',
-  'EVM Security'
+  'Secure Onboarding',
+  'Create Your Workspace',
+  'Build With Confidence',
+  'Threat-Aware Teams',
+  'Protocol Safety First',
 ]
 
-function getLoginErrorMessage(error: unknown): string {
-  if (error instanceof AuthApiError && error.status === 401) {
-    return 'Invalid username or password.'
+function getRegisterErrorMessage(error: unknown): string {
+  if (error instanceof AuthApiError && error.status === 400) {
+    return error.message || 'Username or email already registered.'
+  }
+
+  if (error instanceof AuthApiError && error.status === 422) {
+    return error.message
   }
 
   if (error instanceof Error && error.message.trim()) {
@@ -32,9 +36,11 @@ function getLoginErrorMessage(error: unknown): string {
   return 'Unable to reach the server.'
 }
 
-export default function Login({ onLoginSuccess, onNavigateRegister }: LoginProps) {
+export default function Register({ onRegisterSuccess, onNavigateLogin }: RegisterProps) {
   const [username, setUsername] = useState('')
+  const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
   const [status, setStatus] = useState<AuthStatus>(null)
   const [loading, setLoading] = useState(false)
 
@@ -54,10 +60,11 @@ export default function Login({ onLoginSuccess, onNavigateRegister }: LoginProps
         setDisplayedTitle(currentFullTitle.substring(0, displayedTitle.length - 1))
         if (displayedTitle === '') {
           setIsDeleting(false)
-          setTitleIndex((prev) => (prev + 1) % titles.length)
+          setTitleIndex((previous) => (previous + 1) % titles.length)
         }
       }
-    }, isDeleting ? 50 : 50)
+    }, 50)
+
     return () => clearTimeout(timeout)
   }, [displayedTitle, isDeleting, titleIndex])
 
@@ -68,16 +75,29 @@ export default function Login({ onLoginSuccess, onNavigateRegister }: LoginProps
 
     try {
       const normalizedUsername = username.trim()
-      if (!normalizedUsername || !password) {
-        setStatus({ kind: 'error', message: 'Please enter both username and password.' })
+      const normalizedEmail = email.trim()
+
+      if (!normalizedUsername || !normalizedEmail || !password || !confirmPassword) {
+        setStatus({ kind: 'error', message: 'Please fill username, email, and password fields.' })
         return
       }
 
+      if (password !== confirmPassword) {
+        setStatus({ kind: 'error', message: 'Password confirmation does not match.' })
+        return
+      }
+
+      await registerUser({
+        username: normalizedUsername,
+        email: normalizedEmail,
+        password,
+      })
+
       await loginUser(normalizedUsername, password)
-      setStatus({ kind: 'success', message: `Welcome ${normalizedUsername}.` })
-      onLoginSuccess()
+      setStatus({ kind: 'success', message: `Account created. Welcome ${normalizedUsername}.` })
+      onRegisterSuccess()
     } catch (error) {
-      setStatus({ kind: 'error', message: getLoginErrorMessage(error) })
+      setStatus({ kind: 'error', message: getRegisterErrorMessage(error) })
     } finally {
       setLoading(false)
     }
@@ -93,7 +113,6 @@ export default function Login({ onLoginSuccess, onNavigateRegister }: LoginProps
           maskImage: 'radial-gradient(circle at 50% 50%, black 40%, transparent 80%)',
           animation: 'pulse-grid 8s infinite alternate ease-in-out',
         })} />
-
       </Box>
 
       <Box className={css({ width: '100%', maxWidth: '500px', position: 'relative', zIndex: 1 })}>
@@ -114,7 +133,7 @@ export default function Login({ onLoginSuccess, onNavigateRegister }: LoginProps
                 <span className={css({ display: 'inline-block', width: '2px', height: '1.2em', bg: '#e7e4ef', animation: 'cursor-blink 1s infinite' })} />
               </Card.Title>
               <Card.Description className={css({ color: 'rgba(210, 210, 218, 0.72)', fontSize: 'sm' })}>
-                Sign in to access your security workspace
+                Create your account to access the security workspace
               </Card.Description>
             </Card.Header>
 
@@ -132,8 +151,30 @@ export default function Login({ onLoginSuccess, onNavigateRegister }: LoginProps
                 </Field.Root>
 
                 <Field.Root>
+                  <Field.Label className={css({ color: 'rgba(224, 224, 231, 0.86)' })}>Email</Field.Label>
+                  <Input type="email" placeholder="you@example.com" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email"
+                    className={css({
+                      bg: 'rgba(10, 10, 12, 0.6)', borderRadius: '8px', borderColor: 'rgba(255, 255, 255, 0.1)', color: '#e7e4ef',
+                      _placeholder: { color: 'rgba(167, 167, 174, 0.52)' }, transition: 'all 0.2s',
+                      _focusVisible: { borderColor: '#e7e4ef', bg: 'rgba(10, 10, 12, 0.8)', boxShadow: '0 0 0 1px rgba(231, 228, 239, 0.42)' },
+                    })}
+                  />
+                </Field.Root>
+
+                <Field.Root>
                   <Field.Label className={css({ color: 'rgba(224, 224, 231, 0.86)' })}>Password</Field.Label>
-                  <Input type="password" placeholder="Password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password"
+                  <Input type="password" placeholder="Password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="new-password"
+                    className={css({
+                      bg: 'rgba(10, 10, 12, 0.6)', borderRadius: '8px', borderColor: 'rgba(255, 255, 255, 0.1)', color: '#e7e4ef',
+                      _placeholder: { color: 'rgba(167, 167, 174, 0.52)' }, transition: 'all 0.2s',
+                      _focusVisible: { borderColor: '#e7e4ef', bg: 'rgba(10, 10, 12, 0.8)', boxShadow: '0 0 0 1px rgba(231, 228, 239, 0.42)' },
+                    })}
+                  />
+                </Field.Root>
+
+                <Field.Root>
+                  <Field.Label className={css({ color: 'rgba(224, 224, 231, 0.86)' })}>Confirm Password</Field.Label>
+                  <Input type="password" placeholder="Confirm password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} autoComplete="new-password"
                     className={css({
                       bg: 'rgba(10, 10, 12, 0.6)', borderRadius: '8px', borderColor: 'rgba(255, 255, 255, 0.1)', color: '#e7e4ef',
                       _placeholder: { color: 'rgba(167, 167, 174, 0.52)' }, transition: 'all 0.2s',
@@ -148,12 +189,12 @@ export default function Login({ onLoginSuccess, onNavigateRegister }: LoginProps
                   </Box>
                 )}
 
-                <Button loading={loading} type="submit" className="btn-primary" width="100%">Sign in</Button>
+                <Button loading={loading} type="submit" className="btn-primary" width="100%">Create account</Button>
                 <Box className={css({ color: 'rgba(210, 210, 218, 0.72)', fontSize: 'sm', textAlign: 'center' })}>
-                  No account yet?{' '}
+                  Already have an account?{' '}
                   <button
                     type="button"
-                    onClick={onNavigateRegister}
+                    onClick={onNavigateLogin}
                     className={css({
                       color: '#e7e4ef',
                       fontWeight: '600',
@@ -165,7 +206,7 @@ export default function Login({ onLoginSuccess, onNavigateRegister }: LoginProps
                       p: '0',
                     })}
                   >
-                    Register
+                    Sign in
                   </button>
                 </Box>
               </form>

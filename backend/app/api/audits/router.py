@@ -5,6 +5,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlmodel import Session
 
+from app.api.auth.auth import get_current_user
 from app.api.audits import service
 from app.api.audits.schemas import (
     AuditAttachmentRead,
@@ -18,7 +19,10 @@ from app.api.audits.schemas import (
 from app.database import get_session
 from app.models.audits import AuditStatus
 
-router = APIRouter(prefix="/audits", tags=["audits"])
+router = APIRouter(
+    prefix="/audits",
+    tags=["audits"],
+    dependencies=[Depends(get_current_user)])
 
 
 def _raise_service_error(exc: Exception) -> None:
