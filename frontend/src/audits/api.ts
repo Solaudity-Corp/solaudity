@@ -1,7 +1,30 @@
 import type { AuditRecord, AuditStatus } from './types'
+import { API_BASE_URL, clearAccessToken, getAccessToken } from '../auth'
 
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/+$/, '')
-  ?? 'http://localhost:8001'
+function withApiHeaders(headersInit?: HeadersInit): Headers {
+  const headers = new Headers(headersInit)
+  if (!headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json')
+  }
+
+  const accessToken = getAccessToken()
+  if (accessToken) {
+    headers.set('Authorization', `Bearer ${accessToken}`)
+  }
+
+  return headers
+}
+
+function handleUnauthorized(): void {
+  clearAccessToken()
+
+  if (typeof window === 'undefined') return
+
+  if (window.location.pathname.toLowerCase() !== '/login') {
+    window.history.replaceState(null, '', '/login')
+  }
+  window.dispatchEvent(new PopStateEvent('popstate'))
+}
 
 export interface AuditStatusCounts {
   draft: number
@@ -118,10 +141,7 @@ function toQueryString(params: AuditListParams) {
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...init,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(init?.headers ?? {}),
-    },
+    headers: withApiHeaders(init?.headers),
   })
 
   const raw = await response.text()
@@ -135,6 +155,10 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   }
 
   if (!response.ok) {
+    if (response.status === 401) {
+      handleUnauthorized()
+    }
+
     let detail: unknown = parsed
     if (parsed && typeof parsed === 'object' && 'detail' in parsed) {
       detail = (parsed as { detail: unknown }).detail
@@ -201,9 +225,14 @@ async function parseErrorResponse(response: Response): Promise<unknown> {
 export async function deleteAudit(auditId: string): Promise<void> {
   const response = await fetch(`${API_BASE_URL}/audits/${auditId}/delete`, {
     method: 'POST',
+    headers: withApiHeaders(),
   })
 
   if (response.status === 204) return
+
+  if (response.status === 401) {
+    handleUnauthorized()
+  }
 
   const detail = await parseErrorResponse(response)
 
