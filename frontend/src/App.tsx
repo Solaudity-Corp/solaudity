@@ -2,15 +2,17 @@ import { useEffect, useState } from 'react'
 import { hasAccessToken } from './auth'
 import Login from './Login'
 import Menu, { type MenuPath } from './Menu'
+import Profile from './Profile'
 import Register from './Register'
 
-type AppPath = '/login' | '/register' | MenuPath
+type AppPath = '/login' | '/register' | '/profile' | MenuPath
 
 function normalizePathname(pathname: string): AppPath {
   const normalized = pathname.toLowerCase()
 
   if (normalized === '/' || normalized === '/login') return '/login'
   if (normalized === '/register') return '/register'
+  if (normalized === '/profile') return '/profile'
   if (normalized === '/menu' || normalized === '/menu/') return '/menu/audits'
   if (normalized === '/menu/audits') return '/menu/audits'
   if (normalized === '/menu/reports') return '/menu/reports'
@@ -90,5 +92,20 @@ export default function App() {
     )
   }
 
-  return <Menu path={pathname as MenuPath} onNavigate={(nextPath) => navigate(nextPath)} />
+  if (pathname === '/profile') {
+    return (
+      <Profile
+        onNavigateMenu={(nextPath) => navigate(nextPath)}
+        onOpenProfile={() => navigate('/profile')}
+      />
+    )
+  }
+
+  return (
+    <Menu
+      path={pathname as MenuPath}
+      onNavigate={(nextPath) => navigate(nextPath)}
+      onOpenProfile={() => navigate('/profile')}
+    />
+  )
 }

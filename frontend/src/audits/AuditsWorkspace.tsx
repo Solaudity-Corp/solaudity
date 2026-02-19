@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { css, cx } from 'styled-system/css'
 import { Box, Flex, Grid, Stack } from 'styled-system/jsx'
-import { ArrowUpRight, CircleDot, Clock3, GitBranch, Link2, Paperclip, Pin, Plus, Trash2, X } from 'lucide-react'
+import { ArrowUpRight, ChevronDown, CircleDot, Clock3, GitBranch, Link2, Paperclip, Pin, Plus, Sparkles, Trash2, X } from 'lucide-react'
 import { AccentLink, Badge, Button, Card, Field, Input } from '../components/ui'
 import {
   ApiError,
   createAudit as createAuditRequest,
   deleteAudit as deleteAuditRequest,
+  extractAuditFields,
+  type ExtractAuditFieldsRead,
   type AuditStatusCounts,
   listAudits,
   markAuditOpened,
@@ -55,6 +57,7 @@ const MAX_SLUG_LENGTH = 120
 const MAX_DESCRIPTION_LENGTH = 5000
 const MAX_CONTEXT_LENGTH = 100
 const MAX_URL_LENGTH = 2048
+const MAX_EXTRACTION_TEXT_LENGTH = 50_000
 const COMMIT_HASH_RE = /^[0-9a-f]{7,40}$/
 const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 
@@ -74,6 +77,7 @@ interface CreateAuditFormValues {
 }
 
 type CreateAuditFormErrors = Partial<Record<keyof CreateAuditFormValues, string>>
+type ExtractStatus = { kind: 'success' | 'error'; message: string } | null
 
 function getInitialCreateAuditForm(): CreateAuditFormValues {
   return {
@@ -95,6 +99,37 @@ function getInitialCreateAuditForm(): CreateAuditFormValues {
 function toOptionalText(value: string): string | null {
   const normalized = value.trim()
   return normalized.length > 0 ? normalized : null
+}
+
+function normalizeExtractedSlug(value: string): string {
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-+|-+$/g, '')
+
+  return normalized.slice(0, MAX_SLUG_LENGTH)
+}
+
+function mergeExtractedFields(
+  current: CreateAuditFormValues,
+  fields: ExtractAuditFieldsRead,
+): CreateAuditFormValues {
+  const next: CreateAuditFormValues = { ...current }
+
+  if (fields.title !== null) next.title = fields.title.slice(0, MAX_TITLE_LENGTH)
+  if (fields.slug !== null) next.slug = normalizeExtractedSlug(fields.slug)
+  if (fields.description !== null) next.description = fields.description.slice(0, MAX_DESCRIPTION_LENGTH)
+  if (fields.chain !== null) next.chain = fields.chain.slice(0, MAX_CONTEXT_LENGTH)
+  if (fields.network !== null) next.network = fields.network.slice(0, MAX_CONTEXT_LENGTH)
+  if (fields.repo_url !== null) next.repo_url = fields.repo_url.slice(0, MAX_URL_LENGTH)
+  if (fields.commit_hash !== null) next.commit_hash = fields.commit_hash.trim().toLowerCase().slice(0, 40)
+  if (fields.docs_url !== null) next.docs_url = fields.docs_url.slice(0, MAX_URL_LENGTH)
+  if (fields.start_date !== null) next.start_date = fields.start_date.slice(0, 10)
+  if (fields.end_date !== null) next.end_date = fields.end_date.slice(0, 10)
+
+  return next
 }
 
 function isValidHttpUrl(value: string) {
@@ -331,6 +366,12 @@ export function AuditsWorkspace({ searchQuery }: AuditsWorkspaceProps) {
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState(searchQuery)
   const [createAuditForm, setCreateAuditForm] = useState<CreateAuditFormValues>(getInitialCreateAuditForm)
   const [createAuditErrors, setCreateAuditErrors] = useState<CreateAuditFormErrors>({})
+  const [isExtractionPanelOpen, setIsExtractionPanelOpen] = useState(false)
+  const [extractInputText, setExtractInputText] = useState('')
+  const [extractStatus, setExtractStatus] = useState<ExtractStatus>(null)
+  const [extractMeta, setExtractMeta] = useState<{ provider: string; model: string } | null>(null)
+  const [extractNeedsProfileSetup, setExtractNeedsProfileSetup] = useState(false)
+  const [isExtractingFields, setIsExtractingFields] = useState(false)
   const fetchRequestIdRef = useRef(0)
 
   const filteredAudits = audits
@@ -425,22 +466,30 @@ export function AuditsWorkspace({ searchQuery }: AuditsWorkspaceProps) {
         return
       }
       if (isCreateModalOpen) {
-        setIsCreateModalOpen(false)
+        if (!isExtractingFields && !isSubmittingCreate) {
+          setIsCreateModalOpen(false)
+        }
       }
     }
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [isAnyModalOpen, isCreateModalOpen, isDeleteModalOpen])
+  }, [isAnyModalOpen, isCreateModalOpen, isDeleteModalOpen, isExtractingFields, isSubmittingCreate])
 
   const openCreateAuditModal = () => {
     setCreateAuditForm(getInitialCreateAuditForm())
     setCreateAuditErrors({})
+    setIsExtractionPanelOpen(false)
+    setExtractInputText('')
+    setExtractStatus(null)
+    setExtractMeta(null)
+    setExtractNeedsProfileSetup(false)
     setActionError(null)
     setIsCreateModalOpen(true)
   }
 
   const closeCreateAuditModal = () => {
+    if (isExtractingFields || isSubmittingCreate) return
     setIsCreateModalOpen(false)
   }
 
@@ -472,8 +521,69 @@ export function AuditsWorkspace({ searchQuery }: AuditsWorkspaceProps) {
     })
   }
 
+  const goToProfile = () => {
+    if (window.location.pathname.toLowerCase() === '/profile') return
+    window.history.pushState(null, '', '/profile')
+    window.dispatchEvent(new PopStateEvent('popstate'))
+  }
+
+  const runAiExtraction = async () => {
+    const sourceText = extractInputText.trim()
+    if (!sourceText) {
+      setExtractStatus({ kind: 'error', message: 'Paste or type text first to run extraction.' })
+      return
+    }
+
+    setIsExtractingFields(true)
+    setExtractStatus(null)
+    setExtractNeedsProfileSetup(false)
+    setActionError(null)
+
+    try {
+      const response = await extractAuditFields({
+        text: sourceText,
+      })
+
+      setCreateAuditForm((previous) => mergeExtractedFields(previous, response.fields))
+      setCreateAuditErrors((previous) => {
+        if (Object.keys(previous).length === 0) return previous
+
+        const next = { ...previous }
+        delete next.title
+        delete next.slug
+        delete next.description
+        delete next.chain
+        delete next.network
+        delete next.repo_url
+        delete next.commit_hash
+        delete next.docs_url
+        delete next.start_date
+        delete next.end_date
+        return next
+      })
+
+      setExtractMeta({ provider: response.provider, model: response.model })
+      setExtractStatus({
+        kind: 'success',
+        message: 'Fields extracted. Review and adjust the values before creating the audit.',
+      })
+    } catch (error) {
+      const message = getMessageFromError(error)
+      const normalizedMessage = message.toLowerCase()
+      setExtractNeedsProfileSetup(
+        normalizedMessage.includes('ai provider is not configured') ||
+          normalizedMessage.includes('ai api key is not configured') ||
+          normalizedMessage.includes('not configured for this user'),
+      )
+      setExtractStatus({ kind: 'error', message })
+    } finally {
+      setIsExtractingFields(false)
+    }
+  }
+
   const submitCreateAudit = async (event: React.FormEvent<HTMLDivElement>) => {
     event.preventDefault()
+    if (isExtractingFields) return
 
     const errors = validateCreateAuditForm(createAuditForm, audits)
     if (Object.keys(errors).length > 0) {
@@ -1181,7 +1291,7 @@ export function AuditsWorkspace({ searchQuery }: AuditsWorkspaceProps) {
 
               <button
                 type="button"
-                disabled={isSubmittingCreate}
+                disabled={isSubmittingCreate || isExtractingFields}
                 aria-label="Close create audit modal"
                 onClick={closeCreateAuditModal}
                 className={css({
@@ -1229,6 +1339,203 @@ export function AuditsWorkspace({ searchQuery }: AuditsWorkspaceProps) {
               )}
 
               <Box className={css({ overflowY: 'auto', px: { base: '4', md: '5' }, py: '5' })}>
+                <Box
+                  className={css({
+                    mb: '5',
+                    borderRadius: '14px',
+                    border: '1px solid rgba(120, 225, 196, 0.22)',
+                    bg: 'linear-gradient(140deg, rgba(14, 56, 45, 0.42), rgba(18, 24, 28, 0.96))',
+                    boxShadow: '0 10px 22px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(160, 255, 224, 0.08)',
+                    px: { base: '3.5', md: '4' },
+                    py: isExtractionPanelOpen ? '4' : '3.5',
+                  })}
+                >
+                  <button
+                    type="button"
+                    onClick={() => setIsExtractionPanelOpen((previous) => !previous)}
+                    className={css({
+                      width: 'full',
+                      border: 'none',
+                      bg: 'transparent',
+                      textAlign: 'left',
+                      cursor: 'pointer',
+                      p: '0',
+                    })}
+                  >
+                    <Flex align="center" justify="space-between" gap="3">
+                      <Box>
+                        <Box className={css({ color: 'rgba(220, 250, 242, 0.95)', fontSize: 'sm', fontWeight: '700', lineHeight: '1.4' })}>
+                          Quick Fill
+                        </Box>
+                        <Box className={css({ color: 'rgba(212, 233, 228, 0.78)', fontSize: 'xs', lineHeight: '1.55' })}>
+                          {isExtractionPanelOpen
+                            ? 'Paste source notes, links, and scope details to auto-fill the fields below.'
+                            : 'Click to expand and fill this form from your source text.'}
+                        </Box>
+                      </Box>
+
+                      <ChevronDown
+                        size={16}
+                        className={css({
+                          color: 'rgba(186, 224, 213, 0.9)',
+                          transition: 'transform 160ms ease',
+                          transform: isExtractionPanelOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+                        })}
+                      />
+                    </Flex>
+                  </button>
+
+                  {isExtractionPanelOpen && (
+                    <Stack gap="3" mt="4">
+                      <Field.Root invalid={extractStatus?.kind === 'error'}>
+                        <Field.Label className={css({ color: 'rgba(210, 235, 229, 0.88)', fontSize: 'xs' })}>
+                          Source Text
+                        </Field.Label>
+                        <textarea
+                          value={extractInputText}
+                          onChange={(event) => {
+                            setExtractInputText(event.target.value)
+                            if (extractStatus?.kind === 'error') setExtractStatus(null)
+                            if (extractNeedsProfileSetup) setExtractNeedsProfileSetup(false)
+                          }}
+                          maxLength={MAX_EXTRACTION_TEXT_LENGTH}
+                          placeholder="Example: Pentest name, dates, scope details, github repository, docs, chain, network, and any useful notes."
+                          className={css({
+                            minH: '24',
+                            w: 'full',
+                            resize: 'vertical',
+                            px: '3',
+                            py: '2.5',
+                            borderRadius: '10px',
+                            border: `1px solid ${ui.borderSoft}`,
+                            bg: 'rgba(8, 12, 13, 0.68)',
+                            color: ui.textPrimary,
+                            outline: 'none',
+                            lineHeight: '1.58',
+                            fontSize: 'sm',
+                            _placeholder: { color: 'rgba(177, 206, 199, 0.58)' },
+                            _focusVisible: {
+                              borderColor: 'rgba(134, 236, 201, 0.6)',
+                              boxShadow: '0 0 0 1px rgba(134, 236, 201, 0.36)',
+                            },
+                          })}
+                        />
+                        <Flex justify="space-between" gap="3" mt="1.5" wrap="wrap">
+                          <Box className={css({ color: 'rgba(174, 204, 197, 0.72)', fontSize: 'xs', lineHeight: '1.45' })}>
+                            {extractInputText.length}/{MAX_EXTRACTION_TEXT_LENGTH}
+                          </Box>
+                          <Box className={css({ color: 'rgba(174, 204, 197, 0.72)', fontSize: 'xs', lineHeight: '1.45' })}>
+                            Missing fields stay unchanged so you can continue editing manually.
+                          </Box>
+                        </Flex>
+                      </Field.Root>
+
+                      <Flex justify="flex-end">
+                        <Button
+                          type="button"
+                          loading={isExtractingFields}
+                          disabled={isSubmittingCreate || isExtractingFields || extractInputText.trim().length === 0}
+                          onClick={() => {
+                            void runAiExtraction()
+                          }}
+                          className={css({
+                            borderRadius: '10px',
+                            px: '4',
+                            bg: 'rgba(88, 214, 171, 0.95)',
+                            color: '#08211a',
+                            border: '1px solid rgba(88, 214, 171, 0.95)',
+                            fontWeight: '700',
+                            _hover: { bg: 'rgba(111, 224, 187, 0.98)' },
+                            _disabled: { opacity: 0.5, cursor: 'not-allowed' },
+                          })}
+                        >
+                          <Sparkles size={14} />
+                          Fill Fields
+                        </Button>
+                      </Flex>
+
+                      {(extractMeta || extractStatus || extractNeedsProfileSetup) && (
+                        <Flex align={{ base: 'flex-start', md: 'center' }} justify="space-between" gap="3" wrap="wrap">
+                          {extractMeta && (
+                            <Flex align="center" gap="2" className={css({ color: 'rgba(185, 228, 215, 0.9)', fontSize: 'xs' })}>
+                              <Box
+                                className={css({
+                                  borderRadius: 'full',
+                                  px: '2.5',
+                                  py: '1',
+                                  border: '1px solid rgba(134, 236, 201, 0.46)',
+                                  bg: 'rgba(18, 74, 59, 0.38)',
+                                })}
+                              >
+                                {extractMeta.provider}
+                              </Box>
+                              <Box
+                                className={css({
+                                  borderRadius: 'full',
+                                  px: '2.5',
+                                  py: '1',
+                                  border: `1px solid ${ui.borderSoft}`,
+                                  bg: 'rgba(18, 21, 27, 0.75)',
+                                })}
+                              >
+                                {extractMeta.model}
+                              </Box>
+                            </Flex>
+                          )}
+
+                          <Flex align="center" gap="2.5" wrap="wrap">
+                            {extractNeedsProfileSetup && (
+                              <Button
+                                type="button"
+                                onClick={goToProfile}
+                                className={css({
+                                  h: '8',
+                                  px: '3',
+                                  borderRadius: '8px',
+                                  fontSize: 'xs',
+                                  fontWeight: '700',
+                                  bg: 'rgba(120, 225, 196, 0.95)',
+                                  color: '#0a2b22',
+                                  border: '1px solid rgba(120, 225, 196, 0.95)',
+                                  _hover: { bg: 'rgba(138, 232, 208, 0.98)' },
+                                })}
+                              >
+                                Open Profile
+                              </Button>
+                            )}
+
+                            {extractStatus && (
+                              <Box
+                                className={css({
+                                  borderRadius: '8px',
+                                  px: '2.5',
+                                  py: '1.5',
+                                  fontSize: 'xs',
+                                  lineHeight: '1.5',
+                                  border:
+                                    extractStatus.kind === 'success'
+                                      ? '1px solid rgba(70, 198, 149, 0.4)'
+                                      : '1px solid rgba(229, 72, 77, 0.38)',
+                                  bg:
+                                    extractStatus.kind === 'success'
+                                      ? 'rgba(70, 198, 149, 0.15)'
+                                      : 'rgba(229, 72, 77, 0.12)',
+                                  color:
+                                    extractStatus.kind === 'success'
+                                      ? 'rgba(168, 255, 218, 0.94)'
+                                      : 'rgba(255, 174, 180, 0.95)',
+                                })}
+                              >
+                                {extractStatus.message}
+                              </Box>
+                            )}
+                          </Flex>
+                        </Flex>
+                      )}
+                    </Stack>
+                  )}
+                </Box>
+
                 <Grid columns={{ base: 1, md: 2 }} gap="4">
                   <Field.Root invalid={Boolean(createAuditErrors.title)}>
                     <Field.Label className={css({ color: ui.textSecondary, fontSize: 'xs' })}>
@@ -1474,7 +1781,7 @@ export function AuditsWorkspace({ searchQuery }: AuditsWorkspaceProps) {
               >
                 <Button
                   type="button"
-                  disabled={isSubmittingCreate}
+                  disabled={isSubmittingCreate || isExtractingFields}
                   onClick={closeCreateAuditModal}
                   className="btn-secondary"
                 >
@@ -1483,6 +1790,7 @@ export function AuditsWorkspace({ searchQuery }: AuditsWorkspaceProps) {
                 <Button
                   loading={isSubmittingCreate}
                   type="submit"
+                  disabled={isExtractingFields}
                   className="btn-primary"
                 >
                   Create Audit

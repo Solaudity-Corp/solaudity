@@ -10,6 +10,7 @@ export type MenuPath = '/menu/audits' | '/menu/reports' | '/menu/activity'
 interface MenuProps {
   path: MenuPath
   onNavigate: (path: MenuPath) => void
+  onOpenProfile: () => void
 }
 
 function sectionFromPath(path: MenuPath): MenuSection {
@@ -18,7 +19,7 @@ function sectionFromPath(path: MenuPath): MenuSection {
   return 'audits'
 }
 
-export default function Menu({ path, onNavigate }: MenuProps) {
+export default function Menu({ path, onNavigate, onOpenProfile }: MenuProps) {
   const activeSection = useMemo(() => sectionFromPath(path), [path])
   const [search, setSearch] = useState('')
 
@@ -39,6 +40,7 @@ export default function Menu({ path, onNavigate }: MenuProps) {
         searchValue={search}
         onSearchChange={setSearch}
         onNavigate={navigateBySection}
+        onOpenProfile={onOpenProfile}
       />
       {activeSection === 'audits' && <AuditsWorkspace searchQuery={search} />}
 
