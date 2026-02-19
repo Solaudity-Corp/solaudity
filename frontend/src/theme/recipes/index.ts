@@ -1,3 +1,4 @@
+import { menu } from "./menu";
 import { card } from "./card";
 import { badge } from "./badge";
 import { input } from "./input";
@@ -14,6 +15,7 @@ export const recipes = {
   spinner,
   field,
   input,
-  card
+  card,
+  menu
 }
 export const slotRecipes = {}

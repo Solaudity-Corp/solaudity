@@ -22,6 +22,25 @@ export interface UserRead {
   updated_at: string
 }
 
+export interface UserProfileUpdatePayload {
+  email: string
+}
+
+export interface UserAIConfigRead {
+  ai_provider: string | null
+  ai_api_key: string | null
+  has_api_key: boolean
+}
+
+export interface UserAIProviderRead {
+  ai_provider: string | null
+}
+
+export interface UserAPIKeyRead {
+  ai_api_key: string | null
+  has_api_key: boolean
+}
+
 export class AuthApiError extends Error {
   status: number
   detail: unknown
@@ -60,6 +79,15 @@ function getParsedDetail(payload: unknown): unknown {
   return payload
 }
 
+function redirectToLoginAfterUnauthorized() {
+  clearAccessToken()
+  if (typeof window === 'undefined') return
+  if (window.location.pathname.toLowerCase() !== '/login') {
+    window.history.replaceState(null, '', '/login')
+  }
+  window.dispatchEvent(new PopStateEvent('popstate'))
+}
+
 async function requestAuthJson<T>(path: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers)
   if (init?.body && !headers.has('Content-Type')) {
@@ -82,6 +110,44 @@ async function requestAuthJson<T>(path: string, init?: RequestInit): Promise<T> 
   }
 
   if (!response.ok) {
+    throw new AuthApiError(response.status, getParsedDetail(parsed))
+  }
+
+  return parsed as T
+}
+
+async function requestAuthedJson<T>(path: string, init?: RequestInit): Promise<T> {
+  const token = getAccessToken()
+  if (!token) {
+    redirectToLoginAfterUnauthorized()
+    throw new AuthApiError(401, 'Not authenticated.')
+  }
+
+  const headers = new Headers(init?.headers)
+  headers.set('Authorization', `Bearer ${token}`)
+  if (init?.body && !headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json')
+  }
+
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    ...init,
+    headers,
+  })
+
+  const raw = await response.text()
+  let parsed: unknown = null
+  if (raw) {
+    try {
+      parsed = JSON.parse(raw)
+    } catch {
+      parsed = raw
+    }
+  }
+
+  if (!response.ok) {
+    if (response.status === 401) {
+      redirectToLoginAfterUnauthorized()
+    }
     throw new AuthApiError(response.status, getParsedDetail(parsed))
   }
 
@@ -139,5 +205,38 @@ export function registerUser(payload: RegisterPayload): Promise<UserRead> {
       email: payload.email.trim(),
       password: payload.password,
     }),
+  })
+}
+
+export function getCurrentUser(): Promise<UserRead> {
+  return requestAuthedJson<UserRead>('/api/auth/me')
+}
+
+export function updateUserProfile(payload: UserProfileUpdatePayload): Promise<UserRead> {
+  return requestAuthedJson<UserRead>('/api/auth/me/profile', {
+    method: 'PATCH',
+    body: JSON.stringify({ email: payload.email.trim() }),
+  })
+}
+
+export function getSupportedAIProviders(): Promise<string[]> {
+  return requestAuthJson<string[]>('/api/auth/ai-providers')
+}
+
+export function getUserAIConfig(): Promise<UserAIConfigRead> {
+  return requestAuthedJson<UserAIConfigRead>('/api/auth/me/ai-config')
+}
+
+export function updateUserAIProvider(aiProvider: string | null): Promise<UserAIProviderRead> {
+  return requestAuthedJson<UserAIProviderRead>('/api/auth/me/ai-provider', {
+    method: 'PATCH',
+    body: JSON.stringify({ ai_provider: aiProvider }),
+  })
+}
+
+export function updateUserAIApiKey(aiApiKey: string | null): Promise<UserAPIKeyRead> {
+  return requestAuthedJson<UserAPIKeyRead>('/api/auth/me/ai-api-key', {
+    method: 'PATCH',
+    body: JSON.stringify({ ai_api_key: aiApiKey }),
   })
 }

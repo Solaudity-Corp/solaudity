@@ -89,6 +89,31 @@ export interface OpenAuditPayload {
   opened_by?: string | null
 }
 
+export interface ExtractAuditFieldsPayload {
+  text: string
+  model?: string | null
+  timeout_seconds?: number
+}
+
+export interface ExtractAuditFieldsRead {
+  title: string | null
+  slug: string | null
+  description: string | null
+  chain: string | null
+  network: string | null
+  repo_url: string | null
+  commit_hash: string | null
+  docs_url: string | null
+  start_date: string | null
+  end_date: string | null
+}
+
+export interface ExtractAuditFieldsResponse {
+  provider: string
+  model: string
+  fields: ExtractAuditFieldsRead
+}
+
 export class ApiError extends Error {
   status: number
   detail: unknown
@@ -200,6 +225,13 @@ export function setAuditPin(auditId: string, payload: PinAuditPayload = {}) {
 
 export function markAuditOpened(auditId: string, payload: OpenAuditPayload = {}) {
   return requestJson<AuditRecord>(`/audits/${auditId}/open`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function extractAuditFields(payload: ExtractAuditFieldsPayload) {
+  return requestJson<ExtractAuditFieldsResponse>('/ai/extract-audit-fields', {
     method: 'POST',
     body: JSON.stringify(payload),
   })

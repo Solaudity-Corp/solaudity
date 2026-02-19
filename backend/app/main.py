@@ -4,6 +4,7 @@ from pydantic import BaseModel
 
 from app.api.auth import auth
 from app.api.audits.router import router as audits_router
+from app.api.ai.router import router as ai_router
 
 app = FastAPI()
 
@@ -17,27 +18,10 @@ app.add_middleware(
 # Register auth router
 app.include_router(auth.router)
 app.include_router(audits_router)
+app.include_router(ai_router)
 
 
 @app.get("/health")
 def health():
     return {"status": "ok"}
 
-
-class LoginPayload(BaseModel):
-    username: str
-    password: str
-
-
-@app.post("/auth/login")
-def auth_login(payload: LoginPayload):
-    if payload.username == "admin" and payload.password == "admin":
-        return {
-            "status": "ok",
-            "user": {
-                "username": "admin",
-                "role": "admin",
-            },
-        }
-
-    raise HTTPException(status_code=401, detail="invalid credentials")

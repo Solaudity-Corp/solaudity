@@ -15,6 +15,8 @@ class UserBase(SQLModel):
 class User(UserBase, table=True):
     id: int | None = Field(default=None, primary_key=True)
     password_hash: str = Field(max_length=60)
+    ai_provider: str | None = Field(default=None, max_length=40)
+    ai_api_key: str | None = Field(default=None, max_length=512)
     # Use a lambda here so it gets the time AT THE MOMENT of creation
     date_created: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
