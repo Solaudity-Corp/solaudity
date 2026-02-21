@@ -15,7 +15,14 @@ from app.utils.ai_prompting import (
 
 
 def _to_fields_read(data: ExtractedAuditFields) -> ExtractAuditFieldsRead:
-    """Convert utility dataclass to API response shape."""
+    """Convert internal extraction dataclass into API response fields.
+
+    Args:
+        data: ExtractedAuditFields instance from prompting utility.
+
+    Returns:
+        ExtractAuditFieldsRead: API-ready normalized field payload.
+    """
     return ExtractAuditFieldsRead(
         title=data.title,
         slug=data.slug,
@@ -34,7 +41,18 @@ def extract_audit_fields_for_user(
     payload: ExtractAuditFieldsRequest,
     current_user: User,
 ) -> ExtractAuditFieldsResponse:
-    """Run prompt extraction for a specific authenticated user."""
+    """Run prompt-based extraction for one authenticated user.
+
+    Args:
+        payload: Request body containing text and optional model override.
+        current_user: Authenticated user with stored ai_provider/ai_api_key.
+
+    Returns:
+        ExtractAuditFieldsResponse: Provider/model used and extracted fields.
+
+    Raises:
+        HTTPException: 400 when user config/input is invalid, 502 for provider failures.
+    """
     provider = (current_user.ai_provider or "").strip().lower()
     api_key = (current_user.ai_api_key or "").strip()
 
