@@ -26,6 +26,15 @@ router = APIRouter(
 
 
 def _raise_service_error(exc: Exception) -> None:
+    """Map domain/service exceptions to HTTP exceptions.
+
+    Args:
+        exc: Any exception raised by the audits service layer.
+
+    Raises:
+        HTTPException: With 404 for missing audits, 409 for conflicts,
+            and 422 for validation errors. Re-raises unknown exceptions.
+    """
     if isinstance(exc, service.AuditNotFoundError):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     if isinstance(exc, service.AuditConflictError):
@@ -50,6 +59,23 @@ def list_audits(
     offset: int = Query(default=0, ge=0),
     session: Session = Depends(get_session),
 ) -> AuditListResponse:
+    """List audits with optional filtering, search, and pagination.
+
+    Args:
+        search: Free-text search across title, slug, description, status,
+            chain, network, repository URL, commit hash, and docs URL.
+        status_filter: Filter by audit lifecycle status.
+        chain: Case-insensitive filter for blockchain family/context.
+        network: Case-insensitive filter for target network.
+        pinned: Optional pinned-state filter.
+        include_archived: Whether archived audits are included.
+        limit: Maximum number of results returned.
+        offset: Number of rows skipped before returning results.
+        session: Database session dependency.
+
+    Returns:
+        AuditListResponse: Paginated audits with total count and status counters.
+    """
     try:
         return service.list_audits(
             session,
@@ -71,6 +97,15 @@ def get_audit(
     audit_id: UUID,
     session: Session = Depends(get_session),
 ) -> AuditRead:
+    """Fetch a single audit by ID.
+
+    Args:
+        audit_id: Unique audit identifier.
+        session: Database session dependency.
+
+    Returns:
+        AuditRead: Complete audit payload including attachments.
+    """
     try:
         return service.get_audit(session, audit_id)
     except Exception as exc:  # pragma: no cover - centralized error mapping
@@ -82,6 +117,15 @@ def list_audit_attachments(
     audit_id: UUID,
     session: Session = Depends(get_session),
 ) -> list[AuditAttachmentRead]:
+    """List all attachments linked to a specific audit.
+
+    Args:
+        audit_id: Unique audit identifier.
+        session: Database session dependency.
+
+    Returns:
+        list[AuditAttachmentRead]: Attachment metadata sorted by file name.
+    """
     try:
         return service.list_audit_attachments(session, audit_id)
     except Exception as exc:  # pragma: no cover - centralized error mapping
@@ -93,6 +137,15 @@ def create_audit(
     payload: AuditCreate,
     session: Session = Depends(get_session),
 ) -> AuditRead:
+    """Create a new audit record.
+
+    Args:
+        payload: User-provided create payload (title + optional metadata).
+        session: Database session dependency.
+
+    Returns:
+        AuditRead: Newly created audit with normalized values.
+    """
     try:
         return service.create_audit(session, payload)
     except Exception as exc:  # pragma: no cover - centralized error mapping
@@ -105,6 +158,16 @@ def update_audit(
     payload: AuditUpdate,
     session: Session = Depends(get_session),
 ) -> AuditRead:
+    """Patch editable fields on an existing audit.
+
+    Args:
+        audit_id: Unique audit identifier.
+        payload: Partial update payload.
+        session: Database session dependency.
+
+    Returns:
+        AuditRead: Updated audit representation.
+    """
     try:
         return service.update_audit(session, audit_id, payload)
     except Exception as exc:  # pragma: no cover - centralized error mapping
@@ -117,6 +180,16 @@ def set_audit_pin(
     payload: AuditPinUpdate,
     session: Session = Depends(get_session),
 ) -> AuditRead:
+    """Set or toggle the pinned state for an audit.
+
+    Args:
+        audit_id: Unique audit identifier.
+        payload: Pin update payload. If omitted/None, state is toggled.
+        session: Database session dependency.
+
+    Returns:
+        AuditRead: Updated audit payload with new pin state.
+    """
     try:
         return service.set_audit_pin(session, audit_id, payload)
     except Exception as exc:  # pragma: no cover - centralized error mapping
@@ -129,6 +202,16 @@ def mark_audit_opened(
     payload: AuditOpenUpdate,
     session: Session = Depends(get_session),
 ) -> AuditRead:
+    """Record that an audit was opened/viewed.
+
+    Args:
+        audit_id: Unique audit identifier.
+        payload: Open event payload, optionally containing actor ID.
+        session: Database session dependency.
+
+    Returns:
+        AuditRead: Updated audit payload with last-opened metadata.
+    """
     try:
         return service.mark_audit_opened(session, audit_id, payload)
     except Exception as exc:  # pragma: no cover - centralized error mapping
@@ -140,6 +223,15 @@ def delete_audit(
     audit_id: UUID,
     session: Session = Depends(get_session),
 ) -> Response:
+    """Delete an audit and all of its attachments.
+
+    Args:
+        audit_id: Unique audit identifier.
+        session: Database session dependency.
+
+    Returns:
+        Response: Empty 204 response when deletion succeeds.
+    """
     try:
         service.delete_audit(session, audit_id)
         return Response(status_code=status.HTTP_204_NO_CONTENT)

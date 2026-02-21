@@ -18,7 +18,14 @@ def extract_audit_fields_route(
     current_user: User = Depends(get_current_user),
 ):
     """
-    Extract audit-create fields from free text using the authenticated user's AI config.
+    Extract audit-create fields from free text using authenticated user AI settings.
+
+    Args:
+        payload: Extraction request body containing free text and optional model override.
+        current_user: Authenticated user resolved from JWT token.
+
+    Returns:
+        ExtractAuditFieldsResponse: Selected provider/model and extracted field values.
     """
     return service.extract_audit_fields_for_user(
         payload=payload,

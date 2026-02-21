@@ -51,11 +51,27 @@ Expected JSON keys:
 
 
 class AIProviderError(RuntimeError):
+    """Raised for provider-level or prompt-processing failures."""
+
     pass
 
 
 @dataclass
 class ExtractedAuditFields:
+    """Internal normalized extraction result.
+
+    Attributes:
+        title: Audit title.
+        slug: URL-friendly slug.
+        description: Audit/project description.
+        chain: Blockchain family/context.
+        network: Target network/environment.
+        repo_url: Source repository URL.
+        commit_hash: Commit hash being assessed.
+        docs_url: Documentation URL.
+        start_date: Start date as string (expected YYYY-MM-DD when present).
+        end_date: End date as string (expected YYYY-MM-DD when present).
+    """
     title: str | None = None
     slug: str | None = None
     description: str | None = None
@@ -136,7 +152,7 @@ def _normalize_error_payload(payload: str, *, max_len: int = 280) -> str:
 
 
 def _build_http_error_message(*, provider: str | None, status_code: int, payload: str) -> str:
-    """Build readable provider error messages with special handling for known cases."""
+    """Build readable provider error messages with provider-specific hints."""
     normalized = payload.lower()
     if provider == "groq" and "error code: 1010" in normalized:
         return (
@@ -292,14 +308,21 @@ def extract_audit_fields(
     timeout_seconds: int = 30,
 ) -> ExtractedAuditFields:
     """
-    Provider-agnostic audit extraction entrypoint.
+    Provider-agnostic extraction entrypoint used by API service layer.
 
-    Example:
-      extract_audit_fields(
-          user_text="pentest name X date ...",
-          provider="groq",
-          api_key="...",
-      )
+    Args:
+        user_text: Raw free text containing audit context/details.
+        provider: Provider key (openai, groq, xai, gemini).
+        api_key: User API key for the selected provider.
+        model: Optional explicit model override. Uses provider default when omitted.
+        timeout_seconds: Provider HTTP timeout in seconds.
+
+    Returns:
+        ExtractedAuditFields: Normalized structured fields extracted from free text.
+
+    Raises:
+        AIProviderError: For unsupported providers, invalid input, HTTP/network failures,
+            malformed provider responses, or invalid JSON from the model.
     """
     provider_name = provider.strip().lower()
     if provider_name not in SUPPORTED_AI_PROVIDERS:
