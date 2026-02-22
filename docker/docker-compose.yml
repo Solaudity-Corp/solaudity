@@ -1,5 +1,5 @@
 services:
-  backend:
+  solaudity-backend:
     build: ../backend
     ports:
       - "8001:8001"
@@ -8,16 +8,16 @@ services:
     environment:
       - DB_PATH=/data/solaudity.db
 
-  frontend:
+  solaudity-frontend:
     build: ../frontend
     ports:
       - "5173:80"
     depends_on:
-      - backend
+      - solaudity-backend
     profiles:
       - prod
 
-  frontend-dev:
+  solaudity-frontend-dev:
     image: node:22-alpine
     working_dir: /app
     command: sh /app/dev-entrypoint.sh
@@ -30,7 +30,7 @@ services:
     ports:
       - "5173:5173"
     depends_on:
-      - backend
+      - solaudity-backend
     profiles:
       - dev
 

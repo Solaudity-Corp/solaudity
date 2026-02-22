@@ -24,16 +24,16 @@ else
 fi
 
 if [ "$MODE" = "dev" ]; then
-  echo "[+] Starting backend + frontend-dev (Docker Compose)"
-  "${DOCKER_COMPOSE[@]}" -f "$COMPOSE_FILE" --profile dev up -d --build --remove-orphans backend frontend-dev
+  echo "[+] Starting solaudity-backend + solaudity-frontend-dev (Docker Compose)"
+  "${DOCKER_COMPOSE[@]}" -f "$COMPOSE_FILE" --profile dev up -d --build --remove-orphans solaudity-backend solaudity-frontend-dev
   echo "[+] Started in dev mode"
   echo "[i] Backend:  http://localhost:8001"
   echo "[i] Frontend: http://localhost:5173 (live reload in Docker)"
   exit 0
 fi
 
-echo "[+] Starting backend + frontend (Docker Compose)"
-"${DOCKER_COMPOSE[@]}" -f "$COMPOSE_FILE" --profile prod up -d --build --remove-orphans backend frontend
+echo "[+] Starting solaudity-backend + solaudity-frontend (Docker Compose)"
+"${DOCKER_COMPOSE[@]}" -f "$COMPOSE_FILE" --profile prod up -d --build --remove-orphans solaudity-backend solaudity-frontend
 
 echo "[+] Started"
 echo "[i] Website: http://localhost:5173"
