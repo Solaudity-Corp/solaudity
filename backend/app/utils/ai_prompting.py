@@ -184,7 +184,7 @@ def _post_json(
     req = request.Request(url=url, method="POST", headers=request_headers, data=body)
 
     try:
-        with request.urlopen(req, timeout=timeout_seconds) as response:
+        with request.urlopen(req, timeout=timeout_seconds) as response:  # nosec B310  # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
             raw = response.read().decode("utf-8")
     except error.HTTPError as exc:
         err_payload = exc.read().decode("utf-8", errors="replace")

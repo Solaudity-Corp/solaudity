@@ -67,7 +67,7 @@ export default function App() {
     if (isAuthenticated && (pathname === '/login' || pathname === '/register')) {
       navigate('/menu/audits', true)
     }
-  }, [isAuthenticated, pathname])
+  }, [isAuthenticated, pathname, navigate])
 
   const handleAuthSuccess = () => {
     setIsAuthenticated(true)
