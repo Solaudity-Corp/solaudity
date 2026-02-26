@@ -120,7 +120,7 @@ class ScopeContract(SQLModel, table=True):
 
     
     is_in_scope: bool = Field(
-        default=True,
+        default=False,
         sa_column=sa.Column(sa.Boolean(), nullable=False, server_default=sa.text("1")),
     )
     # if is not is scope, specify the reason why 
