@@ -20,6 +20,7 @@ dist-ssr
 frontend/dist
 frontend/node_modules
 frontend/.vite
+frontend/.npm-cache
 
 # Backend / Python
 __pycache__/

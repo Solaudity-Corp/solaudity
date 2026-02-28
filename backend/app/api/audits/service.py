@@ -207,7 +207,7 @@ def _validated_audit(data: dict) -> Audit:
     try:
         return Audit.model_validate(data)
     except ValidationError as exc:
-        raise AuditValidationError(exc.errors()) from exc
+        raise AuditValidationError(exc.errors(include_context=False)) from exc
 
 
 def list_audits(
