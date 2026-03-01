@@ -1,7 +1,7 @@
 services:
   solaudity-backend:
     build: ../backend
-    user: "${UID}:${GID}"
+    user: "${HOST_UID}:${HOST_GID}"
     ports:
       - "8001:8001"
     volumes:

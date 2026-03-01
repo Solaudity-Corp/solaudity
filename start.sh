@@ -14,8 +14,8 @@ fi
 mkdir -p "$PROJECT_ROOT/data"
 
 # Export current user UID/GID so the container writes files as the host user
-export UID="$(id -u)"
-export GID="$(id -g)"
+export HOST_UID="$(id -u)"
+export HOST_GID="$(id -g)"
 
 # Detect docker compose command (new: `docker compose`, old: `docker-compose`)
 if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
