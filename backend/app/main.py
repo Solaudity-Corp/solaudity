@@ -5,6 +5,7 @@ from pydantic import BaseModel
 from app.api.auth import auth
 from app.api.audits.router import router as audits_router
 from app.api.ai.router import router as ai_router
+from app.api.scope.router import router as scope_router
 
 app = FastAPI()
 
@@ -19,6 +20,7 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(audits_router)
 app.include_router(ai_router)
+app.include_router(scope_router)
 
 
 @app.get("/health")
