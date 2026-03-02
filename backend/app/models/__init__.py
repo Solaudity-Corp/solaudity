@@ -2,3 +2,4 @@
 
 from . import user  # noqa: F401
 from . import audits  # noqa: F401
+from . import scope  # noqa: F401
