@@ -546,8 +546,8 @@ def delete_address(session: Session, address_id: UUID) -> None:
 #
 ##############################################################################################################
 
-# Storage configuration
-CONTRACTS_STORAGE_DIR = Path("data/contracts")
+# Storage configuration - uses /data/contracts in Docker (mounted volume) or data/contracts locally
+CONTRACTS_STORAGE_DIR = Path(os.getenv("CONTRACTS_STORAGE_DIR", "/data/contracts"))
 
 
 # ============================= File Utilities =============================

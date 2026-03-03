@@ -143,6 +143,9 @@ def list_contracts(
         _raise_service_error(exc)
 
 
+# Manual upload workflow (recommended):
+# 1. Create a source with source_type="upload" via POST /audits/{audit_id}/sources
+# 2. Upload files here with the returned source_id to group them together
 @router.post(
     "/audits/{audit_id}/contracts/upload",
     response_model=ScopeContractRead,
