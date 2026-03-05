@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import os
 import re
+import tarfile
 from pathlib import Path
+from urllib.parse import urlparse
 from uuid import UUID, uuid4
 
+import httpx
 import sqlalchemy as sa
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
@@ -662,14 +666,311 @@ def _ensure_storage_dir(audit_id: UUID) -> Path:
     return storage_dir
 
 
+# ============================= GitHub Fetcher =============================
+
+# Configuration
+GITHUB_MAX_SIZE_MB = 50  # Maximum archive size in MB
+GITHUB_TIMEOUT = 60  # Request timeout in seconds
+GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")  # Optional: for higher rate limits
+
+
+def _parse_github_url(url: str) -> tuple[str, str]:
+    """Parse a GitHub URL and extract owner and repo name.
+    
+    Supports formats:
+        - https://github.com/owner/repo
+        - https://github.com/owner/repo.git
+        - https://github.com/owner/repo/tree/branch
+        - git@github.com:owner/repo.git
+    
+    Params:
+        url: The GitHub repository URL.
+    Returns:
+        tuple[str, str]: (owner, repo) tuple.
+    Raises:
+        ScopeValidationError: If URL is not a valid GitHub repo URL.
+    """
+    # Handle SSH URLs (git@github.com:owner/repo.git)
+    ssh_match = re.match(r"git@github\.com:([^/]+)/([^/]+?)(?:\.git)?$", url)
+    if ssh_match:
+        return ssh_match.group(1), ssh_match.group(2)
+    
+    # Handle HTTPS URLs
+    parsed = urlparse(url)
+    if parsed.netloc not in ("github.com", "www.github.com"):
+        raise ScopeValidationError([{
+            "loc": ["url"],
+            "msg": f"Not a GitHub URL: {url}"
+        }])
+    
+    # Path should be /owner/repo or /owner/repo/...
+    path_parts = [p for p in parsed.path.strip("/").split("/") if p]
+    if len(path_parts) < 2:
+        raise ScopeValidationError([{
+            "loc": ["url"],
+            "msg": f"Invalid GitHub repo URL: {url}"
+        }])
+    
+    owner = path_parts[0]
+    repo = path_parts[1].removesuffix(".git")
+    
+    return owner, repo
+
+
+def _get_default_branch(owner: str, repo: str) -> str:
+    """Get the default branch of a GitHub repository.
+    
+    Params:
+        owner: Repository owner.
+        repo: Repository name.
+    Returns:
+        str: Default branch name (e.g., "main", "master").
+    Raises:
+        ScopeValidationError: If the repository is not found or inaccessible.
+        
+    ## TODO:
+    - [ ] Think about adding GitHub Token to increase rate limits (60 requests/hour as of now)
+    """
+    headers = {"Accept": "application/vnd.github.v3+json"}
+    if GITHUB_TOKEN:
+        headers["Authorization"] = f"Bearer {GITHUB_TOKEN}"
+    
+    try:
+        response = httpx.get(
+            f"https://api.github.com/repos/{owner}/{repo}",
+            headers=headers,
+            timeout=GITHUB_TIMEOUT,
+        )
+        response.raise_for_status()
+        return response.json()["default_branch"]
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 404:
+            raise ScopeValidationError([{
+                "loc": ["url"],
+                "msg": f"Repository not found: {owner}/{repo}"
+            }]) from e
+        if e.response.status_code == 403:
+            raise ScopeValidationError([{
+                "loc": ["url"],
+                "msg": "GitHub rate limit exceeded. Set GITHUB_TOKEN env var for higher limits."
+            }]) from e
+        raise ScopeValidationError([{
+            "loc": ["url"],
+            "msg": f"GitHub API error: {e.response.status_code}"
+        }]) from e
+    except httpx.RequestError as e:
+        raise ScopeValidationError([{
+            "loc": ["url"],
+            "msg": f"Failed to connect to GitHub: {str(e)}"
+        }]) from e
+
+
+def _download_github_tarball(owner: str, repo: str, ref: str) -> bytes:
+    """Download a tarball of a GitHub repository at a specific ref.
+    
+    Params:
+        owner: Repository owner.
+        repo: Repository name.
+        ref: Git reference (branch name, tag, or commit SHA).
+    Returns:
+        bytes: Raw tarball content.
+    Raises:
+        ScopeValidationError: If download fails or file is too large.
+    """
+    url = f"https://github.com/{owner}/{repo}/archive/{ref}.tar.gz"
+    headers = {}
+    if GITHUB_TOKEN:
+        headers["Authorization"] = f"Bearer {GITHUB_TOKEN}"
+    
+    try:
+        # Use streaming to check size before downloading
+        with httpx.stream("GET", url, headers=headers, timeout=GITHUB_TIMEOUT, follow_redirects=True) as response:
+            response.raise_for_status()
+            
+            # Check Content-Length if available
+            content_length = response.headers.get("Content-Length")
+            if content_length and int(content_length) > GITHUB_MAX_SIZE_MB * 1024 * 1024:
+                raise ScopeValidationError([{
+                    "loc": ["url"],
+                    "msg": f"Repository archive is too large (>{GITHUB_MAX_SIZE_MB}MB)"
+                }])
+            
+            # Download with size limit
+            chunks = []
+            total_size = 0
+            for chunk in response.iter_bytes():
+                total_size += len(chunk)
+                if total_size > GITHUB_MAX_SIZE_MB * 1024 * 1024:
+                    raise ScopeValidationError([{
+                        "loc": ["url"],
+                        "msg": f"Repository archive is too large (>{GITHUB_MAX_SIZE_MB}MB)"
+                    }])
+                chunks.append(chunk)
+            
+            return b"".join(chunks)
+            
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 404:
+            raise ScopeValidationError([{
+                "loc": ["commit_hash"],
+                "msg": f"Ref not found: {ref}"
+            }]) from e
+        raise ScopeValidationError([{
+            "loc": ["url"],
+            "msg": f"GitHub download error: {e.response.status_code}"
+        }]) from e
+    except httpx.RequestError as e:
+        raise ScopeValidationError([{
+            "loc": ["url"],
+            "msg": f"Failed to download from GitHub: {str(e)}"
+        }]) from e
+
+
+def _extract_sol_files(tarball: bytes) -> list[tuple[str, bytes]]:
+    """Extract .sol files from a tarball.
+    
+    Params:
+        tarball: Raw tarball bytes (gzip compressed).
+    Returns:
+        list[tuple[str, bytes]]: List of (relative_path, content) tuples.
+    """
+    sol_files = []
+    
+    with tarfile.open(fileobj=io.BytesIO(tarball), mode="r:gz") as tar:
+        for member in tar.getmembers():
+            if not member.isfile():
+                continue
+            if not member.name.endswith(".sol"):
+                continue
+            
+            # Extract relative path (remove the root folder created by GitHub)
+            # GitHub tarballs have structure: repo-branch/path/to/file.sol
+            parts = member.name.split("/", 1)
+            if len(parts) < 2:
+                continue
+            relative_path = parts[1]
+            
+            # Read file content
+            f = tar.extractfile(member)
+            if f is None:
+                continue
+            content = f.read()
+            
+            sol_files.append((relative_path, content))
+    
+    return sol_files
+
+
+def _fetch_github(
+    session: Session,
+    source: ScopeSource,
+) -> int:
+    """Fetch Solidity files from a GitHub repository.
+    
+    Downloads the repository as a tarball, extracts .sol files,
+    and creates ScopeContract entries for each.
+    
+    Params:
+        session: Database session.
+        source: The ScopeSource record to fetch.
+    Returns:
+        int: Number of contracts created.
+    Raises:
+        ScopeValidationError: If fetching fails.
+    """
+    if not source.url:
+        raise ScopeValidationError([{
+            "loc": ["url"],
+            "msg": "GitHub source requires a URL"
+        }])
+    
+    # Parse URL
+    owner, repo = _parse_github_url(source.url)
+    
+    # Determine ref to download
+    ref = source.commit_hash or source.branch
+    if not ref:
+        # Get default branch from GitHub API
+        ref = _get_default_branch(owner, repo)
+    
+    # Download tarball
+    tarball = _download_github_tarball(owner, repo, ref)
+    
+    # Extract .sol files
+    sol_files = _extract_sol_files(tarball)
+    
+    if not sol_files:
+        # No .sol files found - not an error, just empty
+        return 0
+    
+    # Ensure storage directory exists
+    _ensure_storage_dir(source.audit_id)
+    
+    # Create contract entries
+    contracts_created = 0
+    for relative_path, content in sol_files:
+        try:
+            content_str = content.decode("utf-8")
+        except UnicodeDecodeError:
+            # Skip non-UTF8 files
+            continue
+        
+        content_hash = _compute_sha256(content)
+        sloc = _count_sloc(content_str)
+        compiler_version = _extract_solidity_version(content_str)
+        license_id = _extract_license(content_str)
+        
+        # Generate storage key and save file
+        file_uuid = uuid4()
+        storage_key = f"{source.audit_id}/{file_uuid}.sol"
+        storage_path = CONTRACTS_STORAGE_DIR / storage_key
+        
+        try:
+            storage_path.write_bytes(content)
+        except OSError:
+            # Skip files that can't be written
+            continue
+        
+        # Create contract record
+        # By default, all fetched contracts are out of scope until user marks them in scope
+        contract = ScopeContract(
+            audit_id=source.audit_id,
+            source_id=source.id,
+            file_path=relative_path,
+            file_name=Path(relative_path).name,
+            content_hash=content_hash,
+            storage_key=storage_key,
+            sloc=sloc,
+            is_in_scope=False,
+            scope_reason="auto-imported from GitHub",
+            compiler_version=compiler_version,
+            license=license_id,
+        )
+        
+        session.add(contract)
+        contracts_created += 1
+    
+    # Commit all contracts at once
+    _commit(session)
+    
+    # Update source with actual commit hash if we used branch name
+    if source.branch and not source.commit_hash:
+        # We fetched using branch name, but we should store the actual ref
+        # In a future enhancement, we could resolve the actual commit SHA
+        pass
+    
+    return contracts_created
+
+
 # ============================= Other Functions =============================
 
 def trigger_fetch(session: Session, source_id: UUID) -> ScopeSourceRead:
     """Trigger fetching code from an external source (GitHub, Etherscan, etc.).
     
     This function initiates the fetch process for a source. The actual fetching
-    is delegated to specialized fetchers based on source_type.
+    is delegated to specialized fetchers based on source_type. 
     
+    NOTE: This function is to be called when the user clicks "Fetch" on a source. 
     Params:
         session: Database session dependency.
         source_id: Unique identifier for the source to fetch.
@@ -677,7 +978,7 @@ def trigger_fetch(session: Session, source_id: UUID) -> ScopeSourceRead:
         ScopeSourceRead: The updated source with new fetch_status.
     
     ## TODO:
-    - [ ] Implement github_fetcher.py for GitHub sources
+    - [x] Implement GitHub fetcher
     - [ ] Implement explorer_fetcher.py for Etherscan-like sources
     - [ ] Add async/background job support for long-running fetches
     """
@@ -691,9 +992,8 @@ def trigger_fetch(session: Session, source_id: UUID) -> ScopeSourceRead:
     
     try:
         if source.source_type == SourceType.github:
-            # TODO: Implement GitHub fetcher
-            # contracts = github_fetcher.fetch(source.url, source.branch, source.commit_hash)
-            raise NotImplementedError("GitHub fetcher not implemented yet")
+            contracts_count = _fetch_github(session, source)
+            source.error_message = f"Fetched {contracts_count} contracts"
         
         elif source.source_type in (
             SourceType.etherscan,
