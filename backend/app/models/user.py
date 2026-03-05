@@ -2,6 +2,8 @@ from sqlmodel import Field, SQLModel
 from datetime import datetime, timezone
 from pydantic import field_validator
 
+from uuid import UUID, uuid4
+
 # The UserBase class is not a table itself, but serves as a base for the User class.
 # It allows us to seperate the common fields from the table-specific 
 # fields, which can be useful for data validation and serialization.
@@ -13,7 +15,7 @@ class UserBase(SQLModel):
 # The User class is the actual table definition, it inherits from UserBase
 # This allows us to have a clear separation between the schema (UserBase) and the table definition (User).
 class User(UserBase, table=True):
-    id: int | None = Field(default=None, primary_key=True)
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
     password_hash: str = Field(max_length=60)
     ai_provider: str | None = Field(default=None, max_length=40)
     ai_api_key: str | None = Field(default=None, max_length=512)
@@ -51,7 +53,7 @@ class UserCreate(UserBase):
 # It includes the ID and timestamps but EXCLUDES the password_hash.
 
 class UserRead(UserBase):
-    id: int
+    id: UUID
     date_created: datetime
     updated_at: datetime
     
