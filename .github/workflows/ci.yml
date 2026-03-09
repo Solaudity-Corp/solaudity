@@ -104,8 +104,18 @@ jobs:
             echo "" >> $GITHUB_STEP_SUMMARY
 
             HIGH_PLUS=$((CRITICAL + HIGH))
-            if [ "$HIGH_PLUS" -gt 5 ] 2>/dev/null; then
-              echo "> **PR blocked:** $HIGH_PLUS critical/high vulnerabilities found (threshold: 5)" >> $GITHUB_STEP_SUMMARY
+            if [ "$HIGH_PLUS" -gt 2 ] 2>/dev/null; then
+              echo "> **PR blocked:** $HIGH_PLUS critical/high vulnerabilities found (threshold: 2)" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "FRONTEND_VULN_BLOCKED=true" >> "$GITHUB_ENV"
+            fi
+            if [ "$MODERATE" -gt 5 ] 2>/dev/null; then
+              echo "> **PR blocked:** $MODERATE moderate vulnerabilities found (threshold: 5)" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "FRONTEND_VULN_BLOCKED=true" >> "$GITHUB_ENV"
+            fi
+            if [ "$LOW" -gt 10 ] 2>/dev/null; then
+              echo "> **PR blocked:** $LOW low vulnerabilities found (threshold: 10)" >> $GITHUB_STEP_SUMMARY
               echo "" >> $GITHUB_STEP_SUMMARY
               echo "FRONTEND_VULN_BLOCKED=true" >> "$GITHUB_ENV"
             fi
@@ -165,7 +175,7 @@ jobs:
             FAILED=1
           fi
           if [ "$FRONTEND_VULN_BLOCKED" == "true" ]; then
-            echo "Too many critical/high vulnerabilities (>5)"
+            echo "Vulnerability thresholds exceeded (high >2 / medium >5 / low >10)"
             FAILED=1
           fi
           if [ $FAILED -eq 1 ]; then
@@ -178,6 +188,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           if [ -s "$GITHUB_STEP_SUMMARY" ]; then
+            gh pr comment ${{ github.event.pull_request.number }} --body-file "$GITHUB_STEP_SUMMARY" --edit-last || \
             gh pr comment ${{ github.event.pull_request.number }} --body-file "$GITHUB_STEP_SUMMARY"
           else
             echo "::warning::PR comment skipped — summary file is empty"
@@ -356,6 +367,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           if [ -s "$GITHUB_STEP_SUMMARY" ]; then
+            gh pr comment ${{ github.event.pull_request.number }} --body-file "$GITHUB_STEP_SUMMARY" --edit-last || \
             gh pr comment ${{ github.event.pull_request.number }} --body-file "$GITHUB_STEP_SUMMARY"
           else
             echo "::warning::PR comment skipped — summary file is empty"
@@ -431,6 +443,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           if [ -s "$GITHUB_STEP_SUMMARY" ]; then
+            gh pr comment ${{ github.event.pull_request.number }} --body-file "$GITHUB_STEP_SUMMARY" --edit-last || \
             gh pr comment ${{ github.event.pull_request.number }} --body-file "$GITHUB_STEP_SUMMARY"
           else
             echo "::warning::PR comment skipped — summary file is empty"

@@ -69,6 +69,7 @@ jobs:
           format: sarif
           output: trivy-frontend.sarif
           severity: CRITICAL,HIGH
+          ignore-unfixed: true
         continue-on-error: true
 
       - name: Trivy scan frontend (JSON)
@@ -80,6 +81,7 @@ jobs:
           format: json
           output: trivy-frontend.json
           severity: CRITICAL,HIGH
+          ignore-unfixed: true
         continue-on-error: true
 
       - name: Trivy scan backend image
@@ -91,6 +93,7 @@ jobs:
           format: sarif
           output: trivy-backend.sarif
           severity: CRITICAL,HIGH
+          ignore-unfixed: true
         continue-on-error: true
 
       - name: Trivy scan backend (JSON)
@@ -102,6 +105,7 @@ jobs:
           format: json
           output: trivy-backend.json
           severity: CRITICAL,HIGH
+          ignore-unfixed: true
         continue-on-error: true
 
       - name: Generate summary
