@@ -1,3 +1,4 @@
+name: solaudity
 services:
   solaudity-backend:
     build: ../backend
