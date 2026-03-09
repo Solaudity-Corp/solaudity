@@ -27,9 +27,31 @@ else
   exit 1
 fi
 
+wait_for_service() {
+  local name="$1" url="$2" timeout="${3:-120}"
+  local elapsed=0
+  printf "[~] Waiting for %s..." "$name"
+  while ! curl -sf "$url" >/dev/null 2>&1; do
+    sleep 2
+    elapsed=$((elapsed + 2))
+    if [ "$elapsed" -ge "$timeout" ]; then
+      echo " timeout!"
+      echo "[-] $name did not become ready within ${timeout}s"
+      return 1
+    fi
+    printf "."
+  done
+  echo " ready!"
+}
+
 if [ "$MODE" = "dev" ]; then
-  echo "[+] Starting solaudity-backend + solaudity-frontend-dev (Docker Compose)"
-  "${DOCKER_COMPOSE[@]}" -f "$COMPOSE_FILE" --profile dev up -d --build --remove-orphans solaudity-backend solaudity-frontend-dev
+  echo "[+] Starting containers (Docker Compose)"
+  "${DOCKER_COMPOSE[@]}" -f "$COMPOSE_FILE" --profile dev up -d --remove-orphans solaudity-backend solaudity-frontend-dev
+
+  echo "[~] Installing dependencies & syncing packages (this may take a moment)..."
+  wait_for_service "Backend"  "http://localhost:8001/health" 120
+  wait_for_service "Frontend" "http://localhost:5173" 180
+
   echo "[+] Started in dev mode"
   echo "[i] Backend:  http://localhost:8001"
   echo "[i] Frontend: http://localhost:5173 (live reload in Docker)"

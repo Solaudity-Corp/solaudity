@@ -3,7 +3,11 @@ set -eu
 
 cd /app
 
-npm ci
+echo "📦 Installing npm dependencies..."
+npm ci 2>/dev/null || {
+  echo "⚠️ package-lock.json out of sync, running npm install to fix..."
+  npm install
+}
 
 npm run panda:generate
 
