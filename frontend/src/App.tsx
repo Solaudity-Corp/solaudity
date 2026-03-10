@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { hasAccessToken } from './auth'
 import Login from './Login'
 import Menu, { type MenuPath } from './Menu'
@@ -25,17 +25,17 @@ export default function App() {
   const [pathname, setPathname] = useState<AppPath>(() => normalizePathname(window.location.pathname))
   const [isAuthenticated, setIsAuthenticated] = useState(() => hasAccessToken())
 
-  const navigate = (nextPath: AppPath, replace = false) => {
-    if (pathname === nextPath) return
-
-    if (replace) {
-      window.history.replaceState(null, '', nextPath)
-    } else {
-      window.history.pushState(null, '', nextPath)
-    }
-
-    setPathname(nextPath)
-  }
+  const navigate = useCallback((nextPath: AppPath, replace = false) => {
+    setPathname((current) => {
+      if (current === nextPath) return current
+      if (replace) {
+        window.history.replaceState(null, '', nextPath)
+      } else {
+        window.history.pushState(null, '', nextPath)
+      }
+      return nextPath
+    })
+  }, [])
 
   useEffect(() => {
     const normalizedPath = normalizePathname(window.location.pathname)
@@ -56,22 +56,23 @@ export default function App() {
     return () => {
       window.removeEventListener('popstate', onPopState)
     }
-  }, [])
-
-  useEffect(() => {
-    if (!isAuthenticated && pathname !== '/login' && pathname !== '/register') {
-      navigate('/login', true)
-      return
-    }
-
-    if (isAuthenticated && (pathname === '/login' || pathname === '/register')) {
-      navigate('/menu/audits', true)
-    }
-  }, [isAuthenticated, pathname])
+  }, [navigate])
 
   const handleAuthSuccess = () => {
     setIsAuthenticated(true)
     navigate('/menu/audits', true)
+  }
+
+  // Auth guard: redirect during render (React-approved setState-during-render pattern)
+  if (!isAuthenticated && pathname !== '/login' && pathname !== '/register') {
+    window.history.replaceState(null, '', '/login')
+    setPathname('/login')
+    return null
+  }
+  if (isAuthenticated && (pathname === '/login' || pathname === '/register')) {
+    window.history.replaceState(null, '', '/menu/audits')
+    setPathname('/menu/audits')
+    return null
   }
 
   if (pathname === '/register') {
