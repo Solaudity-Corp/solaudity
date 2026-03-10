@@ -5,6 +5,9 @@ import io
 import os
 import re
 import tarfile
+import zipfile
+from typing import List
+import io
 from pathlib import Path
 from urllib.parse import urlparse
 from uuid import UUID, uuid4
@@ -1039,47 +1042,26 @@ def trigger_fetch(session: Session, source_id: UUID) -> ScopeSourceRead:
 def upload_contract(
     session: Session,
     audit_id: UUID,
-    file_content: bytes,
-    filename: str,
+    files: list,
     metadata: ScopeContractUpload,
     source_id: UUID | None = None,
-) -> ScopeContractRead:
-    """Upload and store a .sol file, creating a ScopeContract entry.
+) -> list[ScopeContractRead]:
+    """Upload and store multiple .sol files or archives (zip/tar), creating ScopeContract entries.
     
-    This function handles manual file uploads from users.
+    This function handles manual file and folder uploads from users.
     
     Params:
         session: Database session dependency.
         audit_id: Unique identifier for the audit.
-        file_content: Raw bytes of the uploaded file.
-        filename: Original filename (e.g., "Token.sol").
+        files: List of uploaded files (UploadFile-like objects with .filename and .read()).
         metadata: Upload metadata (is_in_scope, scope_reason).
         source_id: Optional source ID if the file comes from a fetched source.
     Returns:
-        ScopeContractRead: The newly created contract.
+        list[ScopeContractRead]: List of newly created contracts.
     
     ## TODO:
     - [ ] Add file size limit validation
-    - [ ] Add .sol extension validation
-    - [ ] Support .zip upload with multiple files
     """
-    # Decode content
-    try:
-        content_str = file_content.decode("utf-8")
-    except UnicodeDecodeError:
-        raise ScopeValidationError([{"loc": ["file"], "msg": "File must be valid UTF-8"}])
-    
-    # Compute hash and metadata
-    content_hash = _compute_sha256(file_content)
-    sloc = _count_sloc(content_str)
-    compiler_version = _extract_solidity_version(content_str)
-    license_id = _extract_license(content_str)
-    
-    # For now, assume that all uploaded files are not in scope
-    is_in_scope = metadata.is_in_scope
-    scope_reason = metadata.scope_reason
-    
-    # Store file on disk
     try:
         _ensure_storage_dir(audit_id)
     except OSError as exc:
@@ -1087,36 +1069,97 @@ def upload_contract(
             [{"loc": ["storage"], "msg": f"Cannot create storage directory: {exc}"}]
         ) from exc
     
-    file_uuid = uuid4()
-    storage_key = f"{audit_id}/{file_uuid}.sol"
-    storage_path = CONTRACTS_STORAGE_DIR / storage_key
+    # We will collect all .sol files to process here as tuples (filename, content_bytes)
+    sol_files: list[tuple[str, bytes]] = []
+
+    for file in files:
+        filename = file.filename or "unknown"
+        file_content = file.file.read()
+
+        if filename.endswith(".zip"):
+            try:
+                with zipfile.ZipFile(io.BytesIO(file_content)) as z:
+                    for zinfo in z.infolist():
+                        if not zinfo.is_dir() and zinfo.filename.endswith(".sol"):
+                            # Filter out MacOS __MACOSX hidden files if necessary
+                            if "__MACOSX" not in zinfo.filename:
+                                sol_files.append((zinfo.filename, z.read(zinfo.filename)))
+            except zipfile.BadZipFile:
+                raise ScopeValidationError([{"loc": ["file"], "msg": f"Invalid zip file: {filename}"}])
+        elif filename.endswith(".tar") or filename.endswith(".tar.gz") or filename.endswith(".tgz"):
+            try:
+                with tarfile.open(fileobj=io.BytesIO(file_content), mode="r:*") as t:
+                    for member in t.getmembers():
+                        if member.isfile() and member.name.endswith(".sol"):
+                            f = t.extractfile(member)
+                            if f is not None:
+                                sol_files.append((member.name, f.read()))
+            except tarfile.TarError:
+                raise ScopeValidationError([{"loc": ["file"], "msg": f"Invalid tar file: {filename}"}])
+        elif filename.endswith(".sol"):
+            sol_files.append((filename, file_content))
+        else:
+            # Skip non-solidity files that are uploaded directly
+            pass
+            
+    if not sol_files:
+        raise ScopeValidationError([{"loc": ["file"], "msg": "No .sol files found in the upload."}])
+
+    created_contracts = []
     
-    try:
-        storage_path.write_bytes(file_content)
-    except OSError as exc:
-        raise ScopeValidationError(
-            [{"loc": ["storage"], "msg": f"Cannot write file to disk: {exc}"}]
-        ) from exc
-    
-    # Create contract in DB
-    contract = ScopeContract(
-        audit_id=audit_id,
-        source_id=source_id,
-        file_path=filename,
-        file_name=filename,
-        content_hash=content_hash,
-        storage_key=storage_key,
-        sloc=sloc,
-        is_in_scope=is_in_scope,
-        scope_reason=scope_reason,
-        compiler_version=compiler_version,
-        license=license_id,
-    )
-    
-    session.add(contract)
+    for filename, content_bytes in sol_files:
+        # Decode content
+        try:
+            content_str = content_bytes.decode("utf-8")
+        except UnicodeDecodeError:
+            raise ScopeValidationError([{"loc": ["file"], "msg": f"File {filename} must be valid UTF-8"}])
+        
+        # Compute hash and metadata
+        content_hash = _compute_sha256(content_bytes)
+        sloc = _count_sloc(content_str)
+        compiler_version = _extract_solidity_version(content_str)
+        license_id = _extract_license(content_str)
+        
+        is_in_scope = metadata.is_in_scope
+        scope_reason = metadata.scope_reason
+        
+        file_uuid = uuid4()
+        storage_key = f"{audit_id}/{file_uuid}.sol"
+        storage_path = CONTRACTS_STORAGE_DIR / storage_key
+        
+        try:
+            storage_path.write_bytes(content_bytes)
+        except OSError as exc:
+            raise ScopeValidationError(
+                [{"loc": ["storage"], "msg": f"Cannot write file {filename} to disk: {exc}"}]
+            ) from exc
+        
+        # Clean up path by taking just the filename, or keep full relative path if preferred.
+        # Keeping full relative path helps with disambiguation.
+        
+        # Create contract in DB
+        contract = ScopeContract(
+            audit_id=audit_id,
+            source_id=source_id,
+            file_path=filename,
+            file_name=os.path.basename(filename),
+            content_hash=content_hash,
+            storage_key=storage_key,
+            sloc=sloc,
+            is_in_scope=is_in_scope,
+            scope_reason=scope_reason,
+            compiler_version=compiler_version,
+            license=license_id,
+        )
+        session.add(contract)
+        created_contracts.append(contract)
+
     _commit(session)
-    session.refresh(contract)
-    return _to_contract_read(contract)
+    
+    for contract in created_contracts:
+        session.refresh(contract)
+        
+    return [_to_contract_read(c) for c in created_contracts]
 
 
 def get_contract_content(session: Session, contract_id: UUID) -> bytes:

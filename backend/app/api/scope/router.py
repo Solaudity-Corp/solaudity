@@ -148,26 +148,24 @@ def list_contracts(
 # 2. Upload files here with the returned source_id to group them together
 @router.post(
     "/audits/{audit_id}/contracts/upload",
-    response_model=ScopeContractRead,
+    response_model=list[ScopeContractRead],
     status_code=status.HTTP_201_CREATED,
 )
 def upload_contract(
     audit_id: UUID,
-    file: UploadFile = File(...),
+    files: list[UploadFile] = File(...),
     is_in_scope: bool = Form(True),
     scope_reason: str | None = Form(None),
     source_id: UUID | None = Form(None),
     session: Session = Depends(get_session),
-) -> ScopeContractRead:
-    """Upload a .sol file and create a contract entry."""
+) -> list[ScopeContractRead]:
+    """Upload .sol files, folders, or archives (zip/tar) and create contract entries."""
     metadata = ScopeContractUpload(is_in_scope=is_in_scope, scope_reason=scope_reason)
     try:
-        file_content = file.file.read()
         return service.upload_contract(
             session,
             audit_id,
-            file_content=file_content,
-            filename=file.filename or "unknown.sol",
+            files=files,
             metadata=metadata,
             source_id=source_id,
         )
