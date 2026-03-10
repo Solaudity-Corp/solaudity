@@ -163,7 +163,7 @@ def list_contracts(
 )
 def upload_contract(
     audit_id: UUID,
-    file: UploadFile = File(...),
+    files: list[UploadFile] = File(...),
     is_in_scope: bool = Form(True),
     scope_reason: str | None = Form(None),
     source_id: UUID | None = Form(None),

@@ -6,6 +6,9 @@ import os
 import re
 import shutil
 import tarfile
+import zipfile
+from typing import List
+import io
 from pathlib import Path
 from urllib.parse import urlparse
 from uuid import UUID, uuid4
@@ -1127,8 +1130,7 @@ def trigger_fetch(session: Session, source_id: UUID, owner_id: UUID) -> ScopeSou
 def upload_contract(
     session: Session,
     audit_id: UUID,
-    file_content: bytes,
-    filename: str,
+    files: list,
     metadata: ScopeContractUpload,
     owner_id: UUID,
     source_id: UUID | None = None,
@@ -1136,7 +1138,7 @@ def upload_contract(
 ) -> list[ScopeContractRead]:
     """Upload and store a .sol, .zip, or .tar file, creating ScopeContract entries.
     
-    This function handles manual file uploads from users.
+    This function handles manual file and folder uploads from users.
     
     Params:
         session: Database session dependency.
