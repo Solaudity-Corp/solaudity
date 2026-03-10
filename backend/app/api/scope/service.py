@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import hashlib
-import io
 import os
 import re
 import shutil
@@ -9,8 +8,8 @@ import tarfile
 import zipfile
 from typing import List
 import io
+import tarfile
 from pathlib import Path
-from urllib.parse import urlparse
 from uuid import UUID, uuid4
 
 import zipfile
@@ -19,6 +18,7 @@ import sqlalchemy as sa
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
+from app.api.scope.fetchers import FetchError, fetch_source
 from app.api.scope.schemas import (
     ScopeSourceCreate,
     ScopeSourceRead,
@@ -1058,19 +1058,16 @@ def trigger_fetch(session: Session, source_id: UUID, owner_id: UUID) -> ScopeSou
     """Trigger fetching code from an external source (GitHub, Etherscan, etc.).
     
     This function initiates the fetch process for a source. The actual fetching
-    is delegated to specialized fetchers based on source_type. 
+    is delegated to specialized fetchers in the fetchers module. 
     
     NOTE: This function is to be called when the user clicks "Fetch" on a source. 
-    Params:
+    
+    Args:
         session: Database session dependency.
         source_id: Unique identifier for the source to fetch.
+        
     Returns:
         ScopeSourceRead: The updated source with new fetch_status.
-    
-    ## TODO:
-    - [x] Implement GitHub fetcher
-    - [ ] Implement explorer_fetcher.py for Etherscan-like sources
-    - [ ] Add async/background job support for long-running fetches
     """
     source = _ensure_source_exists(session, source_id)
     _ensure_audit_owned_by(session, source.audit_id, owner_id)
@@ -1082,44 +1079,27 @@ def trigger_fetch(session: Session, source_id: UUID, owner_id: UUID) -> ScopeSou
     session.refresh(source)
     
     try:
-        if source.source_type == SourceType.github:
-            contracts_count = _fetch_github(session, source)
-            source.error_message = f"Fetched {contracts_count} contracts"
-        
-        elif source.source_type in (
-            SourceType.etherscan,
-            SourceType.arbiscan,
-            SourceType.polygonscan,
-            SourceType.bscscan,
-            SourceType.basescan,
-            SourceType.optimism,
-        ):
-            # TODO: Implement Explorer fetcher
-            # contracts = explorer_fetcher.fetch(source.source_type, source.contract_address, source.chain_id)
-            raise NotImplementedError("Explorer fetcher not implemented yet")
-        
-        elif source.source_type == SourceType.upload:
-            # Upload sources don't need fetching - they're uploaded directly
-            source.fetch_status = FetchStatus.success
-            source.fetched_at = utcnow()
-        
-        elif source.source_type == SourceType.bug_bounty:
-            # TODO: Implement bug bounty scraper
-            raise NotImplementedError("Bug bounty fetcher not implemented yet")
-        
-        else:
-            raise ValueError(f"Unknown source type: {source.source_type}")
+        # Delegate to the fetchers module
+        contracts_count = fetch_source(session, source)
         
         source.fetch_status = FetchStatus.success
         source.fetched_at = utcnow()
-        source.error_message = None
+        source.error_message = f"Fetched {contracts_count} contracts"
+        
+    except FetchError as e:
+        # Clear error message from fetchers module
+        source.fetch_status = FetchStatus.failed
+        source.error_message = e.message
+        if e.details:
+            source.error_message = f"{e.message}: {e.details}"
         
     except NotImplementedError as e:
         source.fetch_status = FetchStatus.failed
         source.error_message = str(e)
+        
     except Exception as e:
         source.fetch_status = FetchStatus.failed
-        source.error_message = f"Fetch failed: {str(e)}"
+        source.error_message = f"Unexpected error: {str(e)}"
     
     session.add(source)
     _commit(session)
