@@ -1,5 +1,6 @@
 name: 🚨 Bug
 description: Report a bug
+title: "fix: "
 labels: ["bug"]
 projects: ["solaudity/1"]
 body:

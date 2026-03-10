@@ -1,5 +1,6 @@
 name: 🚀 Feature request
 description: Suggest a new feature
+title: "feat: "
 labels: ["feature"]
 projects: ["solaudity/1"]
 body:
