@@ -25,6 +25,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: ./backend
+          file: ./docker/backend.Dockerfile
           load: true
           tags: docker-backend:latest
           cache-from: type=gha,scope=backend
@@ -36,6 +37,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: ./frontend
+          file: ./docker/frontend.Dockerfile
           load: true
           tags: docker-frontend:latest
           cache-from: type=gha,scope=frontend
@@ -247,13 +249,13 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
           echo "# Frontend (nginx-based)" >> $GITHUB_STEP_SUMMARY
-          echo "# Update base image in frontend/Dockerfile:" >> $GITHUB_STEP_SUMMARY
+          echo "# Update base image in docker/frontend.Dockerfile:" >> $GITHUB_STEP_SUMMARY
           echo "#   FROM node:22-alpine AS build" >> $GITHUB_STEP_SUMMARY
           echo "#   FROM nginx:stable-alpine" >> $GITHUB_STEP_SUMMARY
           echo "docker pull node:22-alpine && docker pull nginx:stable-alpine" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "# Backend (python-based)" >> $GITHUB_STEP_SUMMARY
-          echo "# Update base image in backend/Dockerfile:" >> $GITHUB_STEP_SUMMARY
+          echo "# Update base image in docker/backend.Dockerfile:" >> $GITHUB_STEP_SUMMARY
           echo "#   FROM python:3.11-slim" >> $GITHUB_STEP_SUMMARY
           echo "docker pull python:3.11-slim" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY

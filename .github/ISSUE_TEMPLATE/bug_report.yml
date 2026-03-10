@@ -29,19 +29,16 @@ body:
     validations:
       required: true
 
-  - type: input
-    id: os
+  - type: textarea
+    id: versions
     attributes:
-      label: OS
-      placeholder: "Example: Ubuntu 22.04"
-    validations:
-      required: false
-
-  - type: input
-    id: docker
-    attributes:
-      label: Docker
-      placeholder: "Example: 24.0.5"
+      label: Versions
+      description: Indiquez les versions de votre environnement si pertinent.
+      value: |
+        - OS: 
+        - Docker: 
+        - npm: 
+        - Python: 
     validations:
       required: false
 

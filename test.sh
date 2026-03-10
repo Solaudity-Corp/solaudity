@@ -124,7 +124,7 @@ run_backend_tests_docker() {
   print_status "RUN" "Building backend test image" "$BLUE"
   if ! docker_build_image \
     "$BACKEND_TEST_IMAGE" \
-    "$PROJECT_ROOT/backend/Dockerfile.test" \
+    "$PROJECT_ROOT/docker/backend.test.Dockerfile" \
     "$PROJECT_ROOT/backend"; then
     print_status "FAIL" "Backend test image build failed." "$RED"
     FAILURES=1
@@ -179,7 +179,7 @@ run_frontend_tests_docker() {
   print_status "RUN" "Building frontend test image" "$BLUE"
   if ! docker_build_image \
     "$FRONTEND_TEST_IMAGE" \
-    "$PROJECT_ROOT/frontend/Dockerfile.test" \
+    "$PROJECT_ROOT/docker/frontend.test.Dockerfile" \
     "$PROJECT_ROOT/frontend"; then
     print_status "FAIL" "Frontend test image build failed." "$RED"
     FAILURES=1
