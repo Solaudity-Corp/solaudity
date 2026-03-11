@@ -80,13 +80,15 @@ run_backend_tests() {
   fi
 
   print_status "RUN" "Running backend tests in Docker" "$BLUE"
-  if "$DOCKER_BIN" run --rm "$BACKEND_TEST_IMAGE"; then
+  local BACKEND_CONTAINER="solaudity-backend-test-$$"
+  if "$DOCKER_BIN" run --rm --name "$BACKEND_CONTAINER" "$BACKEND_TEST_IMAGE"; then
     print_status "PASS" "Backend tests passed." "$GREEN"
   else
     print_status "FAIL" "Backend tests failed." "$RED"
     FAILURES=1
   fi
 
+  "$DOCKER_BIN" rm -f "$BACKEND_CONTAINER" >/dev/null 2>&1 || true
   "$DOCKER_BIN" rmi "$BACKEND_TEST_IMAGE" >/dev/null 2>&1 || true
 }
 
@@ -105,13 +107,15 @@ run_frontend_tests() {
   fi
 
   print_status "RUN" "Running frontend tests in Docker" "$BLUE"
-  if "$DOCKER_BIN" run --rm "$FRONTEND_TEST_IMAGE"; then
+  local FRONTEND_CONTAINER="solaudity-frontend-test-$$"
+  if "$DOCKER_BIN" run --rm --name "$FRONTEND_CONTAINER" "$FRONTEND_TEST_IMAGE"; then
     print_status "PASS" "Frontend tests passed." "$GREEN"
   else
     print_status "FAIL" "Frontend tests failed." "$RED"
     FAILURES=1
   fi
 
+  "$DOCKER_BIN" rm -f "$FRONTEND_CONTAINER" >/dev/null 2>&1 || true
   "$DOCKER_BIN" rmi "$FRONTEND_TEST_IMAGE" >/dev/null 2>&1 || true
 }
 

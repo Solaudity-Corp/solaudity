@@ -15,7 +15,7 @@ Both run in parallel on PRs. Branch protection should require both to pass befor
 
 ### Frontend
 
-Runs in `frontend/` with Node 22:
+Runs in `frontend/` with Node 24:
 
 1. `npm ci` - install locked dependencies
 2. `npm run lint` - ESLint
