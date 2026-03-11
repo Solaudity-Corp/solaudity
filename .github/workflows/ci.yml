@@ -90,7 +90,7 @@ jobs:
 
             CRITICAL=$(jq -r '.metadata.vulnerabilities.critical // 0' audit-results.json)
             HIGH=$(jq -r '.metadata.vulnerabilities.high // 0' audit-results.json)
-            MODERATE=$(jq -r '.metadata.vulnerabilities.moderate // 0' audit-results.json)
+            MEDIUM=$(jq -r '.metadata.vulnerabilities.moderate // 0' audit-results.json)
             LOW=$(jq -r '.metadata.vulnerabilities.low // 0' audit-results.json)
             TOTAL=$(jq -r '.metadata.vulnerabilities.total // 0' audit-results.json)
 
@@ -98,19 +98,23 @@ jobs:
             echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
             echo "| Critical | $CRITICAL |" >> $GITHUB_STEP_SUMMARY
             echo "| High | $HIGH |" >> $GITHUB_STEP_SUMMARY
-            echo "| Moderate | $MODERATE |" >> $GITHUB_STEP_SUMMARY
+            echo "| Medium | $MEDIUM |" >> $GITHUB_STEP_SUMMARY
             echo "| Low | $LOW |" >> $GITHUB_STEP_SUMMARY
             echo "| **Total** | **$TOTAL** |" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
 
-            HIGH_PLUS=$((CRITICAL + HIGH))
-            if [ "$HIGH_PLUS" -gt 2 ] 2>/dev/null; then
-              echo "> **PR blocked:** $HIGH_PLUS critical/high vulnerabilities found (threshold: 2)" >> $GITHUB_STEP_SUMMARY
+            if [ "$CRITICAL" -gt 0 ] 2>/dev/null; then
+              echo "> **PR blocked:** $CRITICAL critical vulnerabilities found (threshold: 0)" >> $GITHUB_STEP_SUMMARY
               echo "" >> $GITHUB_STEP_SUMMARY
               echo "FRONTEND_VULN_BLOCKED=true" >> "$GITHUB_ENV"
             fi
-            if [ "$MODERATE" -gt 5 ] 2>/dev/null; then
-              echo "> **PR blocked:** $MODERATE moderate vulnerabilities found (threshold: 5)" >> $GITHUB_STEP_SUMMARY
+            if [ "$HIGH" -gt 1 ] 2>/dev/null; then
+              echo "> **PR blocked:** $HIGH high vulnerabilities found (threshold: 1)" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "FRONTEND_VULN_BLOCKED=true" >> "$GITHUB_ENV"
+            fi
+            if [ "$MEDIUM" -gt 3 ] 2>/dev/null; then
+              echo "> **PR blocked:** $MEDIUM medium vulnerabilities found (threshold: 3)" >> $GITHUB_STEP_SUMMARY
               echo "" >> $GITHUB_STEP_SUMMARY
               echo "FRONTEND_VULN_BLOCKED=true" >> "$GITHUB_ENV"
             fi
@@ -175,7 +179,7 @@ jobs:
             FAILED=1
           fi
           if [ "$FRONTEND_VULN_BLOCKED" == "true" ]; then
-            echo "Vulnerability thresholds exceeded (high >2 / medium >5 / low >10)"
+            echo "Vulnerability thresholds exceeded (critical >0 / high >1 / medium >3 / low >10)"
             FAILED=1
           fi
           if [ $FAILED -eq 1 ]; then
