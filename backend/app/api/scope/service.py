@@ -29,6 +29,7 @@ from app.api.scope.schemas import (
     ScopeContractListResponse,
     ScopeAddressListResponse,
 )
+from app.models.audits import Audit
 from app.models.scope import (
     ScopeSource,
     ScopeContract,
@@ -49,6 +50,10 @@ from app.models.scope import (
 
 class ScopeNotFoundError(Exception):
     """Raised when a scope record (source, contract or address) is not found."""
+
+
+class ScopeForbiddenError(Exception):
+    """Raised when a user tries to access a scope resource they do not own."""
 
 
 class ScopeConflictError(Exception):
@@ -127,9 +132,20 @@ def _ensure_address_exists(session: Session, address_id: UUID) -> ScopeAddress:
     return address
 
 
+def _ensure_audit_owned_by(session: Session, audit_id: UUID, owner_id: UUID) -> None:
+    """Verify that the given audit exists and belongs to owner_id.
+    Raises ScopeNotFoundError if the audit doesn't exist, ScopeForbiddenError if it belongs to another user.
+    """
+    audit = session.get(Audit, audit_id)
+    if audit is None:
+        raise ScopeNotFoundError(f"audit '{audit_id}' was not found")
+    if audit.owner_id != owner_id:
+        raise ScopeForbiddenError(f"audit '{audit_id}' does not belong to you")
+
+
 # ============================= Sources =============================
 
-def list_sources(session: Session, audit_id: UUID) -> ScopeSourceListResponse:
+def list_sources(session: Session, audit_id: UUID, owner_id: UUID) -> ScopeSourceListResponse:
     """List all sources for a given audit.
         Params :
             session: Database session dependency.
@@ -137,7 +153,7 @@ def list_sources(session: Session, audit_id: UUID) -> ScopeSourceListResponse:
         Returns:
             ScopeSourceListResponse: List of sources with total count.
     """
-    
+    _ensure_audit_owned_by(session, audit_id, owner_id)
     # Get total count of sources for the audit
     total = int(
         session.exec(
@@ -159,7 +175,7 @@ def list_sources(session: Session, audit_id: UUID) -> ScopeSourceListResponse:
     )
 
 
-def get_source(session: Session, source_id: UUID) -> ScopeSourceRead:
+def get_source(session: Session, source_id: UUID, owner_id: UUID) -> ScopeSourceRead:
     """Fetch one source by ID.
         Params:
             session: Database session dependency.
@@ -168,6 +184,7 @@ def get_source(session: Session, source_id: UUID) -> ScopeSourceRead:
             ScopeSourceRead: The source data mapped to the API read model.
     """
     source = _ensure_source_exists(session, source_id)
+    _ensure_audit_owned_by(session, source.audit_id, owner_id)
     return _to_source_read(source)
 
 
@@ -175,6 +192,7 @@ def create_source(
     session: Session,
     audit_id: UUID,
     payload: ScopeSourceCreate,
+    owner_id: UUID,
 ) -> ScopeSourceRead:
     """Create and persist a new scope source.
         Params:
@@ -184,6 +202,7 @@ def create_source(
         Returns:
             ScopeSourceRead: The newly created source data mapped to the API read model.
     """
+    _ensure_audit_owned_by(session, audit_id, owner_id)
     # Create a new ScopeSource instance
     source = ScopeSource(
         audit_id=audit_id,
@@ -208,6 +227,7 @@ def update_source(
     session: Session,
     source_id: UUID,
     payload: ScopeSourceUpdate,
+    owner_id: UUID,
 ) -> ScopeSourceRead:
     """Patch editable fields for an existing source. Only provided fields in the payload will be updated, allowing for partial updates.
         Params:
@@ -219,7 +239,8 @@ def update_source(
     """
     
     source = _ensure_source_exists(session, source_id)
-    
+    _ensure_audit_owned_by(session, source.audit_id, owner_id)
+
     # Creates a dict from the payload.
     # Only includes fields that were provided (exclude_unset=True) to allow for partial updates.
     patch_data = payload.model_dump(exclude_unset=True)
@@ -237,7 +258,7 @@ def update_source(
     return _to_source_read(source)
 
 
-def delete_source(session: Session, source_id: UUID) -> None:
+def delete_source(session: Session, source_id: UUID, owner_id: UUID) -> None:
     """Delete a source and its related contracts.
         Params:
             session: Database session dependency.
@@ -246,6 +267,7 @@ def delete_source(session: Session, source_id: UUID) -> None:
             None. The function performs a delete operation and does not return any data.
     """
     source = _ensure_source_exists(session, source_id)
+    _ensure_audit_owned_by(session, source.audit_id, owner_id)
 
     # Cascade delete contracts linked to this source
     contracts = session.exec(
@@ -263,6 +285,7 @@ def delete_source(session: Session, source_id: UUID) -> None:
 def list_contracts(
     session: Session,
     audit_id: UUID,
+    owner_id: UUID,
     *,
     in_scope: bool | None = None,
 ) -> ScopeContractListResponse:
@@ -275,6 +298,7 @@ def list_contracts(
             ScopeContractListResponse: List of contracts with total count and counts for in-scope and out-of-scope contracts.
     """
     
+    _ensure_audit_owned_by(session, audit_id, owner_id)
     # Gets all contracts for the audit
     base = select(ScopeContract).where(ScopeContract.audit_id == audit_id)
 
@@ -310,7 +334,7 @@ def list_contracts(
     )
 
 
-def get_contract(session: Session, contract_id: UUID) -> ScopeContractRead:
+def get_contract(session: Session, contract_id: UUID, owner_id: UUID) -> ScopeContractRead:
     """Fetch one contract by ID.
         Params:
             session: Database session dependency.
@@ -319,6 +343,7 @@ def get_contract(session: Session, contract_id: UUID) -> ScopeContractRead:
             ScopeContractRead: The contract data mapped to the API read model.
     """
     contract = _ensure_contract_exists(session, contract_id)
+    _ensure_audit_owned_by(session, contract.audit_id, owner_id)
     return _to_contract_read(contract)
 
 
@@ -359,8 +384,9 @@ def update_contract(
     session: Session,
     contract_id: UUID,
     payload: ScopeContractUpdate,
+    owner_id: UUID,
 ) -> ScopeContractRead:
-    """ Patch editable fields for an existing contract. 
+    """ Patch editable fields for an existing contract.
         Only provided fields in the payload will be updated, allowing for partial updates.
         Params:
             session: Database session dependency.
@@ -369,9 +395,10 @@ def update_contract(
         Returns:
             ScopeContractRead: The updated contract data mapped to the API read model.
     """
-    
+
     contract = _ensure_contract_exists(session, contract_id)
-    
+    _ensure_audit_owned_by(session, contract.audit_id, owner_id)
+
     # Creates a dict from the payload.
     # Only includes fields that were provided (exclude_unset=True) to allow for partial updates
     patch_data = payload.model_dump(exclude_unset=True)
@@ -388,7 +415,7 @@ def update_contract(
     return _to_contract_read(contract)
 
 
-def delete_contract(session: Session, contract_id: UUID) -> None:
+def delete_contract(session: Session, contract_id: UUID, owner_id: UUID) -> None:
     """Delete a contract.
         Params:
             session: Database session dependency.
@@ -397,6 +424,7 @@ def delete_contract(session: Session, contract_id: UUID) -> None:
             None. The function performs a delete operation and does not return any data.
     """
     contract = _ensure_contract_exists(session, contract_id)
+    _ensure_audit_owned_by(session, contract.audit_id, owner_id)
     session.delete(contract)
     _commit(session)
 
@@ -406,6 +434,7 @@ def delete_contract(session: Session, contract_id: UUID) -> None:
 def list_addresses(
     session: Session,
     audit_id: UUID,
+    owner_id: UUID,
     *,
     address_type: AddressType | None = None,
 ) -> ScopeAddressListResponse:
@@ -415,9 +444,10 @@ def list_addresses(
             audit_id: Unique identifier for the audit to which the addresses belong.
             address_type: Optional string to filter addresses by their type (e.g. deployment, proxy...). If None, no filtering is applied.
         Returns:
-            ScopeAddressListResponse: List of addresses with total count.        
+            ScopeAddressListResponse: List of addresses with total count.
         ## TODO:
         - [ ] Ajouter filtre `chain_id: int | None`    """
+    _ensure_audit_owned_by(session, audit_id, owner_id)
     # Gets all addresses for the audit
     base = select(ScopeAddress).where(ScopeAddress.audit_id == audit_id)
 
@@ -440,7 +470,7 @@ def list_addresses(
     )
 
 
-def get_address(session: Session, address_id: UUID) -> ScopeAddressRead:
+def get_address(session: Session, address_id: UUID, owner_id: UUID) -> ScopeAddressRead:
     """Fetch one address by ID.
         Params:
             session: Database session dependency.
@@ -449,6 +479,7 @@ def get_address(session: Session, address_id: UUID) -> ScopeAddressRead:
             ScopeAddressRead: The address data mapped to the API read model.
     """
     address = _ensure_address_exists(session, address_id)
+    _ensure_audit_owned_by(session, address.audit_id, owner_id)
     return _to_address_read(address)
 
 
@@ -456,6 +487,7 @@ def create_address(
     session: Session,
     audit_id: UUID,
     payload: ScopeAddressCreate,
+    owner_id: UUID,
 ) -> ScopeAddressRead:
     """Create and persist a new scope address.
         Params:
@@ -466,7 +498,8 @@ def create_address(
             ScopeAddressRead: The newly created address data mapped to the API read model.
     """
     
-    # Creates a new ScopeAddress instance 
+    _ensure_audit_owned_by(session, audit_id, owner_id)
+    # Creates a new ScopeAddress instance
     address = ScopeAddress(
         audit_id=audit_id,
         address=payload.address,
@@ -490,6 +523,7 @@ def update_address(
     session: Session,
     address_id: UUID,
     payload: ScopeAddressUpdate,
+    owner_id: UUID,
 ) -> ScopeAddressRead:
     """Patch editable fields for an existing address.
         Params:
@@ -499,8 +533,8 @@ def update_address(
         Returns:
             ScopeAddressRead: The updated address data mapped to the API read model.
     """
-    
     address = _ensure_address_exists(session, address_id)
+    _ensure_audit_owned_by(session, address.audit_id, owner_id)
     # Creates a dict from the payload.
     # Only includes fields that were provided (exclude_unset=True) to allow for partial updates
     patch_data = payload.model_dump(exclude_unset=True)
@@ -517,7 +551,7 @@ def update_address(
     return _to_address_read(address)
 
 
-def delete_address(session: Session, address_id: UUID) -> None:
+def delete_address(session: Session, address_id: UUID, owner_id: UUID) -> None:
     """Delete an address.
         Params:
             session: Database session dependency.
@@ -526,6 +560,7 @@ def delete_address(session: Session, address_id: UUID) -> None:
             None. The function performs a delete operation and does not return any data.
     """
     address = _ensure_address_exists(session, address_id)
+    _ensure_audit_owned_by(session, address.audit_id, owner_id)
     session.delete(address)
     _commit(session)
 
@@ -964,7 +999,7 @@ def _fetch_github(
 
 # ============================= Other Functions =============================
 
-def trigger_fetch(session: Session, source_id: UUID) -> ScopeSourceRead:
+def trigger_fetch(session: Session, source_id: UUID, owner_id: UUID) -> ScopeSourceRead:
     """Trigger fetching code from an external source (GitHub, Etherscan, etc.).
     
     This function initiates the fetch process for a source. The actual fetching
@@ -983,7 +1018,8 @@ def trigger_fetch(session: Session, source_id: UUID) -> ScopeSourceRead:
     - [ ] Add async/background job support for long-running fetches
     """
     source = _ensure_source_exists(session, source_id)
-    
+    _ensure_audit_owned_by(session, source.audit_id, owner_id)
+
     # Update status to fetching
     source.fetch_status = FetchStatus.fetching
     session.add(source)
@@ -1042,6 +1078,7 @@ def upload_contract(
     file_content: bytes,
     filename: str,
     metadata: ScopeContractUpload,
+    owner_id: UUID,
     source_id: UUID | None = None,
 ) -> ScopeContractRead:
     """Upload and store a .sol file, creating a ScopeContract entry.
@@ -1063,6 +1100,7 @@ def upload_contract(
     - [ ] Add .sol extension validation
     - [ ] Support .zip upload with multiple files
     """
+    _ensure_audit_owned_by(session, audit_id, owner_id)
     # Decode content
     try:
         content_str = file_content.decode("utf-8")
@@ -1119,7 +1157,7 @@ def upload_contract(
     return _to_contract_read(contract)
 
 
-def get_contract_content(session: Session, contract_id: UUID) -> bytes:
+def get_contract_content(session: Session, contract_id: UUID, owner_id: UUID) -> bytes:
     """Retrieve the raw content of a stored contract file.
     
     Params:
@@ -1131,7 +1169,8 @@ def get_contract_content(session: Session, contract_id: UUID) -> bytes:
         ScopeNotFoundError: If contract doesn't exist or file is missing.
     """
     contract = _ensure_contract_exists(session, contract_id)
-    
+    _ensure_audit_owned_by(session, contract.audit_id, owner_id)
+
     storage_path = CONTRACTS_STORAGE_DIR / contract.storage_key
     
     if not storage_path.exists():
@@ -1140,7 +1179,7 @@ def get_contract_content(session: Session, contract_id: UUID) -> bytes:
     return storage_path.read_bytes()
 
 
-def fetch_verified_code(session: Session, address_id: UUID) -> ScopeAddressRead:
+def fetch_verified_code(session: Session, address_id: UUID, owner_id: UUID) -> ScopeAddressRead:
     """Fetch verified source code for an onchain address from block explorer.
     
     If the address has verified source code on Etherscan (or other explorer),
@@ -1161,7 +1200,8 @@ def fetch_verified_code(session: Session, address_id: UUID) -> ScopeAddressRead:
     - [ ] Auto-fetch implementation contract if proxy
     """
     address = _ensure_address_exists(session, address_id)
-    
+    _ensure_audit_owned_by(session, address.audit_id, owner_id)
+
     # TODO: Implement actual Etherscan API call
     # result = explorer_fetcher.get_verified_source(address.address, address.chain_id)
     # 
