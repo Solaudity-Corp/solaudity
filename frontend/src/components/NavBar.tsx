@@ -2,7 +2,8 @@ import { css } from 'styled-system/css'
 import { Box, Flex, Stack } from 'styled-system/jsx'
 import { Settings2 } from 'lucide-react'
 import { Menu, NavLink } from '@/components/ui'
-import { darkMenuContentClass, darkMenuItemClass } from '@/components/ui/menu.styles'
+import { darkMenuContentClass, darkMenuItemClass, disconnectMenuItemClass } from '@/components/ui/menu.styles'
+import { logoutUser } from '../auth'
 import { SvgLogo } from './SvgLogo'
 
 export type MenuSection = 'audits' | 'reports' | 'activity'
@@ -152,6 +153,9 @@ export function NavBar({
               <Menu.Content className={darkMenuContentClass}>
                 <Menu.Item value="profile" className={darkMenuItemClass} onClick={() => onOpenProfile?.()}>
                   Profile
+                </Menu.Item>
+                <Menu.Item value="logout" className={disconnectMenuItemClass} onClick={() => logoutUser()}>
+                  Disconnect
                 </Menu.Item>
               </Menu.Content>
             </Menu.Positioner>

@@ -22,9 +22,35 @@ export const darkMenuItemClass = css({
     bg: 'rgba(42, 42, 50, 0.92)',
     color: 'rgba(243, 241, 248, 0.98)',
   },
+  _highlighted: {
+    bg: 'rgba(42, 42, 50, 0.92)',
+    color: 'rgba(243, 241, 248, 0.98)',
+  },
   _focusVisible: {
     bg: 'rgba(42, 42, 50, 0.92)',
     color: 'rgba(243, 241, 248, 0.98)',
+  },
+})
+
+export const disconnectMenuItemClass = css({
+  px: '3',
+  py: '2',
+  borderRadius: '8px',
+  color: 'rgba(255, 78, 78, 0.9)',
+  fontSize: 'sm',
+  lineHeight: '1.4',
+  cursor: 'pointer',
+  _hover: {
+    bg: 'rgba(255, 78, 78, 0.1)',
+    color: 'rgba(255, 100, 100, 1)',
+  },
+  _highlighted: {
+    bg: 'rgba(255, 78, 78, 0.1)',
+    color: 'rgba(255, 100, 100, 1)',
+  },
+  _focusVisible: {
+    bg: 'rgba(255, 78, 78, 0.1)',
+    color: 'rgba(255, 100, 100, 1)',
   },
 })
 
