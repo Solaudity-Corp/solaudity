@@ -275,7 +275,7 @@ def auth_user(user_in: UserLogin, session: Session = Depends(get_session)):
     if not db_user or not verify_password(user_in.password,db_user.password_hash) :
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid credentials"
+            detail="Invalid username or password."
         )
         
     jwt_token = create_access_token(data={"sub": db_user.username})        
