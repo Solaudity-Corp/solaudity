@@ -4,11 +4,13 @@ import hashlib
 import io
 import os
 import re
+import shutil
 import tarfile
 from pathlib import Path
 from urllib.parse import urlparse
 from uuid import UUID, uuid4
 
+import zipfile
 import httpx
 import sqlalchemy as sa
 from sqlalchemy.exc import IntegrityError
@@ -269,11 +271,12 @@ def delete_source(session: Session, source_id: UUID, owner_id: UUID) -> None:
     source = _ensure_source_exists(session, source_id)
     _ensure_audit_owned_by(session, source.audit_id, owner_id)
 
-    # Cascade delete contracts linked to this source
+    # Cascade delete contracts linked to this source (including their files on disk)
     contracts = session.exec(
         select(ScopeContract).where(ScopeContract.source_id == source_id)
     ).all()
     for contract in contracts:
+        _delete_contract_file(contract)
         session.delete(contract)
 
     session.delete(source)
@@ -425,6 +428,7 @@ def delete_contract(session: Session, contract_id: UUID, owner_id: UUID) -> None
     """
     contract = _ensure_contract_exists(session, contract_id)
     _ensure_audit_owned_by(session, contract.audit_id, owner_id)
+    _delete_contract_file(contract)
     session.delete(contract)
     _commit(session)
 
@@ -565,6 +569,36 @@ def delete_address(session: Session, address_id: UUID, owner_id: UUID) -> None:
     _commit(session)
 
 
+def delete_all_scope_for_audit(session: Session, audit_id: UUID, owner_id: UUID) -> None:
+    """Delete all scope data (contracts + disk files, sources, addresses) for an audit."""
+    _ensure_audit_owned_by(session, audit_id, owner_id)
+
+    contracts = session.exec(
+        select(ScopeContract).where(ScopeContract.audit_id == audit_id)
+    ).all()
+    for contract in contracts:
+        session.delete(contract)
+
+    sources = session.exec(
+        select(ScopeSource).where(ScopeSource.audit_id == audit_id)
+    ).all()
+    for source in sources:
+        session.delete(source)
+
+    addresses = session.exec(
+        select(ScopeAddress).where(ScopeAddress.audit_id == audit_id)
+    ).all()
+    for address in addresses:
+        session.delete(address)
+
+    _commit(session)
+
+    # Remove the entire audit storage directory from disk
+    audit_dir = CONTRACTS_STORAGE_DIR / str(audit_id)
+    if audit_dir.exists():
+        shutil.rmtree(audit_dir, ignore_errors=True)
+
+
 ##############################################################################################################
 # PHASE 2 - EXTERNAL FETCHING & FILE MANAGEMENT
 ##############################################################################################################
@@ -687,6 +721,13 @@ def _extract_license(content: str) -> str | None:
 #         if re.search(pattern, file_path):
 #             return False, f"matches pattern: {pattern}"
 #     return True, None
+
+
+def _delete_contract_file(contract: ScopeContract) -> None:
+    """Delete the stored .sol file for a contract from disk. Silently ignores missing files."""
+    storage_path = CONTRACTS_STORAGE_DIR / contract.storage_key
+    if storage_path.exists():
+        storage_path.unlink()
 
 
 def _ensure_storage_dir(audit_id: UUID) -> Path:
@@ -951,10 +992,21 @@ def _fetch_github(
             continue
         
         content_hash = _compute_sha256(content)
+
+        # Skip if this exact file content already exists in this audit
+        existing = session.exec(
+            select(ScopeContract).where(
+                ScopeContract.audit_id == source.audit_id,
+                ScopeContract.content_hash == content_hash,
+            )
+        ).first()
+        if existing:
+            continue
+
         sloc = _count_sloc(content_str)
         compiler_version = _extract_solidity_version(content_str)
         license_id = _extract_license(content_str)
-        
+
         # Generate storage key and save file
         file_uuid = uuid4()
         storage_key = f"{source.audit_id}/{file_uuid}.sol"
@@ -1080,8 +1132,9 @@ def upload_contract(
     metadata: ScopeContractUpload,
     owner_id: UUID,
     source_id: UUID | None = None,
-) -> ScopeContractRead:
-    """Upload and store a .sol file, creating a ScopeContract entry.
+    explicit_file_path: str | None = None,
+) -> list[ScopeContractRead]:
+    """Upload and store a .sol, .zip, or .tar file, creating ScopeContract entries.
     
     This function handles manual file uploads from users.
     
@@ -1089,72 +1142,127 @@ def upload_contract(
         session: Database session dependency.
         audit_id: Unique identifier for the audit.
         file_content: Raw bytes of the uploaded file.
-        filename: Original filename (e.g., "Token.sol").
+        filename: Original filename (e.g., "Token.sol" or "contracts.zip").
         metadata: Upload metadata (is_in_scope, scope_reason).
         source_id: Optional source ID if the file comes from a fetched source.
+        explicit_file_path: Optional full path from frontend drag-and-drop.
     Returns:
-        ScopeContractRead: The newly created contract.
+        list[ScopeContractRead]: The newly created contracts.
     
     ## TODO:
     - [ ] Add file size limit validation
-    - [ ] Add .sol extension validation
-    - [ ] Support .zip upload with multiple files
     """
     _ensure_audit_owned_by(session, audit_id, owner_id)
-    # Decode content
-    try:
-        content_str = file_content.decode("utf-8")
-    except UnicodeDecodeError:
-        raise ScopeValidationError([{"loc": ["file"], "msg": "File must be valid UTF-8"}])
     
-    # Compute hash and metadata
-    content_hash = _compute_sha256(file_content)
-    sloc = _count_sloc(content_str)
-    compiler_version = _extract_solidity_version(content_str)
-    license_id = _extract_license(content_str)
+    created_contracts = []
     
-    # For now, assume that all uploaded files are not in scope
-    is_in_scope = metadata.is_in_scope
-    scope_reason = metadata.scope_reason
+    # Helper to process a single file buffer
+    def _process_single_sol(content: bytes, path_name: str):
+        if not path_name.endswith('.sol'):
+            return # Skip non-solidity files
+
+        # Filter out common metadata / hidden directories
+        if '__MACOSX' in path_name or '/.git/' in path_name or path_name.startswith('.'):
+            return
+
+        try:
+            content_str = content.decode("utf-8")
+        except UnicodeDecodeError:
+            return  # Skip silently if not valid utf-8
+
+        # Compute hash and check for duplicates within this audit
+        content_hash = _compute_sha256(content)
+        existing = session.exec(
+            select(ScopeContract).where(
+                ScopeContract.audit_id == audit_id,
+                ScopeContract.content_hash == content_hash,
+            )
+        ).first()
+        if existing:
+            return  # Skip duplicate
+
+        sloc = _count_sloc(content_str)
+        compiler_version = _extract_solidity_version(content_str)
+
+        # Determine scope from metadata
+        is_in_scope = metadata.is_in_scope
+        scope_reason = metadata.scope_reason
+        
+        # Store file on disk
+        try:
+            _ensure_storage_dir(audit_id)
+        except OSError as exc:
+            raise ScopeValidationError(
+                [{"loc": ["storage"], "msg": f"Cannot create storage directory: {exc}"}]
+            ) from exc
+        
+        file_uuid = uuid4()
+        storage_key = f"{audit_id}/{file_uuid}.sol"
+        storage_path = CONTRACTS_STORAGE_DIR / storage_key
+        
+        try:
+            storage_path.write_bytes(content)
+        except OSError as exc:
+            raise ScopeValidationError(
+                [{"loc": ["storage"], "msg": f"Cannot write file to disk: {exc}"}]
+            ) from exc
+        
+        # Create contract in DB
+        contract = ScopeContract(
+            audit_id=audit_id,
+            source_id=source_id,
+            file_path=path_name,
+            file_name=os.path.basename(path_name),
+            content_hash=content_hash,
+            storage_key=storage_key,
+            sloc=sloc,
+            is_in_scope=is_in_scope,
+            scope_reason=scope_reason,
+            compiler_version=compiler_version,
+            license=_extract_license(content_str),
+        )
+        session.add(contract)
+        created_contracts.append(contract)
+
+    # Detect file type based on name or explicit extension
+    lower_filename = filename.lower()
+    if lower_filename.endswith('.zip'):
+        try:
+            with zipfile.ZipFile(io.BytesIO(file_content)) as z:
+                for zinfo in z.infolist():
+                    if not zinfo.is_dir():
+                        _process_single_sol(z.read(zinfo.filename), zinfo.filename)
+        except zipfile.BadZipFile:
+            raise ScopeValidationError([{"loc": ["file"], "msg": "Invalid ZIP archive."}])
+            
+    elif lower_filename.endswith('.tar') or lower_filename.endswith('.tar.gz') or lower_filename.endswith('.tgz'):
+        try:
+            # Determine read mode
+            mode = "r:gz" if lower_filename.endswith("gz") else "r"
+            with tarfile.open(fileobj=io.BytesIO(file_content), mode=mode) as t:
+                for tinfo in t:
+                    if tinfo.isreg(): # Is regular file
+                        f = t.extractfile(tinfo)
+                        if f:
+                            _process_single_sol(f.read(), tinfo.name)
+        except tarfile.TarError:
+            raise ScopeValidationError([{"loc": ["file"], "msg": "Invalid TAR archive."}])
+            
+    else:
+        # Standard fallback for single .sol file
+        used_path = explicit_file_path if explicit_file_path else filename
+        _process_single_sol(file_content, used_path)
     
-    # Store file on disk
-    try:
-        _ensure_storage_dir(audit_id)
-    except OSError as exc:
-        raise ScopeValidationError(
-            [{"loc": ["storage"], "msg": f"Cannot create storage directory: {exc}"}]
-        ) from exc
-    
-    file_uuid = uuid4()
-    storage_key = f"{audit_id}/{file_uuid}.sol"
-    storage_path = CONTRACTS_STORAGE_DIR / storage_key
-    
-    try:
-        storage_path.write_bytes(file_content)
-    except OSError as exc:
-        raise ScopeValidationError(
-            [{"loc": ["storage"], "msg": f"Cannot write file to disk: {exc}"}]
-        ) from exc
-    
-    # Create contract in DB
-    contract = ScopeContract(
-        audit_id=audit_id,
-        source_id=source_id,
-        file_path=filename,
-        file_name=filename,
-        content_hash=content_hash,
-        storage_key=storage_key,
-        sloc=sloc,
-        is_in_scope=is_in_scope,
-        scope_reason=scope_reason,
-        compiler_version=compiler_version,
-        license=license_id,
-    )
-    
-    session.add(contract)
+    if not created_contracts:
+         raise ScopeValidationError([{"loc": ["file"], "msg": "No valid .sol files found in upload."}])
+         
     _commit(session)
-    session.refresh(contract)
-    return _to_contract_read(contract)
+    
+    # Refresh all to ensure defaults/IDs are loaded
+    for c in created_contracts:
+        session.refresh(c)
+        
+    return [_to_contract_read(c) for c in created_contracts]
 
 
 def get_contract_content(session: Session, contract_id: UUID, owner_id: UUID) -> bytes:
