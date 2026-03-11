@@ -13,7 +13,8 @@ function normalizePathname(pathname: string): AppPath {
   if (normalized === '/' || normalized === '/login') return '/login'
   if (normalized === '/register') return '/register'
   if (normalized === '/profile') return '/profile'
-  if (normalized === '/menu' || normalized === '/menu/') return '/menu/audits'
+  if (normalized === '/menu' || normalized === '/menu/') return '/menu/dashboard'
+  if (normalized === '/menu/dashboard') return '/menu/dashboard'
   if (normalized === '/menu/audits') return '/menu/audits'
   if (normalized === '/menu/reports') return '/menu/reports'
   if (normalized === '/menu/activity') return '/menu/activity'
@@ -60,7 +61,7 @@ export default function App() {
 
   const handleAuthSuccess = () => {
     setIsAuthenticated(true)
-    navigate('/menu/audits', true)
+    navigate('/menu/dashboard', true)
   }
 
   // Auth guard: redirect during render (React-approved setState-during-render pattern)
@@ -70,8 +71,8 @@ export default function App() {
     return null
   }
   if (isAuthenticated && (pathname === '/login' || pathname === '/register')) {
-    window.history.replaceState(null, '', '/menu/audits')
-    setPathname('/menu/audits')
+    window.history.replaceState(null, '', '/menu/dashboard')
+    setPathname('/menu/dashboard')
     return null
   }
 

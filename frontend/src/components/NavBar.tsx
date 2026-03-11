@@ -6,7 +6,7 @@ import { darkMenuContentClass, darkMenuItemClass, disconnectMenuItemClass } from
 import { logoutUser } from '../auth'
 import { SvgLogo } from './SvgLogo'
 
-export type MenuSection = 'audits' | 'reports' | 'activity'
+export type MenuSection = 'dashboard' | 'audits' | 'reports' | 'activity'
 
 interface NavBarProps {
   activeSection: MenuSection
@@ -75,7 +75,19 @@ export function NavBar({
             </Stack>
           </button>
 
-          <Box>
+          <Box
+            onClick={() => onNavigate('dashboard')}
+            className={css({ cursor: 'pointer' })}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                onNavigate('dashboard')
+              }
+            }}
+            aria-label="Go to main page"
+          >
             <SvgLogo
               width={120}
               height={34}
