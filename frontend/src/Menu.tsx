@@ -4,8 +4,9 @@ import { Box, Flex, Stack } from 'styled-system/jsx'
 import { Card } from './components/ui'
 import { AuditsWorkspace } from './audits/AuditsWorkspace'
 import { type MenuSection, NavBar } from './components/NavBar'
+import { DashboardWorkspace } from './dashboard/DashboardWorkspace'
 
-export type MenuPath = '/menu/audits' | '/menu/reports' | '/menu/activity'
+export type MenuPath = '/menu/dashboard' | '/menu/audits' | '/menu/reports' | '/menu/activity'
 
 interface MenuProps {
   path: MenuPath
@@ -14,9 +15,10 @@ interface MenuProps {
 }
 
 function sectionFromPath(path: MenuPath): MenuSection {
+  if (path === '/menu/audits') return 'audits'
   if (path === '/menu/reports') return 'reports'
   if (path === '/menu/activity') return 'activity'
-  return 'audits'
+  return 'dashboard'
 }
 
 export default function Menu({ path, onNavigate, onOpenProfile }: MenuProps) {
@@ -42,9 +44,10 @@ export default function Menu({ path, onNavigate, onOpenProfile }: MenuProps) {
         onNavigate={navigateBySection}
         onOpenProfile={onOpenProfile}
       />
+      {activeSection === 'dashboard' && <DashboardWorkspace onNavigate={navigateBySection} />}
       {activeSection === 'audits' && <AuditsWorkspace searchQuery={search} />}
 
-      {activeSection !== 'audits' && (
+      {(activeSection === 'reports' || activeSection === 'activity') && (
         <Flex flex="1" px={{ base: '4', md: '8' }} py={{ base: '5', md: '7' }}>
           <Card.Root
             variant="outline"
