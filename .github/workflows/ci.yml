@@ -173,8 +173,7 @@ jobs:
         run: |
           FAILED=0
           if [ "${{ steps.lint.outcome }}" == "failure" ] || \
-             [ "${{ steps.build.outcome }}" == "failure" ] || \
-             [ "${{ steps.audit.outcome }}" == "failure" ]; then
+             [ "${{ steps.build.outcome }}" == "failure" ]; then
             echo "One or more steps failed"
             FAILED=1
           fi

@@ -79,7 +79,7 @@ function getParsedDetail(payload: unknown): unknown {
   return payload
 }
 
-function redirectToLoginAfterUnauthorized() {
+export function logoutUser(): void {
   clearAccessToken()
   if (typeof window === 'undefined') return
   if (window.location.pathname.toLowerCase() !== '/login') {
@@ -119,7 +119,7 @@ async function requestAuthJson<T>(path: string, init?: RequestInit): Promise<T> 
 async function requestAuthedJson<T>(path: string, init?: RequestInit): Promise<T> {
   const token = getAccessToken()
   if (!token) {
-    redirectToLoginAfterUnauthorized()
+    logoutUser()
     throw new AuthApiError(401, 'Not authenticated.')
   }
 
@@ -146,7 +146,7 @@ async function requestAuthedJson<T>(path: string, init?: RequestInit): Promise<T
 
   if (!response.ok) {
     if (response.status === 401) {
-      redirectToLoginAfterUnauthorized()
+      logoutUser()
     }
     throw new AuthApiError(response.status, getParsedDetail(parsed))
   }
