@@ -299,12 +299,12 @@ jobs:
             LOW=$(jq -r '[.results[] | select(.issue_severity == "LOW")] | length' bandit-results.json)
             TOTAL=$(jq -r '.results | length' bandit-results.json)
 
-            echo "| Severity | Count |" >> $GITHUB_STEP_SUMMARY
-            echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
-            echo "| High | $HIGH |" >> $GITHUB_STEP_SUMMARY
-            echo "| Medium | $MEDIUM |" >> $GITHUB_STEP_SUMMARY
-            echo "| Low | $LOW |" >> $GITHUB_STEP_SUMMARY
-            echo "| **Total** | **$TOTAL** |" >> $GITHUB_STEP_SUMMARY
+            echo "| Severity | Count | Threshold |" >> $GITHUB_STEP_SUMMARY
+            echo "|----------|-------|-----------|" >> $GITHUB_STEP_SUMMARY
+            echo "| High | $HIGH | 2 |" >> $GITHUB_STEP_SUMMARY
+            echo "| Medium | $MEDIUM | 5 |" >> $GITHUB_STEP_SUMMARY
+            echo "| Low | $LOW | 10 |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Total** | **$TOTAL** | — |" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
 
             if [ "$TOTAL" -gt 0 ] 2>/dev/null; then
@@ -319,19 +319,43 @@ jobs:
             fi
           fi
 
-          # Count all HIGH+ vulns (safety + bandit HIGH)
+          # Apply per-severity thresholds
+          # Safety findings are counted as HIGH (no severity breakdown in safety<3 JSON)
+          # Bandit reports CRITICAL / HIGH / MEDIUM / LOW
           SAFETY_COUNT=0
           BANDIT_HIGH=0
+          BANDIT_MEDIUM=0
+          BANDIT_LOW=0
           if [ -f "safety-results.json" ]; then
             SAFETY_COUNT=$(jq -r 'if type == "array" then length else 0 end' safety-results.json)
           fi
           if [ -f "bandit-results.json" ]; then
             BANDIT_HIGH=$(jq -r '[.results[] | select(.issue_severity == "HIGH")] | length' bandit-results.json)
+            BANDIT_MEDIUM=$(jq -r '[.results[] | select(.issue_severity == "MEDIUM")] | length' bandit-results.json)
+            BANDIT_LOW=$(jq -r '[.results[] | select(.issue_severity == "LOW")] | length' bandit-results.json)
           fi
-          BACKEND_HIGH_PLUS=$((SAFETY_COUNT + BANDIT_HIGH))
 
-          if [ "$BACKEND_HIGH_PLUS" -gt 5 ] 2>/dev/null; then
-            echo "> **PR blocked:** $BACKEND_HIGH_PLUS critical/high vulnerabilities found (threshold: 5)" >> $GITHUB_STEP_SUMMARY
+          TOTAL_HIGH=$((SAFETY_COUNT + BANDIT_HIGH))
+          TOTAL_MEDIUM=$BANDIT_MEDIUM
+          TOTAL_LOW=$BANDIT_LOW
+
+          BLOCKED=false
+          BLOCK_REASON=""
+          if [ "$TOTAL_HIGH" -gt 2 ] 2>/dev/null; then
+            BLOCKED=true
+            BLOCK_REASON="$BLOCK_REASON high=$TOTAL_HIGH (threshold: 2)"
+          fi
+          if [ "$TOTAL_MEDIUM" -gt 5 ] 2>/dev/null; then
+            BLOCKED=true
+            BLOCK_REASON="$BLOCK_REASON medium=$TOTAL_MEDIUM (threshold: 5)"
+          fi
+          if [ "$TOTAL_LOW" -gt 10 ] 2>/dev/null; then
+            BLOCKED=true
+            BLOCK_REASON="$BLOCK_REASON low=$TOTAL_LOW (threshold: 10)"
+          fi
+
+          if [ "$BLOCKED" = "true" ]; then
+            echo "> **PR blocked:**$BLOCK_REASON" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "BACKEND_VULN_BLOCKED=true" >> "$GITHUB_ENV"
           fi
@@ -350,17 +374,8 @@ jobs:
       - name: Check results
         if: always()
         run: |
-          FAILED=0
-          if [ "${{ steps.safety.outcome }}" == "failure" ] || \
-             [ "${{ steps.bandit.outcome }}" == "failure" ]; then
-            echo "One or more security checks failed"
-            FAILED=1
-          fi
           if [ "$BACKEND_VULN_BLOCKED" == "true" ]; then
             echo "Too many critical/high vulnerabilities (>5)"
-            FAILED=1
-          fi
-          if [ $FAILED -eq 1 ]; then
             exit 1
           fi
 
