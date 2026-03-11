@@ -92,7 +92,6 @@ describe('Profile', () => {
 
     const emailInput = await screen.findByDisplayValue('alice@example.com')
 
-    fireEvent.click(screen.getByRole('button', { name: /edit email/i }))
     fireEvent.change(emailInput, { target: { value: 'new@example.com' } })
     fireEvent.click(screen.getByRole('button', { name: /save email/i }))
 
