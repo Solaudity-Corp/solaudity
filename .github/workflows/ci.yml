@@ -299,12 +299,12 @@ jobs:
             LOW=$(jq -r '[.results[] | select(.issue_severity == "LOW")] | length' bandit-results.json)
             TOTAL=$(jq -r '.results | length' bandit-results.json)
 
-            echo "| Severity | Count | Threshold |" >> $GITHUB_STEP_SUMMARY
+            echo "| Severity | Count |" >> $GITHUB_STEP_SUMMARY
             echo "|----------|-------|-----------|" >> $GITHUB_STEP_SUMMARY
-            echo "| High | $HIGH | 2 |" >> $GITHUB_STEP_SUMMARY
-            echo "| Medium | $MEDIUM | 5 |" >> $GITHUB_STEP_SUMMARY
-            echo "| Low | $LOW | 10 |" >> $GITHUB_STEP_SUMMARY
-            echo "| **Total** | **$TOTAL** | — |" >> $GITHUB_STEP_SUMMARY
+            echo "| High | $HIGH |" >> $GITHUB_STEP_SUMMARY
+            echo "| Medium | $MEDIUM |" >> $GITHUB_STEP_SUMMARY
+            echo "| Low | $LOW |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Total** | **$TOTAL** |" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
 
             if [ "$TOTAL" -gt 0 ] 2>/dev/null; then
