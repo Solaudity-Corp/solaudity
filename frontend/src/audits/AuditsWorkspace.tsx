@@ -3,6 +3,7 @@ import { css, cx } from 'styled-system/css'
 import { Box, Flex, Grid, Stack } from 'styled-system/jsx'
 import { ArrowUpRight, ChevronDown, CircleDot, Clock3, GitBranch, Link2, Paperclip, Pin, Plus, Sparkles, Trash2, X } from 'lucide-react'
 import { AccentLink, Badge, Button, Card, Field, Input } from '../components/ui'
+import SlideButton from '../components/SlideButton'
 import {
   ApiError,
   createAudit as createAuditRequest,
@@ -13,6 +14,7 @@ import {
   listAudits,
   markAuditOpened,
   setAuditPin,
+  updateAudit as updateAuditRequest,
 } from './api'
 import { type AuditRecord, type AuditStatus } from './types'
 
@@ -249,13 +251,20 @@ function getCreateAuditServerErrors(error: unknown): CreateAuditFormErrors {
 }
 
 function formatRelativeTime(date: string) {
-  const diffMs = Date.now() - new Date(date).getTime()
+  // Ensure date is parsed as UTC if backend omits timezone indicator
+  const safeDate = date.endsWith('Z') || date.includes('+') ? date : `${date}Z`
+  const diffMs = Date.now() - new Date(safeDate).getTime()
+
   const minute = 60_000
   const hour = 60 * minute
   const day = 24 * hour
 
+  if (diffMs < 0) return 'Just now'
   if (diffMs < hour) return `${Math.max(1, Math.floor(diffMs / minute))}m ago`
-  if (diffMs < day) return `${Math.floor(diffMs / hour)}h ago`
+
+  const h = Math.floor(diffMs / hour)
+  if (h < 100) return `${h}h ago`
+
   return `${Math.floor(diffMs / day)}d ago`
 }
 
@@ -374,7 +383,14 @@ export function AuditsWorkspace({ searchQuery }: AuditsWorkspaceProps) {
   const [isExtractingFields, setIsExtractingFields] = useState(false)
   const fetchRequestIdRef = useRef(0)
 
-  const filteredAudits = audits
+  const filteredAudits = useMemo(() => {
+    return [...audits].sort((a, b) => {
+      if (a.is_pinned !== b.is_pinned) {
+        return a.is_pinned ? -1 : 1
+      }
+      return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
+    })
+  }, [audits])
 
   const selectedAudit = useMemo(
     () => filteredAudits.find((audit) => audit.id === selectedAuditId) ?? filteredAudits[0] ?? null,
@@ -572,8 +588,8 @@ export function AuditsWorkspace({ searchQuery }: AuditsWorkspaceProps) {
       const normalizedMessage = message.toLowerCase()
       setExtractNeedsProfileSetup(
         normalizedMessage.includes('ai provider is not configured') ||
-          normalizedMessage.includes('ai api key is not configured') ||
-          normalizedMessage.includes('not configured for this user'),
+        normalizedMessage.includes('ai api key is not configured') ||
+        normalizedMessage.includes('not configured for this user'),
       )
       setExtractStatus({ kind: 'error', message })
     } finally {
@@ -640,6 +656,8 @@ export function AuditsWorkspace({ searchQuery }: AuditsWorkspaceProps) {
       setAudits((previous) =>
         previous.map((audit) => (audit.id === updatedAudit.id ? updatedAudit : audit)),
       )
+      // Force selected audit to refresh its reference immediately
+      setSelectedAuditId(updatedAudit.id)
     } catch (error) {
       setActionError(getMessageFromError(error))
     }
@@ -1215,7 +1233,24 @@ export function AuditsWorkspace({ searchQuery }: AuditsWorkspaceProps) {
                   </Card.Body>
                 </Card.Root>
 
-                <Flex justify="flex-end">
+                <Flex justify="space-between" align="center">
+                  <SlideButton
+                    text="GOTO SCOPE"
+                    onComplete={async () => {
+                      if (selectedAudit.status !== 'in_progress' && selectedAudit.status !== 'completed') {
+                        try {
+                          await updateAuditRequest(selectedAudit.id, {
+                            status: 'in_progress',
+                            ...(selectedAudit.start_date ? {} : { start_date: new Date().toISOString().split('T')[0] })
+                          })
+                        } catch (err) {
+                          console.error('Failed to update audit status:', err)
+                        }
+                      }
+                      window.history.pushState(null, '', `/scope/${selectedAudit.id}`)
+                      window.dispatchEvent(new PopStateEvent('popstate'))
+                    }}
+                  />
                   <Button
                     type="button"
                     onClick={openDeleteModal}
