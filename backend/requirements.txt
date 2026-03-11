@@ -8,3 +8,7 @@ python-jose
 python-multipart
 python-dotenv
 httpx
+
+# Security fixes for vulnerabilities
+wheel>=0.46.0
+jaraco.context>=6.0.0
