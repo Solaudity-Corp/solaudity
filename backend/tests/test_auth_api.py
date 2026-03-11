@@ -70,7 +70,7 @@ def test_login_rejects_invalid_credentials(
     )
 
     assert response.status_code == 401
-    assert response.json()["detail"] == "Invalid credentials"
+    assert response.json()["detail"] == "Invalid username or password."
 
 
 def test_read_current_user_requires_authentication(client: TestClient) -> None:
