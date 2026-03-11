@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Check, ChevronDown, Eye, EyeOff, Pencil, X } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Check, ChevronDown, Eye, EyeOff, X } from 'lucide-react'
 import { css, cx } from 'styled-system/css'
 import { Box, Flex, Stack } from 'styled-system/jsx'
 import { type MenuPath } from './Menu'
@@ -47,15 +47,12 @@ export default function Profile({ onNavigateMenu, onOpenProfile }: ProfileProps)
   const [isLoading, setIsLoading] = useState(true)
   const [status, setStatus] = useState<StatusState>(null)
 
-  const [isEditingEmail, setIsEditingEmail] = useState(false)
   const [emailDraft, setEmailDraft] = useState('')
   const [isSavingEmail, setIsSavingEmail] = useState(false)
 
-  const [isEditingProvider, setIsEditingProvider] = useState(false)
   const [providerDraft, setProviderDraft] = useState('')
   const [isSavingProvider, setIsSavingProvider] = useState(false)
 
-  const [isEditingApiKey, setIsEditingApiKey] = useState(false)
   const [apiKeyDraft, setApiKeyDraft] = useState('')
   const [showApiKey, setShowApiKey] = useState(false)
   const [isSavingApiKey, setIsSavingApiKey] = useState(false)
@@ -96,13 +93,6 @@ export default function Profile({ onNavigateMenu, onOpenProfile }: ProfileProps)
       isMounted = false
     }
   }, [])
-
-  const maskedApiKey = useMemo(() => {
-    const value = aiConfig?.ai_api_key
-    if (!value) return 'Not set'
-    if (showApiKey) return value
-    return '•'.repeat(Math.max(12, Math.min(32, value.length)))
-  }, [aiConfig?.ai_api_key, showApiKey])
 
   const currentEmail = user?.email ?? ''
   const currentProvider = aiConfig?.ai_provider ?? ''
@@ -159,7 +149,7 @@ export default function Profile({ onNavigateMenu, onOpenProfile }: ProfileProps)
 
   const fieldWithActionsClass = css({
     display: 'grid',
-    gridTemplateColumns: { base: '1fr', md: 'minmax(0, 1fr) 9.5rem' },
+    gridTemplateColumns: { base: '1fr', md: 'minmax(0, 1fr) auto' },
     alignItems: 'center',
     gap: '2',
     minW: '0',
@@ -173,7 +163,6 @@ export default function Profile({ onNavigateMenu, onOpenProfile }: ProfileProps)
     alignItems: 'center',
     gap: '2',
     justifyContent: { base: 'flex-start', md: 'flex-end' },
-    minW: { md: '9.5rem' },
   })
 
   const inputClass = css({
@@ -225,21 +214,8 @@ export default function Profile({ onNavigateMenu, onOpenProfile }: ProfileProps)
     onNavigateMenu(`/menu/${section}` as MenuPath)
   }
 
-  const startEmailEdit = () => {
-    if (!user) return
-    setEmailDraft(user.email)
-    setIsEditingEmail(true)
-    setStatus(null)
-  }
-
-  const cancelEmailEdit = () => {
-    if (user) setEmailDraft(user.email)
-    setIsEditingEmail(false)
-  }
-
   const saveEmail = async () => {
     if (!user) return
-    if (!isEditingEmail) return
     const normalizedEmail = emailDraft.trim()
     if (!normalizedEmail) {
       setStatus({ kind: 'error', message: 'Email is required.' })
@@ -256,7 +232,6 @@ export default function Profile({ onNavigateMenu, onOpenProfile }: ProfileProps)
       const updated = await updateUserProfile({ email: normalizedEmail })
       setUser(updated)
       setEmailDraft(updated.email)
-      setIsEditingEmail(false)
       setStatus({ kind: 'success', message: 'Email updated.' })
     } catch (error) {
       setStatus({ kind: 'error', message: getErrorMessage(error) })
@@ -265,19 +240,7 @@ export default function Profile({ onNavigateMenu, onOpenProfile }: ProfileProps)
     }
   }
 
-  const startProviderEdit = () => {
-    setProviderDraft(aiConfig?.ai_provider ?? '')
-    setIsEditingProvider(true)
-    setStatus(null)
-  }
-
-  const cancelProviderEdit = () => {
-    setProviderDraft(aiConfig?.ai_provider ?? '')
-    setIsEditingProvider(false)
-  }
-
   const saveProvider = async () => {
-    if (!isEditingProvider) return
     const normalizedProvider = providerDraft.trim().toLowerCase()
     if (normalizedProvider && !supportedProviders.includes(normalizedProvider)) {
       setStatus({ kind: 'error', message: 'Please choose a provider from the list.' })
@@ -294,7 +257,6 @@ export default function Profile({ onNavigateMenu, onOpenProfile }: ProfileProps)
         has_api_key: Boolean(previous?.ai_api_key),
       }))
       setProviderDraft(updated.ai_provider ?? '')
-      setIsEditingProvider(false)
       setStatus({ kind: 'success', message: 'AI provider updated.' })
     } catch (error) {
       setStatus({ kind: 'error', message: getErrorMessage(error) })
@@ -303,21 +265,7 @@ export default function Profile({ onNavigateMenu, onOpenProfile }: ProfileProps)
     }
   }
 
-  const startApiKeyEdit = () => {
-    setApiKeyDraft(aiConfig?.ai_api_key ?? '')
-    setIsEditingApiKey(true)
-    setShowApiKey(false)
-    setStatus(null)
-  }
-
-  const cancelApiKeyEdit = () => {
-    setApiKeyDraft(aiConfig?.ai_api_key ?? '')
-    setIsEditingApiKey(false)
-    setShowApiKey(false)
-  }
-
   const saveApiKey = async () => {
-    if (!isEditingApiKey) return
     const normalizedApiKey = apiKeyDraft.trim()
     if (normalizedApiKey.length > 512) {
       setStatus({ kind: 'error', message: 'API key is too long (max 512 characters).' })
@@ -334,8 +282,6 @@ export default function Profile({ onNavigateMenu, onOpenProfile }: ProfileProps)
         has_api_key: updated.has_api_key,
       }))
       setApiKeyDraft(updated.ai_api_key ?? '')
-      setIsEditingApiKey(false)
-      setShowApiKey(false)
       setStatus({ kind: 'success', message: 'AI API key updated.' })
     } catch (error) {
       setStatus({ kind: 'error', message: getErrorMessage(error) })
@@ -436,43 +382,34 @@ export default function Profile({ onNavigateMenu, onOpenProfile }: ProfileProps)
                       <Box className={fieldWithActionsClass}>
                         <Input
                           value={isLoading ? 'Loading...' : emailDraft}
-                          onChange={(event) => setEmailDraft(event.target.value)}
+                          onChange={(event) => {
+                            setEmailDraft(event.target.value)
+                            setStatus(null)
+                          }}
                           placeholder="Email address"
                           className={cx(inputClass, css({ w: 'full' }))}
-                          disabled={!isEditingEmail || isLoading || !user}
-                          readOnly={!isEditingEmail}
+                          disabled={isLoading || !user}
                         />
                         <Box className={actionGroupClass}>
                           <button
                             type="button"
-                            className={iconButtonClass}
-                            onClick={startEmailEdit}
-                            aria-label="Edit email"
-                            disabled={isLoading || !user}
-                          >
-                            <Pencil size={14} />
-                          </button>
-                          <button
-                            type="button"
                             className={cx(
                               iconButtonClass,
-                              (isEditingEmail || emailDirty) && confirmButtonActiveClass,
+                              emailDirty && confirmButtonActiveClass,
                               emailDirty && confirmButtonDirtyClass,
                             )}
-                            onClick={() => {
-                              void saveEmail()
-                            }}
+                            onClick={() => { void saveEmail() }}
                             aria-label="Save email"
-                            disabled={!isEditingEmail || isSavingEmail}
+                            disabled={!emailDirty || isSavingEmail}
                           >
                             <Check size={14} />
                           </button>
                           <button
                             type="button"
                             className={iconButtonClass}
-                            onClick={cancelEmailEdit}
-                            aria-label="Cancel email edit"
-                            disabled={!isEditingEmail || isSavingEmail}
+                            onClick={() => setEmailDraft(currentEmail)}
+                            aria-label="Reset email"
+                            disabled={!emailDirty || isSavingEmail}
                           >
                             <X size={14} />
                           </button>
@@ -503,9 +440,12 @@ export default function Profile({ onNavigateMenu, onOpenProfile }: ProfileProps)
                         <Box className={css({ position: 'relative', w: 'full' })}>
                           <select
                             value={providerDraft}
-                            onChange={(event) => setProviderDraft(event.target.value)}
+                            onChange={(event) => {
+                              setProviderDraft(event.target.value)
+                              setStatus(null)
+                            }}
                             className={selectClass}
-                            disabled={!isEditingProvider || isLoading}
+                            disabled={isLoading}
                           >
                             <option value="">Select provider</option>
                             {supportedProviders.map((provider) => (
@@ -529,34 +469,23 @@ export default function Profile({ onNavigateMenu, onOpenProfile }: ProfileProps)
                         <Box className={actionGroupClass}>
                           <button
                             type="button"
-                            className={iconButtonClass}
-                            onClick={startProviderEdit}
-                            aria-label="Edit provider"
-                            disabled={isLoading}
-                          >
-                            <Pencil size={14} />
-                          </button>
-                          <button
-                            type="button"
                             className={cx(
                               iconButtonClass,
-                              (isEditingProvider || providerDirty) && confirmButtonActiveClass,
+                              providerDirty && confirmButtonActiveClass,
                               providerDirty && confirmButtonDirtyClass,
                             )}
-                            onClick={() => {
-                              void saveProvider()
-                            }}
+                            onClick={() => { void saveProvider() }}
                             aria-label="Save provider"
-                            disabled={!isEditingProvider || isSavingProvider}
+                            disabled={!providerDirty || isSavingProvider}
                           >
                             <Check size={14} />
                           </button>
                           <button
                             type="button"
                             className={iconButtonClass}
-                            onClick={cancelProviderEdit}
-                            aria-label="Cancel provider edit"
-                            disabled={!isEditingProvider || isSavingProvider}
+                            onClick={() => setProviderDraft(currentProvider)}
+                            aria-label="Reset provider"
+                            disabled={!providerDirty || isSavingProvider}
                           >
                             <X size={14} />
                           </button>
@@ -568,19 +497,15 @@ export default function Profile({ onNavigateMenu, onOpenProfile }: ProfileProps)
                       <Box className={rowLabelClass}>API Key</Box>
                       <Box className={fieldWithActionsClass}>
                         <Input
-                          type={isEditingApiKey && !showApiKey ? 'password' : 'text'}
-                          value={
-                            isEditingApiKey
-                              ? apiKeyDraft
-                              : showApiKey
-                              ? (aiConfig?.ai_api_key ?? '')
-                                : maskedApiKey
-                          }
-                          onChange={(event) => setApiKeyDraft(event.target.value)}
+                          type={showApiKey ? 'text' : 'password'}
+                          value={apiKeyDraft}
+                          onChange={(event) => {
+                            setApiKeyDraft(event.target.value)
+                            setStatus(null)
+                          }}
                           placeholder="Enter API key"
                           className={cx(inputClass, css({ w: 'full' }))}
-                          disabled={!isEditingApiKey || isLoading}
-                          readOnly={!isEditingApiKey}
+                          disabled={isLoading}
                         />
                         <Box className={actionGroupClass}>
                           <button
@@ -588,40 +513,29 @@ export default function Profile({ onNavigateMenu, onOpenProfile }: ProfileProps)
                             className={iconButtonClass}
                             onClick={() => setShowApiKey((previous) => !previous)}
                             aria-label={showApiKey ? 'Hide API key' : 'Show API key'}
-                            disabled={!isEditingApiKey && !aiConfig?.ai_api_key}
+                            disabled={!apiKeyDraft}
                           >
                             {showApiKey ? <EyeOff size={14} /> : <Eye size={14} />}
                           </button>
                           <button
                             type="button"
-                            className={iconButtonClass}
-                            onClick={startApiKeyEdit}
-                            aria-label="Edit API key"
-                            disabled={isLoading}
-                          >
-                            <Pencil size={14} />
-                          </button>
-                          <button
-                            type="button"
                             className={cx(
                               iconButtonClass,
-                              (isEditingApiKey || apiKeyDirty) && confirmButtonActiveClass,
+                              apiKeyDirty && confirmButtonActiveClass,
                               apiKeyDirty && confirmButtonDirtyClass,
                             )}
-                            onClick={() => {
-                              void saveApiKey()
-                            }}
+                            onClick={() => { void saveApiKey() }}
                             aria-label="Save API key"
-                            disabled={!isEditingApiKey || isSavingApiKey}
+                            disabled={!apiKeyDirty || isSavingApiKey}
                           >
                             <Check size={14} />
                           </button>
                           <button
                             type="button"
                             className={iconButtonClass}
-                            onClick={cancelApiKeyEdit}
-                            aria-label="Cancel API key edit"
-                            disabled={!isEditingApiKey || isSavingApiKey}
+                            onClick={() => setApiKeyDraft(currentApiKey)}
+                            aria-label="Reset API key"
+                            disabled={!apiKeyDirty || isSavingApiKey}
                           >
                             <X size={14} />
                           </button>
