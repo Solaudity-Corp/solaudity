@@ -7,6 +7,7 @@ from sqlmodel import Session
 
 from app.api.auth.auth import get_current_user
 from app.api.scope import service
+from app.models.user import User
 from app.api.scope.schemas import (
     ScopeSourceCreate,
     ScopeSourceRead,
@@ -36,6 +37,8 @@ def _raise_service_error(exc: Exception) -> None:
     """Map domain/service exceptions to HTTP exceptions."""
     if isinstance(exc, service.ScopeNotFoundError):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    if isinstance(exc, service.ScopeForbiddenError):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     if isinstance(exc, service.ScopeConflictError):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     if isinstance(exc, service.ScopeValidationError):
@@ -57,10 +60,11 @@ def _raise_service_error(exc: Exception) -> None:
 def list_sources(
     audit_id: UUID,
     session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
 ) -> ScopeSourceListResponse:
     """List all sources for a given audit."""
     try:
-        return service.list_sources(session, audit_id)
+        return service.list_sources(session, audit_id, current_user.id)
     except Exception as exc:
         _raise_service_error(exc)
 
@@ -70,10 +74,11 @@ def create_source(
     audit_id: UUID,
     payload: ScopeSourceCreate,
     session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
 ) -> ScopeSourceRead:
     """Create a new scope source for an audit."""
     try:
-        return service.create_source(session, audit_id, payload)
+        return service.create_source(session, audit_id, payload, current_user.id)
     except Exception as exc:
         _raise_service_error(exc)
 
@@ -82,10 +87,11 @@ def create_source(
 def get_source(
     source_id: UUID,
     session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
 ) -> ScopeSourceRead:
     """Fetch a single source by ID."""
     try:
-        return service.get_source(session, source_id)
+        return service.get_source(session, source_id, current_user.id)
     except Exception as exc:
         _raise_service_error(exc)
 
@@ -95,10 +101,11 @@ def update_source(
     source_id: UUID,
     payload: ScopeSourceUpdate,
     session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
 ) -> ScopeSourceRead:
     """Patch editable fields on an existing source."""
     try:
-        return service.update_source(session, source_id, payload)
+        return service.update_source(session, source_id, payload, current_user.id)
     except Exception as exc:
         _raise_service_error(exc)
 
@@ -107,10 +114,11 @@ def update_source(
 def delete_source(
     source_id: UUID,
     session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
 ) -> Response:
     """Delete a source and its related contracts."""
     try:
-        service.delete_source(session, source_id)
+        service.delete_source(session, source_id, current_user.id)
         return Response(status_code=status.HTTP_204_NO_CONTENT)
     except Exception as exc:
         _raise_service_error(exc)
@@ -120,10 +128,11 @@ def delete_source(
 def trigger_fetch(
     source_id: UUID,
     session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
 ) -> ScopeSourceRead:
     """Trigger fetching code from an external source (GitHub, Etherscan, etc.)."""
     try:
-        return service.trigger_fetch(session, source_id)
+        return service.trigger_fetch(session, source_id, current_user.id)
     except Exception as exc:
         _raise_service_error(exc)
 
@@ -135,10 +144,11 @@ def list_contracts(
     audit_id: UUID,
     in_scope: bool | None = Query(default=None),
     session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
 ) -> ScopeContractListResponse:
     """List all contracts for a given audit, optionally filtered by scope status."""
     try:
-        return service.list_contracts(session, audit_id, in_scope=in_scope)
+        return service.list_contracts(session, audit_id, current_user.id, in_scope=in_scope)
     except Exception as exc:
         _raise_service_error(exc)
 
@@ -158,6 +168,7 @@ def upload_contract(
     scope_reason: str | None = Form(None),
     source_id: UUID | None = Form(None),
     session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
 ) -> ScopeContractRead:
     """Upload a .sol file and create a contract entry."""
     metadata = ScopeContractUpload(is_in_scope=is_in_scope, scope_reason=scope_reason)
@@ -169,6 +180,7 @@ def upload_contract(
             file_content=file_content,
             filename=file.filename or "unknown.sol",
             metadata=metadata,
+            owner_id=current_user.id,
             source_id=source_id,
         )
     except Exception as exc:
@@ -179,10 +191,11 @@ def upload_contract(
 def get_contract(
     contract_id: UUID,
     session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
 ) -> ScopeContractRead:
     """Fetch a single contract by ID."""
     try:
-        return service.get_contract(session, contract_id)
+        return service.get_contract(session, contract_id, current_user.id)
     except Exception as exc:
         _raise_service_error(exc)
 
@@ -191,10 +204,11 @@ def get_contract(
 def get_contract_content(
     contract_id: UUID,
     session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
 ) -> Response:
     """Retrieve the raw Solidity source code of a contract."""
     try:
-        content = service.get_contract_content(session, contract_id)
+        content = service.get_contract_content(session, contract_id, current_user.id)
         return Response(content=content, media_type="text/plain; charset=utf-8")
     except Exception as exc:
         _raise_service_error(exc)
@@ -205,10 +219,11 @@ def update_contract(
     contract_id: UUID,
     payload: ScopeContractUpdate,
     session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
 ) -> ScopeContractRead:
     """Patch editable fields on an existing contract."""
     try:
-        return service.update_contract(session, contract_id, payload)
+        return service.update_contract(session, contract_id, payload, current_user.id)
     except Exception as exc:
         _raise_service_error(exc)
 
@@ -217,10 +232,11 @@ def update_contract(
 def delete_contract(
     contract_id: UUID,
     session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
 ) -> Response:
     """Delete a contract."""
     try:
-        service.delete_contract(session, contract_id)
+        service.delete_contract(session, contract_id, current_user.id)
         return Response(status_code=status.HTTP_204_NO_CONTENT)
     except Exception as exc:
         _raise_service_error(exc)
@@ -233,10 +249,11 @@ def list_addresses(
     audit_id: UUID,
     address_type: AddressType | None = Query(default=None),
     session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
 ) -> ScopeAddressListResponse:
     """List all addresses for a given audit, optionally filtered by type."""
     try:
-        return service.list_addresses(session, audit_id, address_type=address_type)
+        return service.list_addresses(session, audit_id, current_user.id, address_type=address_type)
     except Exception as exc:
         _raise_service_error(exc)
 
@@ -246,10 +263,11 @@ def create_address(
     audit_id: UUID,
     payload: ScopeAddressCreate,
     session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
 ) -> ScopeAddressRead:
     """Create a new scope address for an audit."""
     try:
-        return service.create_address(session, audit_id, payload)
+        return service.create_address(session, audit_id, payload, current_user.id)
     except Exception as exc:
         _raise_service_error(exc)
 
@@ -258,10 +276,11 @@ def create_address(
 def get_address(
     address_id: UUID,
     session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
 ) -> ScopeAddressRead:
     """Fetch a single address by ID."""
     try:
-        return service.get_address(session, address_id)
+        return service.get_address(session, address_id, current_user.id)
     except Exception as exc:
         _raise_service_error(exc)
 
@@ -271,10 +290,11 @@ def update_address(
     address_id: UUID,
     payload: ScopeAddressUpdate,
     session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
 ) -> ScopeAddressRead:
     """Patch editable fields on an existing address."""
     try:
-        return service.update_address(session, address_id, payload)
+        return service.update_address(session, address_id, payload, current_user.id)
     except Exception as exc:
         _raise_service_error(exc)
 
@@ -283,10 +303,11 @@ def update_address(
 def delete_address(
     address_id: UUID,
     session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
 ) -> Response:
     """Delete an address."""
     try:
-        service.delete_address(session, address_id)
+        service.delete_address(session, address_id, current_user.id)
         return Response(status_code=status.HTTP_204_NO_CONTENT)
     except Exception as exc:
         _raise_service_error(exc)
@@ -296,10 +317,11 @@ def delete_address(
 def fetch_verified_code(
     address_id: UUID,
     session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
 ) -> ScopeAddressRead:
     """Fetch verified source code for an onchain address from block explorer."""
     try:
-        return service.fetch_verified_code(session, address_id)
+        return service.fetch_verified_code(session, address_id, current_user.id)
     except Exception as exc:
         _raise_service_error(exc)
 

@@ -19,8 +19,6 @@ from app.api.audits.schemas import (
 )
 from app.models.audits import Audit, AuditAttachment, AuditStatus, utcnow
 
-DEFAULT_OWNER_ID = UUID("00000000-0000-0000-0000-000000000001")
-
 EDITABLE_FIELDS = {
     "title",
     "slug",
@@ -41,6 +39,10 @@ EDITABLE_FIELDS = {
 
 class AuditNotFoundError(Exception):
     """Raised when an audit record is not found."""
+
+
+class AuditForbiddenError(Exception):
+    """Raised when a user tries to access an audit they do not own."""
 
 
 class AuditConflictError(Exception):
@@ -120,9 +122,13 @@ def _attachment_map(
     return grouped
 
 
-def _build_status_counts(session: Session) -> AuditStatusCounts:
-    """Compute audit counts grouped by status."""
-    stmt = select(Audit.status, sa.func.count(Audit.id)).group_by(Audit.status)
+def _build_status_counts(session: Session, owner_id: UUID) -> AuditStatusCounts:
+    """Compute audit counts grouped by status for a specific owner."""
+    stmt = (
+        select(Audit.status, sa.func.count(Audit.id))
+        .where(Audit.owner_id == owner_id)
+        .group_by(Audit.status)
+    )
     rows = session.exec(stmt).all()
 
     counts = {status.value: 0 for status in AuditStatus}
@@ -136,6 +142,7 @@ def _build_status_counts(session: Session) -> AuditStatusCounts:
 def _apply_audit_filters(
     stmt: sa.sql.Select,
     *,
+    owner_id: UUID,
     search: str | None,
     status: AuditStatus | None,
     chain: str | None,
@@ -144,6 +151,8 @@ def _apply_audit_filters(
     include_archived: bool,
 ) -> sa.sql.Select:
     """Apply search and filter constraints to a SQLAlchemy select statement."""
+    stmt = stmt.where(Audit.owner_id == owner_id)
+
     if not include_archived:
         stmt = stmt.where(Audit.status != AuditStatus.archived)
 
@@ -182,11 +191,13 @@ def _apply_audit_filters(
     return stmt
 
 
-def _ensure_audit_exists(session: Session, audit_id: UUID) -> Audit:
-    """Fetch an audit or raise a typed not-found error."""
+def _ensure_audit_owned(session: Session, audit_id: UUID, owner_id: UUID) -> Audit:
+    """Fetch an audit and verify ownership, raising typed errors on failure."""
     audit = session.get(Audit, audit_id)
     if audit is None:
         raise AuditNotFoundError(f"audit '{audit_id}' was not found")
+    if audit.owner_id != owner_id:
+        raise AuditForbiddenError(f"audit '{audit_id}' does not belong to you")
     return audit
 
 
@@ -212,6 +223,7 @@ def _validated_audit(data: dict) -> Audit:
 
 def list_audits(
     session: Session,
+    owner_id: UUID,
     *,
     search: str | None = None,
     status: AuditStatus | None = None,
@@ -226,6 +238,7 @@ def list_audits(
 
     Args:
         session: Active database session.
+        owner_id: Restrict results to audits owned by this user.
         search: Free-text search across key audit fields.
         status: Optional status filter.
         chain: Optional chain filter.
@@ -240,6 +253,7 @@ def list_audits(
     """
     total_stmt = _apply_audit_filters(
         select(sa.func.count()).select_from(Audit),
+        owner_id=owner_id,
         search=search,
         status=status,
         chain=chain,
@@ -251,6 +265,7 @@ def list_audits(
 
     query_stmt = _apply_audit_filters(
         select(Audit),
+        owner_id=owner_id,
         search=search,
         status=status,
         chain=chain,
@@ -278,20 +293,20 @@ def list_audits(
     return AuditListResponse(
         items=items,
         total=total,
-        counts=_build_status_counts(session),
+        counts=_build_status_counts(session, owner_id),
     )
 
 
-def get_audit(session: Session, audit_id: UUID) -> AuditRead:
+def get_audit(session: Session, audit_id: UUID, owner_id: UUID) -> AuditRead:
     """Fetch one audit with its attachments."""
-    audit = _ensure_audit_exists(session, audit_id)
+    audit = _ensure_audit_owned(session, audit_id, owner_id)
     attachments = _attachment_map(session, [audit.id]).get(audit.id, [])
     return _to_audit_read(audit, attachments=attachments)
 
 
-def list_audit_attachments(session: Session, audit_id: UUID) -> list[AuditAttachmentRead]:
+def list_audit_attachments(session: Session, audit_id: UUID, owner_id: UUID) -> list[AuditAttachmentRead]:
     """List attachment metadata for a given audit."""
-    _ensure_audit_exists(session, audit_id)
+    _ensure_audit_owned(session, audit_id, owner_id)
     stmt = (
         select(AuditAttachment)
         .where(AuditAttachment.audit_id == audit_id)
@@ -301,15 +316,10 @@ def list_audit_attachments(session: Session, audit_id: UUID) -> list[AuditAttach
     return [_to_attachment_read(item) for item in attachments]
 
 
-def create_audit(session: Session, payload: AuditCreate) -> AuditRead:
-    """Create and persist a new audit from validated create payload.
-
-    Notes:
-        If owner_id is omitted, DEFAULT_OWNER_ID is used.
-    """
+def create_audit(session: Session, payload: AuditCreate, owner_id: UUID) -> AuditRead:
+    """Create and persist a new audit, assigning the authenticated user as owner."""
     payload_data = payload.model_dump(exclude_none=False)
-    if payload_data.get("owner_id") is None:
-        payload_data["owner_id"] = DEFAULT_OWNER_ID
+    payload_data["owner_id"] = owner_id
 
     audit = _validated_audit(payload_data)
     session.add(audit)
@@ -318,12 +328,12 @@ def create_audit(session: Session, payload: AuditCreate) -> AuditRead:
     return _to_audit_read(audit, attachments=[])
 
 
-def update_audit(session: Session, audit_id: UUID, payload: AuditUpdate) -> AuditRead:
+def update_audit(session: Session, audit_id: UUID, payload: AuditUpdate, owner_id: UUID) -> AuditRead:
     """Patch editable fields for an existing audit.
 
     Only fields explicitly provided in ``payload`` are applied.
     """
-    audit = _ensure_audit_exists(session, audit_id)
+    audit = _ensure_audit_owned(session, audit_id, owner_id)
     patch_data = payload.model_dump(exclude_unset=True)
 
     if not patch_data:
@@ -351,9 +361,10 @@ def set_audit_pin(
     session: Session,
     audit_id: UUID,
     payload: AuditPinUpdate,
+    owner_id: UUID,
 ) -> AuditRead:
     """Set or toggle pin state for an audit and update timestamp."""
-    audit = _ensure_audit_exists(session, audit_id)
+    audit = _ensure_audit_owned(session, audit_id, owner_id)
     if payload.is_pinned is None:
         audit.is_pinned = not audit.is_pinned
     else:
@@ -372,9 +383,10 @@ def mark_audit_opened(
     session: Session,
     audit_id: UUID,
     payload: AuditOpenUpdate,
+    owner_id: UUID,
 ) -> AuditRead:
     """Update last-opened metadata for an audit."""
-    audit = _ensure_audit_exists(session, audit_id)
+    audit = _ensure_audit_owned(session, audit_id, owner_id)
     now = utcnow()
     audit.last_opened_at = now
 
@@ -390,9 +402,9 @@ def mark_audit_opened(
     return _to_audit_read(audit, attachments=attachments)
 
 
-def delete_audit(session: Session, audit_id: UUID) -> None:
+def delete_audit(session: Session, audit_id: UUID, owner_id: UUID) -> None:
     """Delete an audit and cascade-delete attachment rows."""
-    audit = _ensure_audit_exists(session, audit_id)
+    audit = _ensure_audit_owned(session, audit_id, owner_id)
 
     attachment_stmt = select(AuditAttachment).where(AuditAttachment.audit_id == audit_id)
     attachments = session.exec(attachment_stmt).all()
