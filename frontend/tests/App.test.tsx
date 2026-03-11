@@ -7,6 +7,7 @@ const authMocks = vi.hoisted(() => ({
 }))
 
 vi.mock('../src/auth', () => ({
+  API_BASE_URL: 'http://localhost:8001',
   hasAccessToken: authMocks.hasAccessToken,
 }))
 
