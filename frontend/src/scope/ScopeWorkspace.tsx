@@ -401,7 +401,8 @@ function FileTree({ contracts, onClearAll, onToggleScope }: {
 
     // Sync checkedIds when contracts reload from server
     useEffect(() => {
-        setCheckedIds(new Set(contracts.filter((c) => c.is_in_scope).map((c) => c.id)))
+        const ids = new Set(contracts.filter((c) => c.is_in_scope).map((c) => c.id))
+        queueMicrotask(() => { setCheckedIds(ids) })
     }, [contracts])
 
     const handleToggleCheck = async (node: TreeNode) => {
@@ -582,6 +583,7 @@ function ConfirmationSection({ contracts, onSave }: { contracts: ScopeContract[]
     const handleSave = () => {
         setSaved(true)
         setTimeout(() => setSaved(false), 2000)
+        onSave()
     }
 
     return (
@@ -690,11 +692,9 @@ export default function ScopeWorkspace({ auditId, onNavigate, onOpenProfile }: S
     // Load audit info
     useEffect(() => {
         let active = true
-        setIsLoading(true)
-        setError(null)
 
         getAudit(auditId)
-            .then((data) => { if (active) { setAudit(data); setIsLoading(false) } })
+            .then((data) => { if (active) { setAudit(data); setError(null); setIsLoading(false) } })
             .catch((err) => { if (active) { setError(err instanceof Error ? err.message : 'Failed to load audit'); setIsLoading(false) } })
 
         return () => { active = false }

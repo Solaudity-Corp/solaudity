@@ -1,12 +1,16 @@
 
 import { API_BASE_URL, getAccessToken } from '../auth'
 
+interface ApiErrorData {
+    detail?: string | Array<{ msg?: string }>
+}
+
 // API Error class
 export class ApiError extends Error {
     status: number
-    data?: any
+    data?: ApiErrorData
 
-    constructor(status: number, message: string, data?: any) {
+    constructor(status: number, message: string, data?: ApiErrorData) {
         super(message)
         this.name = 'ApiError'
         this.status = status
