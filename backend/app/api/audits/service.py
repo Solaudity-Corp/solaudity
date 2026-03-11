@@ -18,6 +18,7 @@ from app.api.audits.schemas import (
     AuditUpdate,
 )
 from app.models.audits import Audit, AuditAttachment, AuditStatus, utcnow
+from app.api.scope import service as scope_service
 
 EDITABLE_FIELDS = {
     "title",
@@ -403,13 +404,15 @@ def mark_audit_opened(
 
 
 def delete_audit(session: Session, audit_id: UUID, owner_id: UUID) -> None:
-    """Delete an audit and cascade-delete attachment rows."""
+    """Delete an audit and cascade-delete attachment rows and all scope data."""
     audit = _ensure_audit_owned(session, audit_id, owner_id)
 
     attachment_stmt = select(AuditAttachment).where(AuditAttachment.audit_id == audit_id)
     attachments = session.exec(attachment_stmt).all()
     for attachment in attachments:
         session.delete(attachment)
+
+    scope_service.delete_all_scope_for_audit(session, audit_id, owner_id)
 
     session.delete(audit)
     _commit(session)

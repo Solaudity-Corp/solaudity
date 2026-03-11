@@ -44,14 +44,15 @@ const EMPTY_STATUS_COUNTS: AuditStatusCounts = {
 }
 
 const ui = {
-  textPrimary: 'rgba(231, 228, 239, 0.91)',
-  textSecondary: 'rgba(231, 228, 239, 0.67)',
-  textMuted: 'rgba(231, 228, 239, 0.61)',
-  borderFaint: 'rgba(185, 185, 189, 0.14)',
-  borderSoft: 'rgba(185, 185, 189, 0.22)',
-  surfaceSidebar: 'rgba(16, 16, 21, 0.92)',
-  surfaceContent: 'rgba(22, 22, 27, 0.88)',
-  surfaceCard: 'rgba(24, 24, 29, 0.84)',
+  textPrimary: 'rgba(231, 228, 239, 0.96)',
+  textSecondary: 'rgba(231, 228, 239, 0.75)',
+  textMuted: 'rgba(231, 228, 239, 0.5)',
+  borderFaint: 'rgba(185, 185, 189, 0.22)',
+  borderSoft: 'rgba(185, 185, 189, 0.35)',
+  surfaceSidebar: 'rgba(16, 16, 21, 0.97)',
+  surfaceContent: 'rgba(22, 22, 28, 0.97)',
+  surfaceCard: 'rgba(28, 28, 36, 0.97)',
+  accent: 'rgba(88, 214, 171, 0.9)',
 }
 
 const MAX_TITLE_LENGTH = 255
@@ -716,8 +717,8 @@ export function AuditsWorkspace({ searchQuery }: AuditsWorkspaceProps) {
           minH: '0',
           borderRadius: '24px',
           border: `1px solid ${ui.borderSoft}`,
-          bg: 'linear-gradient(145deg, rgba(20, 20, 25, 0.95), rgba(14, 14, 18, 0.94))',
-          boxShadow: '0 14px 30px rgba(0, 0, 0, 0.34), inset 0 1px 0 rgba(255, 255, 255, 0.03)',
+          bg: 'linear-gradient(145deg, rgba(22, 22, 28, 0.98), rgba(14, 14, 20, 0.98))',
+          boxShadow: '0 0 0 1px rgba(88, 214, 171, 0.06), 0 20px 48px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.04)',
           overflow: 'hidden',
           display: 'flex',
           flexDirection: 'column',
@@ -728,7 +729,7 @@ export function AuditsWorkspace({ searchQuery }: AuditsWorkspaceProps) {
             px: { base: '3', md: '4' },
             py: '4',
             bg: ui.surfaceSidebar,
-            borderBottom: `1px solid ${ui.borderFaint}`,
+            borderBottom: `1px solid ${ui.borderSoft}`,
           })}
         >
           <Flex align={{ base: 'flex-start', md: 'center' }} justify="space-between" wrap="wrap" gap="3">
@@ -827,16 +828,16 @@ export function AuditsWorkspace({ searchQuery }: AuditsWorkspaceProps) {
           <Box
             className={css({
               w: { base: 'full', lg: '370px' },
-              borderRight: { base: 'none', lg: `1px solid ${ui.borderFaint}` },
-              borderBottom: { base: `1px solid ${ui.borderFaint}`, lg: 'none' },
+              borderRight: { base: 'none', lg: `1px solid ${ui.borderSoft}` },
+              borderBottom: { base: `1px solid ${ui.borderSoft}`, lg: 'none' },
               bg: ui.surfaceSidebar,
               display: 'flex',
               flexDirection: 'column',
               minH: { base: '280px', lg: '0' },
             })}
           >
-            <Flex align="center" justify="space-between" px="5" py="4" className={css({ borderBottom: `1px solid ${ui.borderFaint}` })}>
-              <Box className={css({ fontSize: 'calc(1.125rem + 2px)', color: ui.textPrimary, fontWeight: '800', letterSpacing: '0.03em' })}>
+            <Flex align="center" justify="space-between" px="5" py="4" className={css({ borderBottom: `1px solid ${ui.borderSoft}` })}>
+              <Box className={css({ fontSize: 'calc(1.125rem + 2px)', color: ui.textPrimary, fontWeight: '800', letterSpacing: '0.06em' })}>
                 AUDITS
               </Box>
               <Box className={css({ fontSize: 'xs', color: ui.textSecondary, border: `1px solid ${ui.borderSoft}`, borderRadius: 'full', px: '2.5', py: '1' })}>
@@ -924,26 +925,27 @@ export function AuditsWorkspace({ searchQuery }: AuditsWorkspaceProps) {
                         textAlign: 'left',
                         borderRadius: '14px',
                         border: `1px solid ${ui.borderSoft}`,
-                        background: 'rgba(24, 24, 29, 0.74)',
+                        background: 'rgba(26, 26, 33, 0.92)',
                         px: '4',
                         py: '3',
                         cursor: 'pointer',
                         transition: 'all 160ms ease',
-                        boxShadow: '0 6px 16px rgba(0, 0, 0, 0.2)',
+                        boxShadow: '0 4px 16px rgba(0,0,0,0.35)',
                         _hover: {
-                          borderColor: 'rgba(225, 225, 231, 0.32)',
-                          background: 'rgba(30, 30, 36, 0.84)',
+                          borderColor: 'rgba(185, 185, 189, 0.55)',
+                          background: 'rgba(32, 32, 40, 0.97)',
+                          boxShadow: '0 6px 20px rgba(0,0,0,0.45)',
                         },
                         _focusVisible: {
-                          outline: '1px solid rgba(225, 225, 231, 0.28)',
+                          outline: '1px solid rgba(88, 214, 171, 0.35)',
                           outlineOffset: '1px',
                         },
                       }),
                       isActive &&
                       css({
-                        borderColor: 'rgba(143, 230, 255, 0.5)',
-                        background: 'rgba(0, 162, 199, 0.08)',
-                        boxShadow: '0 0 0 1px rgba(0, 162, 199, 0.22) inset, 0 6px 16px rgba(0, 0, 0, 0.22)',
+                        borderColor: 'rgba(88, 214, 171, 0.45)',
+                        background: 'rgba(88, 214, 171, 0.06)',
+                        boxShadow: '0 0 0 1px rgba(88, 214, 171, 0.18) inset, 0 6px 20px rgba(0,0,0,0.4)',
                       }),
                     )}
                   >
@@ -1089,9 +1091,9 @@ export function AuditsWorkspace({ searchQuery }: AuditsWorkspaceProps) {
                 <Card.Root
                   variant="outline"
                   className={css({
-                    borderColor: ui.borderFaint,
+                    borderColor: ui.borderSoft,
                     bg: ui.surfaceCard,
-                    boxShadow: '0 8px 18px rgba(0, 0, 0, 0.22)',
+                    boxShadow: '0 0 0 1px rgba(88, 214, 171, 0.05), 0 8px 24px rgba(0,0,0,0.4)',
                   })}
                 >
                   <Card.Header className={css({ pb: '3' })}>
@@ -1167,9 +1169,9 @@ export function AuditsWorkspace({ searchQuery }: AuditsWorkspaceProps) {
                 <Card.Root
                   variant="outline"
                   className={css({
-                    borderColor: ui.borderFaint,
+                    borderColor: ui.borderSoft,
                     bg: ui.surfaceCard,
-                    boxShadow: '0 8px 18px rgba(0, 0, 0, 0.22)',
+                    boxShadow: '0 0 0 1px rgba(88, 214, 171, 0.05), 0 8px 24px rgba(0,0,0,0.4)',
                   })}
                 >
                   <Card.Header className={css({ pb: '3' })}>
@@ -1195,12 +1197,12 @@ export function AuditsWorkspace({ searchQuery }: AuditsWorkspaceProps) {
                           gap="3"
                           wrap="wrap"
                           className={css({
-                            border: `1px solid ${ui.borderFaint}`,
+                            border: `1px solid ${ui.borderSoft}`,
                             borderRadius: '12px',
                             px: '3',
                             py: '2.5',
-                            bg: 'rgba(27, 27, 31, 0.62)',
-                            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.2)',
+                            bg: 'rgba(28, 28, 36, 0.92)',
+                            boxShadow: '0 4px 12px rgba(0,0,0,0.35)',
                           })}
                         >
                           <Box>
