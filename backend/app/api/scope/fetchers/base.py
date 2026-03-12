@@ -17,7 +17,7 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 from dotenv import load_dotenv
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from app.models.scope import ScopeContract, ScopeSource
 
@@ -246,6 +246,18 @@ def create_contract_from_content(
     
     # Compute metadata
     content_hash = compute_sha256(content)
+    
+    # Skip if this exact file content already exists in this audit
+    existing = session.exec(
+        select(ScopeContract).where(
+            ScopeContract.audit_id == source.audit_id,
+            ScopeContract.content_hash == content_hash,
+        )
+    ).first()
+    if existing:
+        logger.debug(f"Skipping duplicate file: {file_path}")
+        return None
+    
     sloc = count_sloc(content_str)
     
     # Extract or use provided metadata
