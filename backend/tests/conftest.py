@@ -16,7 +16,9 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 IMPORT_DB_PATH = Path(tempfile.gettempdir()) / f"solaudity-pytest-import-{uuid4().hex}.db"
+IMPORT_STORAGE_DIR = Path(tempfile.gettempdir()) / f"solaudity-pytest-contracts-{uuid4().hex}"
 os.environ["DB_PATH"] = str(IMPORT_DB_PATH)
+os.environ["CONTRACTS_STORAGE_DIR"] = str(IMPORT_STORAGE_DIR)
 os.environ["SECRET_KEY"] = "pytest-secret-key"
 os.environ["ALGORITHM"] = "HS256"
 os.environ["ACCESS_TOKEN_EXPIRE_MINUTES"] = "30"

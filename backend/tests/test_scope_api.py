@@ -3,14 +3,16 @@ import io
 import tarfile
 import zipfile
 import pytest
+from unittest.mock import patch
 from uuid import uuid4
 from fastapi.testclient import TestClient
 from sqlmodel import Session
 
 from app.models.scope import SourceType, AddressType, FetchStatus, ScopeSource, ScopeContract
 
-# Test data
-VALID_SOL = b"""
+# ================================= Test Data =================================
+
+SOL_STORAGE = b"""
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 contract SimpleStorage {
@@ -19,7 +21,30 @@ contract SimpleStorage {
 }
 """
 
-INVALID_SOL = b"This is just some random text without solidity code"
+SOL_TOKEN = b"""
+// SPDX-License-Identifier: GPL-3.0
+pragma solidity ^0.8.19;
+contract Token {
+    mapping(address => uint256) balances;
+    function transfer(address to, uint256 amount) public {
+        balances[msg.sender] -= amount;
+        balances[to] += amount;
+    }
+}
+"""
+
+SOL_VAULT = b"""
+// SPDX-License-Identifier: Apache-2.0
+pragma solidity >=0.7.0 <0.9.0;
+contract Vault {
+    address public owner;
+    constructor() { owner = msg.sender; }
+    function withdraw() public { require(msg.sender == owner); }
+}
+"""
+
+SOL_NO_PRAGMA = b"// Just some text, no pragma\ncontract Bare {}\n"
+
 
 def build_source_payload(**overrides):
     payload = {
@@ -44,6 +69,32 @@ def test_audit(client: TestClient, auth_headers: dict[str, str]) -> dict:
 
 
 # ================================= SOURCES =================================
+
+def _mock_fetch_source(session, source):
+    """Mock fetcher that creates a fake contract instead of calling GitHub."""
+    from app.api.scope.fetchers.base import (
+        compute_sha256, count_sloc, extract_solidity_version, extract_license,
+        ensure_storage_dir, save_contract_file,
+    )
+    content = SOL_STORAGE
+    content_str = content.decode("utf-8")
+    storage_key, _ = save_contract_file(source.audit_id, content)
+    contract = ScopeContract(
+        audit_id=source.audit_id,
+        source_id=source.id,
+        file_path="src/SimpleStorage.sol",
+        file_name="SimpleStorage.sol",
+        content_hash=compute_sha256(content),
+        storage_key=storage_key,
+        sloc=count_sloc(content_str),
+        is_in_scope=False,
+        scope_reason="auto-imported from GitHub",
+        compiler_version=extract_solidity_version(content_str),
+        license=extract_license(content_str),
+    )
+    session.add(contract)
+    session.commit()
+    return 1
 
 def test_sources_end_to_end(client: TestClient, auth_headers: dict[str, str], test_audit: dict):
     audit_id = test_audit["id"]
@@ -80,20 +131,9 @@ def test_sources_end_to_end(client: TestClient, auth_headers: dict[str, str], te
     assert up_resp.status_code == 200
     assert up_resp.json()["branch"] == "develop"
     
-    # 5. Fetch source (This will test the actual GitHub fetching logic)
-    # Using a small realistic repo to ensure testing passes within a reasonable time
-    real_src_resp = client.post(
-        f"/scope/audits/{audit_id}/sources",
-        headers=auth_headers,
-        json=build_source_payload(
-            url="https://github.com/PatrickAlphaC/storage_factory", # small file
-            branch="main"
-        ),
-    )
-    assert real_src_resp.status_code == 201
-    real_source_id = real_src_resp.json()["id"]
-    
-    fetch_resp = client.post(f"/scope/sources/{real_source_id}/fetch", headers=auth_headers)
+    # 5. Fetch source (mocked — no real network call)
+    with patch("app.api.scope.service.fetch_source", side_effect=_mock_fetch_source):
+        fetch_resp = client.post(f"/scope/sources/{source_id}/fetch", headers=auth_headers)
     assert fetch_resp.status_code == 200, fetch_resp.json()
     assert fetch_resp.json()["fetch_status"] == FetchStatus.success.value
     
@@ -122,8 +162,7 @@ def test_contract_upload_single_file(client: TestClient, auth_headers: dict[str,
     )
     source_id = src_resp.json()["id"]
 
-    # Test Single File Upload
-    files = [("files", ("Token.sol", VALID_SOL, "application/octet-stream"))]
+    files = [("files", ("Token.sol", SOL_STORAGE, "application/octet-stream"))]
     data = {"source_id": source_id, "is_in_scope": "true"}
     
     up_resp = client.post(
@@ -153,9 +192,9 @@ def test_contract_upload_multiple_files(client: TestClient, auth_headers: dict[s
     audit_id = test_audit["id"]
     
     files = [
-        ("files", ("A.sol", VALID_SOL, "application/octet-stream")),
-        ("files", ("B.sol", INVALID_SOL, "application/octet-stream")),
-        ("files", ("README.md", b"# hello", "text/markdown")), # Should be skipped
+        ("files", ("A.sol", SOL_STORAGE, "application/octet-stream")),
+        ("files", ("B.sol", SOL_NO_PRAGMA, "application/octet-stream")),
+        ("files", ("README.md", b"# hello", "text/markdown")),  # Should be skipped
     ]
     
     data = {"is_in_scope": "false", "scope_reason": "Test multiple"}
@@ -169,10 +208,10 @@ def test_contract_upload_multiple_files(client: TestClient, auth_headers: dict[s
     
     assert up_resp.status_code == 201, up_resp.text
     contracts = up_resp.json()
-    assert len(contracts) == 2 # Markdown skipped
+    assert len(contracts) == 2  # Markdown skipped
     
-    names = [c["file_name"] for c in contracts]
-    assert set(names) == {"A.sol", "B.sol"}
+    names = {c["file_name"] for c in contracts}
+    assert names == {"A.sol", "B.sol"}
     assert contracts[0]["is_in_scope"] is False
     assert contracts[0]["scope_reason"] == "Test multiple"
 
@@ -180,12 +219,12 @@ def test_contract_upload_multiple_files(client: TestClient, auth_headers: dict[s
 def test_contract_upload_zip_archive(client: TestClient, auth_headers: dict[str, str], test_audit: dict):
     audit_id = test_audit["id"]
     
-    # Create in-memory zip
+    # Each .sol has DIFFERENT content so hashes won't collide
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, "w") as zf:
-        zf.writestr("src/Core.sol", VALID_SOL)
-        zf.writestr("src/interfaces/ICore.sol", VALID_SOL)
-        zf.writestr("test/Core.t.sol", VALID_SOL)
+        zf.writestr("src/Core.sol", SOL_STORAGE)
+        zf.writestr("src/interfaces/ICore.sol", SOL_TOKEN)
+        zf.writestr("test/Core.t.sol", SOL_VAULT)
         zf.writestr("package.json", b"{}")
         zf.writestr("__MACOSX/._Core.sol", b"hidden")
         
@@ -201,21 +240,20 @@ def test_contract_upload_zip_archive(client: TestClient, auth_headers: dict[str,
     
     assert up_resp.status_code == 201, up_resp.text
     contracts = up_resp.json()
-    assert len(contracts) == 3 # 3 valid sol files, package.json and MACOSX skipped
+    assert len(contracts) == 3  # 3 unique .sol files; package.json and __MACOSX skipped
     
-    names = [c["file_path"] for c in contracts]
-    assert set(names) == {"src/Core.sol", "src/interfaces/ICore.sol", "test/Core.t.sol"}
+    names = {c["file_path"] for c in contracts}
+    assert names == {"src/Core.sol", "src/interfaces/ICore.sol", "test/Core.t.sol"}
 
 
 def test_contract_upload_tar_archive(client: TestClient, auth_headers: dict[str, str], test_audit: dict):
     audit_id = test_audit["id"]
     
-    # Create in-memory tar
     tar_buffer = io.BytesIO()
     with tarfile.open(fileobj=tar_buffer, mode="w:gz") as tf:
         info1 = tarfile.TarInfo(name="lib/Token.sol")
-        info1.size = len(VALID_SOL)
-        tf.addfile(info1, io.BytesIO(VALID_SOL))
+        info1.size = len(SOL_STORAGE)
+        tf.addfile(info1, io.BytesIO(SOL_STORAGE))
         
         info2 = tarfile.TarInfo(name="README.md")
         info2.size = 5
@@ -235,15 +273,57 @@ def test_contract_upload_tar_archive(client: TestClient, auth_headers: dict[str,
     contracts = up_resp.json()
     assert len(contracts) == 1
     assert contracts[0]["file_path"] == "lib/Token.sol"
+
+
+def test_contract_upload_duplicate_skipped(client: TestClient, auth_headers: dict[str, str], test_audit: dict):
+    """Uploading the same file twice in the same audit should skip the duplicate."""
+    audit_id = test_audit["id"]
+    
+    files = [("files", ("A.sol", SOL_STORAGE, "application/octet-stream"))]
+    
+    # First upload
+    resp1 = client.post(
+        f"/scope/audits/{audit_id}/contracts/upload",
+        headers=auth_headers,
+        files=files,
+    )
+    assert resp1.status_code == 201
+    assert len(resp1.json()) == 1
+    
+    # Second upload — same content, different name
+    files2 = [("files", ("B.sol", SOL_STORAGE, "application/octet-stream"))]
+    resp2 = client.post(
+        f"/scope/audits/{audit_id}/contracts/upload",
+        headers=auth_headers,
+        files=files2,
+    )
+    # Should get 422 because no NEW valid .sol files
+    assert resp2.status_code == 422
+
+
+def test_contract_upload_no_sol_returns_422(client: TestClient, auth_headers: dict[str, str], test_audit: dict):
+    """Uploading only non-.sol files should return 422."""
+    audit_id = test_audit["id"]
+    
+    files = [("files", ("README.md", b"# hello", "text/markdown"))]
+    
+    resp = client.post(
+        f"/scope/audits/{audit_id}/contracts/upload",
+        headers=auth_headers,
+        files=files,
+    )
+    assert resp.status_code == 422
+
     
 def test_contract_updates(client: TestClient, auth_headers: dict[str, str], test_audit: dict):
     audit_id = test_audit["id"]
-    files = [("files", ("Token.sol", VALID_SOL, "application/octet-stream"))]
+    files = [("files", ("Token.sol", SOL_STORAGE, "application/octet-stream"))]
     up_resp = client.post(
         f"/scope/audits/{audit_id}/contracts/upload",
         headers=auth_headers,
         files=files,
     )
+    assert up_resp.status_code == 201
     contract_id = up_resp.json()[0]["id"]
     
     # Toggle scope
@@ -297,10 +377,37 @@ def test_addresses_end_to_end(client: TestClient, auth_headers: dict[str, str], 
     assert patch_resp.status_code == 200
     assert patch_resp.json()["notes"] == "Need to check permissions"
     
-    # 4. Fetch Verified (Mocked failure because missing Etherscan token)
+    # 4. Fetch Verified — not implemented yet
     fetch_resp = client.post(f"/scope/addresses/{addr_id}/fetch-verified", headers=auth_headers)
-    assert fetch_resp.status_code == 501  # Not implemented yet 
+    assert fetch_resp.status_code == 501
     
     # 5. Delete
     del_resp = client.delete(f"/scope/addresses/{addr_id}", headers=auth_headers)
     assert del_resp.status_code == 204
+
+
+# ================================= NEGATIVE TESTS =================================
+
+def test_source_not_found_returns_404(client: TestClient, auth_headers: dict[str, str]):
+    fake_id = str(uuid4())
+    resp = client.get(f"/scope/sources/{fake_id}", headers=auth_headers)
+    assert resp.status_code == 404
+
+
+def test_contract_not_found_returns_404(client: TestClient, auth_headers: dict[str, str]):
+    fake_id = str(uuid4())
+    resp = client.get(f"/scope/contracts/{fake_id}", headers=auth_headers)
+    assert resp.status_code == 404
+
+
+def test_address_not_found_returns_404(client: TestClient, auth_headers: dict[str, str]):
+    fake_id = str(uuid4())
+    resp = client.get(f"/scope/addresses/{fake_id}", headers=auth_headers)
+    assert resp.status_code == 404
+
+
+def test_scope_requires_authentication(client: TestClient, test_audit: dict):
+    audit_id = test_audit["id"]
+    # No auth headers — should get 401
+    resp = client.get(f"/scope/audits/{audit_id}/sources")
+    assert resp.status_code == 401
