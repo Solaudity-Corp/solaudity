@@ -814,7 +814,7 @@ export default function ScopeWorkspace({ auditId, onNavigate, onOpenProfile }: S
             const addr = await scopeApi.createAddress(auditId, {
                 address: contractAddress,
                 label: contractAddress,
-                address_type: 'contract',
+                address_type: 'deployment',
             })
             await scopeApi.fetchVerifiedCode(addr.id)
             setContractAddress('')

@@ -826,57 +826,75 @@ def get_contract_content(session: Session, contract_id: UUID, owner_id: UUID) ->
     return storage_path.read_bytes()
 
 
+def _chain_id_to_source_type(chain_id: int) -> SourceType:
+    """Map a chain ID to the corresponding explorer SourceType."""
+    from app.api.scope.fetchers.explorer import EXPLORER_CHAIN_IDS
+    for src_type, cid in EXPLORER_CHAIN_IDS.items():
+        if cid == chain_id:
+            return src_type
+    raise ScopeValidationError(
+        [{"loc": ["chain_id"], "msg": f"Unsupported chain_id: {chain_id}. Supported: {list(EXPLORER_CHAIN_IDS.values())}"}]
+    )
+
+
 def fetch_verified_code(session: Session, address_id: UUID, owner_id: UUID) -> ScopeAddressRead:
     """Fetch verified source code for an onchain address from block explorer.
     
-    If the address has verified source code on Etherscan (or other explorer),
-    this function will:
-    1. Create a new ScopeSource (type=explorer)
-    2. Create ScopeContracts for each source file
-    3. Update the address with is_verified=True
+    Creates a ScopeSource (type=etherscan/arbiscan/...) from the address,
+    delegates to fetch_source() which calls fetch_explorer(), then marks
+    the address as verified.
     
     Params:
         session: Database session dependency.
         address_id: Unique identifier for the address.
+        owner_id: User performing the fetch.
     Returns:
         ScopeAddressRead: The updated address.
-    
-    ## TODO:
-    - [ ] Implement explorer_fetcher.py with Etherscan API
-    - [ ] Handle proxy detection (EIP-1967)
-    - [ ] Auto-fetch implementation contract if proxy
     """
     address = _ensure_address_exists(session, address_id)
     _ensure_audit_owned_by(session, address.audit_id, owner_id)
 
-    # TODO: Implement actual Etherscan API call
-    # result = explorer_fetcher.get_verified_source(address.address, address.chain_id)
-    # 
-    # if result.is_verified:
-    #     # Create source
-    #     source = ScopeSource(
-    #         audit_id=address.audit_id,
-    #         source_type=SourceType.etherscan,
-    #         url=f"https://etherscan.io/address/{address.address}",
-    #         contract_address=address.address,
-    #         chain_id=address.chain_id,
-    #         fetch_status=FetchStatus.success,
-    #         fetched_at=utcnow(),
-    #     )
-    #     session.add(source)
-    #     _commit(session)
-    #     session.refresh(source)
-    #     
-    #     # Create contracts from fetched files
-    #     for file in result.source_files:
-    #         upload_contract(session, address.audit_id, file.content, file.name, ...)
-    #     
-    #     address.is_verified = True
-    #     address.contract_id = main_contract.id  # Link to main contract
-    #     session.add(address)
-    #     _commit(session)
-    
-    raise NotImplementedError(
-        "Explorer API integration not implemented yet. "
-        f"Address: {address.address}, Chain ID: {address.chain_id}"
+    # Resolve chain_id → source_type (etherscan, arbiscan, etc.)
+    source_type = _chain_id_to_source_type(address.chain_id)
+
+    # Create a source to back the fetch
+    source = ScopeSource(
+        audit_id=address.audit_id,
+        source_type=source_type,
+        contract_address=address.address,
+        chain_id=address.chain_id,
+        fetch_status=FetchStatus.fetching,
     )
+    session.add(source)
+    _commit(session)
+    session.refresh(source)
+
+    try:
+        contracts_count = fetch_source(session, source)
+
+        source.fetch_status = FetchStatus.success
+        source.fetched_at = utcnow()
+        source.error_message = f"Fetched {contracts_count} contracts"
+
+        address.is_verified = True
+
+        # Link the address to the first contract created from this source
+        first_contract = session.exec(
+            select(ScopeContract)
+            .where(ScopeContract.source_id == source.id)
+            .order_by(ScopeContract.file_path.asc())
+        ).first()
+        if first_contract:
+            address.contract_id = first_contract.id
+
+    except (FetchError, Exception) as e:
+        source.fetch_status = FetchStatus.failed
+        msg = e.message if isinstance(e, FetchError) else str(e)
+        source.error_message = msg
+        address.is_verified = False
+
+    session.add(source)
+    session.add(address)
+    _commit(session)
+    session.refresh(address)
+    return _to_address_read(address)
