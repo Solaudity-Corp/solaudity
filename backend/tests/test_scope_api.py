@@ -377,9 +377,9 @@ def test_addresses_end_to_end(client: TestClient, auth_headers: dict[str, str], 
     assert patch_resp.status_code == 200
     assert patch_resp.json()["notes"] == "Need to check permissions"
     
-    # 4. Fetch Verified — no API key configured in tests, so fetch fails gracefully
+    # 4. Fetch Verified — no API key configured in tests, so fetch returns 422
     fetch_resp = client.post(f"/scope/addresses/{addr_id}/fetch-verified", headers=auth_headers)
-    assert fetch_resp.status_code == 200
+    assert fetch_resp.status_code == 422
     
     # 5. Delete
     del_resp = client.delete(f"/scope/addresses/{addr_id}", headers=auth_headers)
