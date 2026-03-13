@@ -240,3 +240,10 @@ export function updateUserAIApiKey(aiApiKey: string | null): Promise<UserAPIKeyR
     body: JSON.stringify({ ai_api_key: aiApiKey }),
   })
 }
+
+export function updateUserAIConfig(aiProvider: string | null, aiApiKey: string | null): Promise<UserAIConfigRead> {
+  return requestAuthedJson<UserAIConfigRead>('/api/auth/me/ai-config', {
+    method: 'PUT',
+    body: JSON.stringify({ ai_provider: aiProvider, ai_api_key: aiApiKey }),
+  })
+}
