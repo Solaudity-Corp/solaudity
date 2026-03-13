@@ -76,8 +76,8 @@ export default function App() {
     return null
   }
   if (isAuthenticated && (pathname === '/login' || pathname === '/register' || pathname === '/')) {
-    window.history.replaceState(null, '', '/menu/audits')
-    setPathname('/menu/audits')
+    window.history.replaceState(null, '', '/menu/dashboard')
+    setPathname('/menu/dashboard')
     return null
   }
 
