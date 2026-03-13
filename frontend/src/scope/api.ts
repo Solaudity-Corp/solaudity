@@ -217,8 +217,8 @@ export async function listContracts(auditId: string): Promise<ScopeContractListR
 
 export async function uploadContract(auditId: string, file: File, sourceId?: string, filePath?: string): Promise<ScopeContractListResponse> {
     const formData = new FormData()
-    formData.append('file', file)
-    formData.append('is_in_scope', 'true')
+    formData.append('files', file)
+    formData.append('is_in_scope', 'false')
     if (sourceId) {
         formData.append('source_id', sourceId)
     }

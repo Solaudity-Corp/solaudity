@@ -11,8 +11,6 @@ services:
       - ../data:/data
     environment:
       - DB_PATH=/data/solaudity.db
-    env_file:
-      - ../backend/app/.env
 
   solaudity-frontend:
     build:

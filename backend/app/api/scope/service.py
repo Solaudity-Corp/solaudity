@@ -615,7 +615,7 @@ def _delete_contract_file(contract: ScopeContract) -> None:
 
 # ============================= Fetching & File Management =============================
 
-def trigger_fetch(session: Session, source_id: UUID, owner_id: UUID) -> ScopeSourceRead:
+def trigger_fetch(session: Session, source_id: UUID, owner_id: UUID, etherscan_api_key: str | None = None) -> ScopeSourceRead:
     """Trigger fetching code from an external source (GitHub, Etherscan, etc.).
     
     This function initiates the fetch process for a source. The actual fetching
@@ -641,7 +641,7 @@ def trigger_fetch(session: Session, source_id: UUID, owner_id: UUID) -> ScopeSou
     
     try:
         # Delegate to the fetchers module
-        contracts_count = fetch_source(session, source)
+        contracts_count = fetch_source(session, source, etherscan_api_key)
         
         source.fetch_status = FetchStatus.success
         source.fetched_at = utcnow()
@@ -837,7 +837,7 @@ def _chain_id_to_source_type(chain_id: int) -> SourceType:
     )
 
 
-def fetch_verified_code(session: Session, address_id: UUID, owner_id: UUID) -> ScopeAddressRead:
+def fetch_verified_code(session: Session, address_id: UUID, owner_id: UUID, etherscan_api_key: str | None = None) -> ScopeAddressRead:
     """Fetch verified source code for an onchain address from block explorer.
     
     Creates a ScopeSource (type=etherscan/arbiscan/...) from the address,
@@ -870,7 +870,7 @@ def fetch_verified_code(session: Session, address_id: UUID, owner_id: UUID) -> S
     session.refresh(source)
 
     try:
-        contracts_count = fetch_source(session, source)
+        contracts_count = fetch_source(session, source, etherscan_api_key)
 
         source.fetch_status = FetchStatus.success
         source.fetched_at = utcnow()

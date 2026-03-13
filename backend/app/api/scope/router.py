@@ -132,7 +132,7 @@ def trigger_fetch(
 ) -> ScopeSourceRead:
     """Trigger fetching code from an external source (GitHub, Etherscan, etc.)."""
     try:
-        return service.trigger_fetch(session, source_id, current_user.id)
+        return service.trigger_fetch(session, source_id, current_user.id, current_user.etherscan_api_key)
     except Exception as exc:
         _raise_service_error(exc)
 
@@ -161,7 +161,7 @@ def list_contracts(
 def upload_contract(
     audit_id: UUID,
     files: list[UploadFile] = File(...),
-    is_in_scope: bool = Form(True),
+    is_in_scope: bool = Form(False),
     scope_reason: str | None = Form(None),
     source_id: UUID | None = Form(None),
     session: Session = Depends(get_session),
@@ -233,6 +233,20 @@ def delete_contract(
     """Delete a contract."""
     try:
         service.delete_contract(session, contract_id, current_user.id)
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+    except Exception as exc:
+        _raise_service_error(exc)
+
+
+@router.delete("/audits/{audit_id}/scope", status_code=status.HTTP_204_NO_CONTENT)
+def delete_audit_scope(
+    audit_id: UUID,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> Response:
+    """Delete all scope data (contracts, sources, addresses) for an audit."""
+    try:
+        service.delete_all_scope_for_audit(session, audit_id, current_user.id)
         return Response(status_code=status.HTTP_204_NO_CONTENT)
     except Exception as exc:
         _raise_service_error(exc)
@@ -317,7 +331,7 @@ def fetch_verified_code(
 ) -> ScopeAddressRead:
     """Fetch verified source code for an onchain address from block explorer."""
     try:
-        return service.fetch_verified_code(session, address_id, current_user.id)
+        return service.fetch_verified_code(session, address_id, current_user.id, current_user.etherscan_api_key)
     except Exception as exc:
         _raise_service_error(exc)
 

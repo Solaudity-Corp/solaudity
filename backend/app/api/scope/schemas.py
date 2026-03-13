@@ -50,7 +50,7 @@ class ScopeSourceUpdate(SQLModel):
 
 class ScopeContractUpload(SQLModel):
     """Metadata sent with file upload (multipart/form-data)."""
-    is_in_scope: bool = True
+    is_in_scope: bool = False
     scope_reason: str | None = None
 
 
@@ -61,7 +61,7 @@ class ScopeContractCreateInternal(SQLModel):
     content_hash: str
     storage_key: str
     sloc: int = 0
-    is_in_scope: bool = True
+    is_in_scope: bool = False
     scope_reason: str | None = None
     compiler_version: str | None = None
     license: str | None = None

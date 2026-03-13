@@ -1085,7 +1085,7 @@ export default function ScopeWorkspace({ auditId, onNavigate, onOpenProfile }: S
                         {contracts.length > 0 && (
                             <ConfirmationSection
                                 contracts={contracts}
-                                onSave={() => onNavigate(`/menu/audits`)}
+                                onSave={() => {}}
                             />
                         )}
                     </Flex>

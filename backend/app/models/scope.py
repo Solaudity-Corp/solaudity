@@ -121,7 +121,7 @@ class ScopeContract(SQLModel, table=True):
     
     is_in_scope: bool = Field(
         default=False,
-        sa_column=sa.Column(sa.Boolean(), nullable=False, server_default=sa.text("1")),
+        sa_column=sa.Column(sa.Boolean(), nullable=False, server_default=sa.text("0")),
     )
     # if is not is scope, specify the reason why 
     # e.g.  "test", "library", etc.

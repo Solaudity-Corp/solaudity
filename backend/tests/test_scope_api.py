@@ -70,7 +70,7 @@ def test_audit(client: TestClient, auth_headers: dict[str, str]) -> dict:
 
 # ================================= SOURCES =================================
 
-def _mock_fetch_source(session, source):
+def _mock_fetch_source(session, source, etherscan_api_key=None):
     """Mock fetcher that creates a fake contract instead of calling GitHub."""
     from app.api.scope.fetchers.base import (
         compute_sha256, count_sloc, extract_solidity_version, extract_license,
@@ -377,9 +377,9 @@ def test_addresses_end_to_end(client: TestClient, auth_headers: dict[str, str], 
     assert patch_resp.status_code == 200
     assert patch_resp.json()["notes"] == "Need to check permissions"
     
-    # 4. Fetch Verified — not implemented yet
+    # 4. Fetch Verified — no API key configured in tests, so fetch fails gracefully
     fetch_resp = client.post(f"/scope/addresses/{addr_id}/fetch-verified", headers=auth_headers)
-    assert fetch_resp.status_code == 501
+    assert fetch_resp.status_code == 200
     
     # 5. Delete
     del_resp = client.delete(f"/scope/addresses/{addr_id}", headers=auth_headers)

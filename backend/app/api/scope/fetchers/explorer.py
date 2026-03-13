@@ -15,10 +15,8 @@ Ref: https://docs.etherscan.io/v2-migration
 from __future__ import annotations
 
 import json
-import os
 
 import httpx
-from dotenv import load_dotenv
 from sqlmodel import Session
 
 from app.models.scope import ScopeSource, SourceType
@@ -30,16 +28,11 @@ from .base import (
     logger,
 )
 
-load_dotenv()
-
 # ============================= Configuration =============================
 
 # Etherscan API v2 - single endpoint for all chains
 ETHERSCAN_API_V2_URL = "https://api.etherscan.io/v2/api"
 EXPLORER_TIMEOUT = 30  # Request timeout in seconds
-
-# API key for all chains (required for API v2)
-ETHERSCAN_API_KEY = os.getenv("ETHERSCAN_API_KEY")
 
 # Map source types to chain IDs for Etherscan API v2
 EXPLORER_CHAIN_IDS: dict[SourceType, int] = {
@@ -175,6 +168,7 @@ def parse_source_code(source_code: str) -> list[tuple[str, str]]:
 def fetch_source_code(
     source_type: SourceType,
     contract_address: str,
+    etherscan_api_key: str | None = None,
 ) -> dict:
     """Fetch verified source code from Etherscan API v2.
     
@@ -198,23 +192,22 @@ def fetch_source_code(
             details=f"No chain ID configured for: {source_type.value}",
         )
     
-    if not ETHERSCAN_API_KEY:
-        logger.warning("ETHERSCAN_API_KEY not set - API v2 requires an API key")
+    if not etherscan_api_key:
         raise FetchError(
             message="Etherscan API key not configured",
             source_type="explorer",
-            details="Set ETHERSCAN_API_KEY environment variable",
+            details="Add your Etherscan API key in your account settings",
         )
-    
+
     logger.info(f"Fetching source code from {chain_name} for {contract_address}")
-    
+
     # Build API v2 request
     params = {
         "chainid": chain_id,
         "module": "contract",
         "action": "getsourcecode",
         "address": contract_address,
-        "apikey": ETHERSCAN_API_KEY,
+        "apikey": etherscan_api_key,
     }
     
     try:
@@ -256,7 +249,7 @@ def fetch_source_code(
             raise FetchError(
                 message="Invalid API key",
                 source_type="explorer",
-                details="Check your ETHERSCAN_API_KEY environment variable",
+                details="Check your Etherscan API key in account settings",
             )
         
         raise FetchError(
@@ -292,7 +285,7 @@ def fetch_source_code(
 
 # ============================= Main Fetcher =============================
 
-def fetch_explorer(session: Session, source: ScopeSource) -> int:
+def fetch_explorer(session: Session, source: ScopeSource, etherscan_api_key: str | None = None) -> int:
     """Fetch verified source code from a blockchain explorer.
     
     Downloads verified contract source code and creates ScopeContract entries.
@@ -315,7 +308,7 @@ def fetch_explorer(session: Session, source: ScopeSource) -> int:
     contract_address = validate_eth_address(source.contract_address or "")
     
     # Fetch source code from explorer API
-    contract_data = fetch_source_code(source.source_type, contract_address)
+    contract_data = fetch_source_code(source.source_type, contract_address, etherscan_api_key)
     
     # Parse source code (handles single and multi-file)
     source_code = contract_data.get("SourceCode", "")

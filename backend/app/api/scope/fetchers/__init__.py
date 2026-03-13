@@ -38,7 +38,7 @@ EXPLORER_SOURCE_TYPES = frozenset({
 })
 
 
-def fetch_source(session: Session, source: ScopeSource) -> int:
+def fetch_source(session: Session, source: ScopeSource, etherscan_api_key: str | None = None) -> int:
     """Fetch source code from an external source.
     
     Dispatches to the appropriate fetcher based on source_type.
@@ -61,7 +61,7 @@ def fetch_source(session: Session, source: ScopeSource) -> int:
         return fetch_github(session, source)
     
     elif source.source_type in EXPLORER_SOURCE_TYPES:
-        return fetch_explorer(session, source)
+        return fetch_explorer(session, source, etherscan_api_key)
     
     elif source.source_type == SourceType.upload:
         # Upload sources don't need fetching
