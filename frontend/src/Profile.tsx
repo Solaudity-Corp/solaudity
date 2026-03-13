@@ -12,8 +12,7 @@ import {
   getUserAIConfig,
   type UserAIConfigRead,
   type UserRead,
-  updateUserAIApiKey,
-  updateUserAIProvider,
+  updateUserAIConfig,
   updateUserProfile,
 } from './auth'
 
@@ -51,11 +50,9 @@ export default function Profile({ onNavigateMenu, onOpenProfile }: ProfileProps)
   const [isSavingEmail, setIsSavingEmail] = useState(false)
 
   const [providerDraft, setProviderDraft] = useState('')
-  const [isSavingProvider, setIsSavingProvider] = useState(false)
-
   const [apiKeyDraft, setApiKeyDraft] = useState('')
   const [showApiKey, setShowApiKey] = useState(false)
-  const [isSavingApiKey, setIsSavingApiKey] = useState(false)
+  const [isSavingAiSettings, setIsSavingAiSettings] = useState(false)
 
   useEffect(() => {
     let isMounted = true
@@ -101,6 +98,10 @@ export default function Profile({ onNavigateMenu, onOpenProfile }: ProfileProps)
   const emailDirty = emailDraft.trim() !== currentEmail.trim()
   const providerDirty = providerDraft !== currentProvider
   const apiKeyDirty = apiKeyDraft.trim() !== currentApiKey
+  const aiSettingsDirty = providerDirty || apiKeyDirty
+  const bothEmpty = !providerDraft && !apiKeyDraft.trim()
+  const bothFilled = !!providerDraft && !!apiKeyDraft.trim()
+  const aiSettingsValid = aiSettingsDirty && (bothEmpty || bothFilled)
 
   const iconButtonClass = css({
     width: '2rem',
@@ -240,53 +241,38 @@ export default function Profile({ onNavigateMenu, onOpenProfile }: ProfileProps)
     }
   }
 
-  const saveProvider = async () => {
+  const saveAiSettings = async () => {
     const normalizedProvider = providerDraft.trim().toLowerCase()
+    const normalizedApiKey = apiKeyDraft.trim()
+
     if (normalizedProvider && !supportedProviders.includes(normalizedProvider)) {
       setStatus({ kind: 'error', message: 'Please choose a provider from the list.' })
       return
     }
-
-    setIsSavingProvider(true)
-    setStatus(null)
-    try {
-      const updated = await updateUserAIProvider(normalizedProvider || null)
-      setAiConfig((previous) => ({
-        ai_provider: updated.ai_provider,
-        ai_api_key: previous?.ai_api_key ?? null,
-        has_api_key: Boolean(previous?.ai_api_key),
-      }))
-      setProviderDraft(updated.ai_provider ?? '')
-      setStatus({ kind: 'success', message: 'AI provider updated.' })
-    } catch (error) {
-      setStatus({ kind: 'error', message: getErrorMessage(error) })
-    } finally {
-      setIsSavingProvider(false)
+    if (normalizedProvider && !normalizedApiKey) {
+      setStatus({ kind: 'error', message: 'An API key is required when selecting a provider.' })
+      return
     }
-  }
-
-  const saveApiKey = async () => {
-    const normalizedApiKey = apiKeyDraft.trim()
     if (normalizedApiKey.length > 512) {
       setStatus({ kind: 'error', message: 'API key is too long (max 512 characters).' })
       return
     }
 
-    setIsSavingApiKey(true)
+    setIsSavingAiSettings(true)
     setStatus(null)
     try {
-      const updated = await updateUserAIApiKey(normalizedApiKey || null)
-      setAiConfig((previous) => ({
-        ai_provider: previous?.ai_provider ?? null,
-        ai_api_key: updated.ai_api_key,
-        has_api_key: updated.has_api_key,
-      }))
+      const updated = await updateUserAIConfig(
+        normalizedProvider || null,
+        normalizedApiKey || null,
+      )
+      setAiConfig(updated)
+      setProviderDraft(updated.ai_provider ?? '')
       setApiKeyDraft(updated.ai_api_key ?? '')
-      setStatus({ kind: 'success', message: 'AI API key updated.' })
+      setStatus({ kind: 'success', message: 'AI settings updated.' })
     } catch (error) {
       setStatus({ kind: 'error', message: getErrorMessage(error) })
     } finally {
-      setIsSavingApiKey(false)
+      setIsSavingAiSettings(false)
     }
   }
 
@@ -445,7 +431,7 @@ export default function Profile({ onNavigateMenu, onOpenProfile }: ProfileProps)
                               setStatus(null)
                             }}
                             className={selectClass}
-                            disabled={isLoading}
+                            disabled={isLoading || isSavingAiSettings}
                           >
                             <option value="">Select provider</option>
                             {supportedProviders.map((provider) => (
@@ -466,30 +452,7 @@ export default function Profile({ onNavigateMenu, onOpenProfile }: ProfileProps)
                             })}
                           />
                         </Box>
-                        <Box className={actionGroupClass}>
-                          <button
-                            type="button"
-                            className={cx(
-                              iconButtonClass,
-                              providerDirty && confirmButtonActiveClass,
-                              providerDirty && confirmButtonDirtyClass,
-                            )}
-                            onClick={() => { void saveProvider() }}
-                            aria-label="Save provider"
-                            disabled={!providerDirty || isSavingProvider}
-                          >
-                            <Check size={14} />
-                          </button>
-                          <button
-                            type="button"
-                            className={iconButtonClass}
-                            onClick={() => setProviderDraft(currentProvider)}
-                            aria-label="Reset provider"
-                            disabled={!providerDirty || isSavingProvider}
-                          >
-                            <X size={14} />
-                          </button>
-                        </Box>
+                        <Box />
                       </Box>
                     </Box>
 
@@ -505,7 +468,7 @@ export default function Profile({ onNavigateMenu, onOpenProfile }: ProfileProps)
                           }}
                           placeholder="Enter API key"
                           className={cx(inputClass, css({ w: 'full' }))}
-                          disabled={isLoading}
+                          disabled={isLoading || isSavingAiSettings}
                         />
                         <Box className={actionGroupClass}>
                           <button
@@ -521,21 +484,25 @@ export default function Profile({ onNavigateMenu, onOpenProfile }: ProfileProps)
                             type="button"
                             className={cx(
                               iconButtonClass,
-                              apiKeyDirty && confirmButtonActiveClass,
-                              apiKeyDirty && confirmButtonDirtyClass,
+                              aiSettingsValid && confirmButtonActiveClass,
+                              aiSettingsValid && confirmButtonDirtyClass,
                             )}
-                            onClick={() => { void saveApiKey() }}
-                            aria-label="Save API key"
-                            disabled={!apiKeyDirty || isSavingApiKey}
+                            onClick={() => { void saveAiSettings() }}
+                            aria-label="Save AI settings"
+                            disabled={!aiSettingsValid || isSavingAiSettings}
                           >
                             <Check size={14} />
                           </button>
                           <button
                             type="button"
                             className={iconButtonClass}
-                            onClick={() => setApiKeyDraft(currentApiKey)}
-                            aria-label="Reset API key"
-                            disabled={!apiKeyDirty || isSavingApiKey}
+                            onClick={() => {
+                              setProviderDraft(currentProvider)
+                              setApiKeyDraft(currentApiKey)
+                              setStatus(null)
+                            }}
+                            aria-label="Reset AI settings"
+                            disabled={!aiSettingsDirty || isSavingAiSettings}
                           >
                             <X size={14} />
                           </button>
