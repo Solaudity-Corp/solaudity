@@ -158,7 +158,7 @@ def list_contracts(
 # 2. Upload files here with the returned source_id to group them together
 @router.post(
     "/audits/{audit_id}/contracts/upload",
-    response_model=ScopeContractRead,
+    response_model=ScopeContractListResponse,
     status_code=status.HTTP_201_CREATED,
 )
 def upload_contract(
@@ -167,21 +167,30 @@ def upload_contract(
     is_in_scope: bool = Form(True),
     scope_reason: str | None = Form(None),
     source_id: UUID | None = Form(None),
+    file_path: str | None = Form(None),
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
-) -> ScopeContractRead:
-    """Upload a .sol file and create a contract entry."""
+) -> ScopeContractListResponse:
+    """Upload a .sol, .zip, or .tar file and create contract entries."""
     metadata = ScopeContractUpload(is_in_scope=is_in_scope, scope_reason=scope_reason)
     try:
         file_content = file.file.read()
-        return service.upload_contract(
+        contracts = service.upload_contract(
             session,
             audit_id,
             file_content=file_content,
-            filename=file.filename or "unknown.sol",
+            filename=file.filename or "unknown",
             metadata=metadata,
             owner_id=current_user.id,
             source_id=source_id,
+            explicit_file_path=file_path,
+        )
+        in_scope = sum(1 for c in contracts if c.is_in_scope)
+        return ScopeContractListResponse(
+            items=contracts,
+            total=len(contracts),
+            in_scope_count=in_scope,
+            out_of_scope_count=len(contracts) - in_scope,
         )
     except Exception as exc:
         _raise_service_error(exc)
@@ -308,6 +317,20 @@ def delete_address(
     """Delete an address."""
     try:
         service.delete_address(session, address_id, current_user.id)
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+    except Exception as exc:
+        _raise_service_error(exc)
+
+
+@router.delete("/audits/{audit_id}/scope", status_code=status.HTTP_204_NO_CONTENT)
+def delete_audit_scope(
+    audit_id: UUID,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> Response:
+    """Delete all scope data (contracts, sources, addresses, disk files) for an audit."""
+    try:
+        service.delete_all_scope_for_audit(session, audit_id, current_user.id)
         return Response(status_code=status.HTTP_204_NO_CONTENT)
     except Exception as exc:
         _raise_service_error(exc)

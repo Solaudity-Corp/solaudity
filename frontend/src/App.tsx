@@ -4,8 +4,9 @@ import Login from './Login'
 import Menu, { type MenuPath } from './Menu'
 import Profile from './Profile'
 import Register from './Register'
+import ScopeWorkspace from './scope/ScopeWorkspace'
 
-type AppPath = '/login' | '/register' | '/profile' | MenuPath
+type AppPath = string // Support dynamic paths like /scope/:auditId
 
 function normalizePathname(pathname: string): AppPath {
   const normalized = pathname.toLowerCase()
@@ -18,6 +19,10 @@ function normalizePathname(pathname: string): AppPath {
   if (normalized === '/menu/audits') return '/menu/audits'
   if (normalized === '/menu/reports') return '/menu/reports'
   if (normalized === '/menu/activity') return '/menu/activity'
+
+  if (normalized.startsWith('/scope/')) {
+    return pathname
+  }
 
   return '/login'
 }
@@ -70,9 +75,9 @@ export default function App() {
     setPathname('/login')
     return null
   }
-  if (isAuthenticated && (pathname === '/login' || pathname === '/register')) {
-    window.history.replaceState(null, '', '/menu/dashboard')
-    setPathname('/menu/dashboard')
+  if (isAuthenticated && (pathname === '/login' || pathname === '/register' || pathname === '/')) {
+    window.history.replaceState(null, '', '/menu/audits')
+    setPathname('/menu/audits')
     return null
   }
 
@@ -98,6 +103,17 @@ export default function App() {
     return (
       <Profile
         onNavigateMenu={(nextPath) => navigate(nextPath)}
+        onOpenProfile={() => navigate('/profile')}
+      />
+    )
+  }
+
+  if (pathname.startsWith('/scope/')) {
+    const auditId = pathname.split('/')[2]
+    return (
+      <ScopeWorkspace
+        auditId={auditId}
+        onNavigate={(nextPath: string) => navigate(nextPath)}
         onOpenProfile={() => navigate('/profile')}
       />
     )
