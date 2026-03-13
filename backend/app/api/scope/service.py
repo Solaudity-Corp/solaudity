@@ -1,21 +1,26 @@
 from __future__ import annotations
 
-import hashlib
 import io
 import os
-import re
 import shutil
 import tarfile
+import zipfile
 from pathlib import Path
-from urllib.parse import urlparse
 from uuid import UUID, uuid4
 
-import zipfile
-import httpx
 import sqlalchemy as sa
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
+from app.api.scope.fetchers import FetchError, fetch_source
+from app.api.scope.fetchers.base import (
+    CONTRACTS_STORAGE_DIR,
+    compute_sha256,
+    count_sloc,
+    extract_solidity_version,
+    extract_license,
+    ensure_storage_dir,
+)
 from app.api.scope.schemas import (
     ScopeSourceCreate,
     ScopeSourceRead,
@@ -80,7 +85,10 @@ def _commit(session: Session) -> None:
         session.commit()
     except IntegrityError as exc:
         session.rollback()
-        raise ScopeConflictError("database constraint violation") from exc
+        detail = str(exc.orig) if exc.orig else str(exc)
+        if "uq_scope_address_audit_address" in detail or "scope_addresses" in detail:
+            raise ScopeConflictError("Address already exists in this audit") from exc
+        raise ScopeConflictError("A duplicate entry already exists") from exc
 
 
 def _to_source_read(source: ScopeSource) -> ScopeSourceRead:
@@ -515,6 +523,8 @@ def create_address(
         implementation_address=payload.implementation_address,
         contract_id=payload.contract_id,
         notes=payload.notes,
+        is_contract=payload.is_contract,
+        bytecode=payload.bytecode,
     )
     
     session.add(address)
@@ -556,7 +566,7 @@ def update_address(
 
 
 def delete_address(session: Session, address_id: UUID, owner_id: UUID) -> None:
-    """Delete an address.
+    """Delete an address and any linked source + contracts (created by fetch_verified_code).
         Params:
             session: Database session dependency.
             address_id: Unique identifier for the address to delete.
@@ -565,6 +575,24 @@ def delete_address(session: Session, address_id: UUID, owner_id: UUID) -> None:
     """
     address = _ensure_address_exists(session, address_id)
     _ensure_audit_owned_by(session, address.audit_id, owner_id)
+
+    # Cascade: if the address links to a contract, find the backing source and delete everything
+    if address.contract_id:
+        linked_contract = session.get(ScopeContract, address.contract_id)
+        if linked_contract and linked_contract.source_id:
+            source_id = linked_contract.source_id
+            # Delete all contracts from that source (+ their files on disk)
+            source_contracts = session.exec(
+                select(ScopeContract).where(ScopeContract.source_id == source_id)
+            ).all()
+            for sc in source_contracts:
+                _delete_contract_file(sc)
+                session.delete(sc)
+            # Delete the source itself
+            source = session.get(ScopeSource, source_id)
+            if source:
+                session.delete(source)
+
     session.delete(address)
     _commit(session)
 
@@ -599,130 +627,6 @@ def delete_all_scope_for_audit(session: Session, audit_id: UUID, owner_id: UUID)
         shutil.rmtree(audit_dir, ignore_errors=True)
 
 
-##############################################################################################################
-# PHASE 2 - EXTERNAL FETCHING & FILE MANAGEMENT
-##############################################################################################################
-#
-# These functions handle interactions with external services and file storage:
-#
-#   1. trigger_fetch(source_id)
-#      User creates a GitHub/Etherscan source and wants to fetch the code
-#
-#   2. upload_contract(audit_id, file_content, filename, metadata)
-#      User manually uploads a .sol file instead of fetching from external source
-#
-#   3. get_contract_content(contract_id)
-#      Frontend wants to display the Solidity source code
-#
-#   4. fetch_verified_code(address_id)
-#      User added an onchain address and wants to retrieve verified source code
-#
-##############################################################################################################
-
-# Storage configuration - uses /data/contracts in Docker (mounted volume) or data/contracts locally
-CONTRACTS_STORAGE_DIR = Path(os.getenv("CONTRACTS_STORAGE_DIR", "/data/contracts"))
-
-
-# ============================= File Utilities =============================
-
-def _compute_sha256(content: bytes) -> str:
-    """Compute SHA256 hash of file content.
-        Params:
-            content: Raw bytes of the file content.
-        Returns:
-            str: Hexadecimal string of the SHA256 hash.
-    """
-    return hashlib.sha256(content).hexdigest()
-
-
-def _count_sloc(content: str) -> int:
-    """Count Source Lines of Code (excluding blank lines and comments).
-        Params:
-            content: The Solidity source code as a string.
-        Returns:
-            int: The number of source lines of code.
-    """
-    lines = content.split("\n")
-    sloc = 0
-    in_multiline_comment = False
-    
-    for line in lines:
-        stripped = line.strip()
-        
-        # Handle multiline comments
-        if "/*" in stripped and "*/" in stripped:
-            # Single line with /* ... */
-            stripped = re.sub(r"/\*.*?\*/", "", stripped).strip()
-        elif "/*" in stripped:
-            in_multiline_comment = True
-            continue
-        elif "*/" in stripped:
-            in_multiline_comment = False
-            continue
-        
-        if in_multiline_comment:
-            continue
-        
-        # Skip empty lines and single-line comments
-        if not stripped or stripped.startswith("//"):
-            continue
-        
-        sloc += 1
-    
-    return sloc
-
-
-def _extract_solidity_version(content: str) -> str | None:
-    """Extract pragma solidity version from source code.This is a simple regex-based extractor that looks for the first occurrence of a pragma solidity statement.
-            
-            Params:
-                content: The Solidity source code as a string.
-            Returns:
-            
-                str | None: The extracted Solidity version string (e.g. "^0.8.0") or None if not found.
-    """
-    match = re.search(r"pragma\s+solidity\s+([^;]+);", content)
-    if match:
-        return match.group(1).strip()
-    return None
-
-
-def _extract_license(content: str) -> str | None:
-    """Extract SPDX license identifier from source code. Looks for a comment containing "SPDX-License-Identifier: <license>".
-            Params:
-                content: The Solidity source code as a string.
-            Returns:
-            
-                str | None: The extracted license identifier (e.g. "MIT") or None if not found.
-    """
-    match = re.search(r"SPDX-License-Identifier:\s*(\S+)", content)
-    if match:
-        return match.group(1).strip()
-    return None
-
-
-# # Patterns for auto-detecting out-of-scope files
-# OUT_OF_SCOPE_PATTERNS = [
-#     r"^test/",
-#     r"^tests/",
-#     r"^script/",
-#     r"^scripts/",
-#     r"^lib/",           # Dependencies (Foundry)
-#     r"^node_modules/",
-#     r"Mock\.sol$",
-#     r"Test\.sol$",
-#     r"\.t\.sol$",       # Foundry test convention
-# ]
-
-
-# def _auto_detect_scope(file_path: str) -> tuple[bool, str | None]:
-#     """Auto-detect if a file should be in/out of scope based on path patterns."""
-#     for pattern in OUT_OF_SCOPE_PATTERNS:
-#         if re.search(pattern, file_path):
-#             return False, f"matches pattern: {pattern}"
-#     return True, None
-
-
 def _delete_contract_file(contract: ScopeContract) -> None:
     """Delete the stored .sol file for a contract from disk. Silently ignores missing files."""
     storage_path = CONTRACTS_STORAGE_DIR / contract.storage_key
@@ -730,344 +634,24 @@ def _delete_contract_file(contract: ScopeContract) -> None:
         storage_path.unlink()
 
 
-def _ensure_storage_dir(audit_id: UUID) -> Path:
-    """Ensure the storage directory for an audit exists and return its path.
-        Params:
-            audit_id: Unique identifier for the audit.
-        Returns:
-            the Path object of the storage directory for the audit. The directory is created if it does not exist.
-    """
-    storage_dir = CONTRACTS_STORAGE_DIR / str(audit_id)
-    storage_dir.mkdir(parents=True, exist_ok=True)
-    return storage_dir
 
 
-# ============================= GitHub Fetcher =============================
+# ============================= Fetching & File Management =============================
 
-# Configuration
-GITHUB_MAX_SIZE_MB = 50  # Maximum archive size in MB
-GITHUB_TIMEOUT = 60  # Request timeout in seconds
-GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")  # Optional: for higher rate limits
-
-
-def _parse_github_url(url: str) -> tuple[str, str]:
-    """Parse a GitHub URL and extract owner and repo name.
-    
-    Supports formats:
-        - https://github.com/owner/repo
-        - https://github.com/owner/repo.git
-        - https://github.com/owner/repo/tree/branch
-        - git@github.com:owner/repo.git
-    
-    Params:
-        url: The GitHub repository URL.
-    Returns:
-        tuple[str, str]: (owner, repo) tuple.
-    Raises:
-        ScopeValidationError: If URL is not a valid GitHub repo URL.
-    """
-    # Handle SSH URLs (git@github.com:owner/repo.git)
-    ssh_match = re.match(r"git@github\.com:([^/]+)/([^/]+?)(?:\.git)?$", url)
-    if ssh_match:
-        return ssh_match.group(1), ssh_match.group(2)
-    
-    # Handle HTTPS URLs
-    parsed = urlparse(url)
-    if parsed.netloc not in ("github.com", "www.github.com"):
-        raise ScopeValidationError([{
-            "loc": ["url"],
-            "msg": f"Not a GitHub URL: {url}"
-        }])
-    
-    # Path should be /owner/repo or /owner/repo/...
-    path_parts = [p for p in parsed.path.strip("/").split("/") if p]
-    if len(path_parts) < 2:
-        raise ScopeValidationError([{
-            "loc": ["url"],
-            "msg": f"Invalid GitHub repo URL: {url}"
-        }])
-    
-    owner = path_parts[0]
-    repo = path_parts[1].removesuffix(".git")
-    
-    return owner, repo
-
-
-def _get_default_branch(owner: str, repo: str) -> str:
-    """Get the default branch of a GitHub repository.
-    
-    Params:
-        owner: Repository owner.
-        repo: Repository name.
-    Returns:
-        str: Default branch name (e.g., "main", "master").
-    Raises:
-        ScopeValidationError: If the repository is not found or inaccessible.
-        
-    ## TODO:
-    - [ ] Think about adding GitHub Token to increase rate limits (60 requests/hour as of now)
-    """
-    headers = {"Accept": "application/vnd.github.v3+json"}
-    if GITHUB_TOKEN:
-        headers["Authorization"] = f"Bearer {GITHUB_TOKEN}"
-    
-    try:
-        response = httpx.get(
-            f"https://api.github.com/repos/{owner}/{repo}",
-            headers=headers,
-            timeout=GITHUB_TIMEOUT,
-        )
-        response.raise_for_status()
-        return response.json()["default_branch"]
-    except httpx.HTTPStatusError as e:
-        if e.response.status_code == 404:
-            raise ScopeValidationError([{
-                "loc": ["url"],
-                "msg": f"Repository not found: {owner}/{repo}"
-            }]) from e
-        if e.response.status_code == 403:
-            raise ScopeValidationError([{
-                "loc": ["url"],
-                "msg": "GitHub rate limit exceeded. Set GITHUB_TOKEN env var for higher limits."
-            }]) from e
-        raise ScopeValidationError([{
-            "loc": ["url"],
-            "msg": f"GitHub API error: {e.response.status_code}"
-        }]) from e
-    except httpx.RequestError as e:
-        raise ScopeValidationError([{
-            "loc": ["url"],
-            "msg": f"Failed to connect to GitHub: {str(e)}"
-        }]) from e
-
-
-def _download_github_tarball(owner: str, repo: str, ref: str) -> bytes:
-    """Download a tarball of a GitHub repository at a specific ref.
-    
-    Params:
-        owner: Repository owner.
-        repo: Repository name.
-        ref: Git reference (branch name, tag, or commit SHA).
-    Returns:
-        bytes: Raw tarball content.
-    Raises:
-        ScopeValidationError: If download fails or file is too large.
-    """
-    url = f"https://github.com/{owner}/{repo}/archive/{ref}.tar.gz"
-    headers = {}
-    if GITHUB_TOKEN:
-        headers["Authorization"] = f"Bearer {GITHUB_TOKEN}"
-    
-    try:
-        # Use streaming to check size before downloading
-        with httpx.stream("GET", url, headers=headers, timeout=GITHUB_TIMEOUT, follow_redirects=True) as response:
-            response.raise_for_status()
-            
-            # Check Content-Length if available
-            content_length = response.headers.get("Content-Length")
-            if content_length and int(content_length) > GITHUB_MAX_SIZE_MB * 1024 * 1024:
-                raise ScopeValidationError([{
-                    "loc": ["url"],
-                    "msg": f"Repository archive is too large (>{GITHUB_MAX_SIZE_MB}MB)"
-                }])
-            
-            # Download with size limit
-            chunks = []
-            total_size = 0
-            for chunk in response.iter_bytes():
-                total_size += len(chunk)
-                if total_size > GITHUB_MAX_SIZE_MB * 1024 * 1024:
-                    raise ScopeValidationError([{
-                        "loc": ["url"],
-                        "msg": f"Repository archive is too large (>{GITHUB_MAX_SIZE_MB}MB)"
-                    }])
-                chunks.append(chunk)
-            
-            return b"".join(chunks)
-            
-    except httpx.HTTPStatusError as e:
-        if e.response.status_code == 404:
-            raise ScopeValidationError([{
-                "loc": ["commit_hash"],
-                "msg": f"Ref not found: {ref}"
-            }]) from e
-        raise ScopeValidationError([{
-            "loc": ["url"],
-            "msg": f"GitHub download error: {e.response.status_code}"
-        }]) from e
-    except httpx.RequestError as e:
-        raise ScopeValidationError([{
-            "loc": ["url"],
-            "msg": f"Failed to download from GitHub: {str(e)}"
-        }]) from e
-
-
-def _extract_sol_files(tarball: bytes) -> list[tuple[str, bytes]]:
-    """Extract .sol files from a tarball.
-    
-    Params:
-        tarball: Raw tarball bytes (gzip compressed).
-    Returns:
-        list[tuple[str, bytes]]: List of (relative_path, content) tuples.
-    """
-    sol_files = []
-    
-    with tarfile.open(fileobj=io.BytesIO(tarball), mode="r:gz") as tar:
-        for member in tar.getmembers():
-            if not member.isfile():
-                continue
-            if not member.name.endswith(".sol"):
-                continue
-            
-            # Extract relative path (remove the root folder created by GitHub)
-            # GitHub tarballs have structure: repo-branch/path/to/file.sol
-            parts = member.name.split("/", 1)
-            if len(parts) < 2:
-                continue
-            relative_path = parts[1]
-            
-            # Read file content
-            f = tar.extractfile(member)
-            if f is None:
-                continue
-            content = f.read()
-            
-            sol_files.append((relative_path, content))
-    
-    return sol_files
-
-
-def _fetch_github(
-    session: Session,
-    source: ScopeSource,
-) -> int:
-    """Fetch Solidity files from a GitHub repository.
-    
-    Downloads the repository as a tarball, extracts .sol files,
-    and creates ScopeContract entries for each.
-    
-    Params:
-        session: Database session.
-        source: The ScopeSource record to fetch.
-    Returns:
-        int: Number of contracts created.
-    Raises:
-        ScopeValidationError: If fetching fails.
-    """
-    if not source.url:
-        raise ScopeValidationError([{
-            "loc": ["url"],
-            "msg": "GitHub source requires a URL"
-        }])
-    
-    # Parse URL
-    owner, repo = _parse_github_url(source.url)
-    
-    # Determine ref to download
-    ref = source.commit_hash or source.branch
-    if not ref:
-        # Get default branch from GitHub API
-        ref = _get_default_branch(owner, repo)
-    
-    # Download tarball
-    tarball = _download_github_tarball(owner, repo, ref)
-    
-    # Extract .sol files
-    sol_files = _extract_sol_files(tarball)
-    
-    if not sol_files:
-        # No .sol files found - not an error, just empty
-        return 0
-    
-    # Ensure storage directory exists
-    _ensure_storage_dir(source.audit_id)
-    
-    # Create contract entries
-    contracts_created = 0
-    for relative_path, content in sol_files:
-        try:
-            content_str = content.decode("utf-8")
-        except UnicodeDecodeError:
-            # Skip non-UTF8 files
-            continue
-        
-        content_hash = _compute_sha256(content)
-
-        # Skip if this exact file content already exists in this audit
-        existing = session.exec(
-            select(ScopeContract).where(
-                ScopeContract.audit_id == source.audit_id,
-                ScopeContract.content_hash == content_hash,
-            )
-        ).first()
-        if existing:
-            continue
-
-        sloc = _count_sloc(content_str)
-        compiler_version = _extract_solidity_version(content_str)
-        license_id = _extract_license(content_str)
-
-        # Generate storage key and save file
-        file_uuid = uuid4()
-        storage_key = f"{source.audit_id}/{file_uuid}.sol"
-        storage_path = CONTRACTS_STORAGE_DIR / storage_key
-        
-        try:
-            storage_path.write_bytes(content)
-        except OSError:
-            # Skip files that can't be written
-            continue
-        
-        # Create contract record
-        # By default, all fetched contracts are out of scope until user marks them in scope
-        contract = ScopeContract(
-            audit_id=source.audit_id,
-            source_id=source.id,
-            file_path=relative_path,
-            file_name=Path(relative_path).name,
-            content_hash=content_hash,
-            storage_key=storage_key,
-            sloc=sloc,
-            is_in_scope=False,
-            scope_reason="auto-imported from GitHub",
-            compiler_version=compiler_version,
-            license=license_id,
-        )
-        
-        session.add(contract)
-        contracts_created += 1
-    
-    # Commit all contracts at once
-    _commit(session)
-    
-    # Update source with actual commit hash if we used branch name
-    if source.branch and not source.commit_hash:
-        # We fetched using branch name, but we should store the actual ref
-        # In a future enhancement, we could resolve the actual commit SHA
-        pass
-    
-    return contracts_created
-
-
-# ============================= Other Functions =============================
-
-def trigger_fetch(session: Session, source_id: UUID, owner_id: UUID) -> ScopeSourceRead:
+def trigger_fetch(session: Session, source_id: UUID, owner_id: UUID, etherscan_api_key: str | None = None) -> ScopeSourceRead:
     """Trigger fetching code from an external source (GitHub, Etherscan, etc.).
     
     This function initiates the fetch process for a source. The actual fetching
-    is delegated to specialized fetchers based on source_type. 
+    is delegated to specialized fetchers in the fetchers module. 
     
     NOTE: This function is to be called when the user clicks "Fetch" on a source. 
-    Params:
+    
+    Args:
         session: Database session dependency.
         source_id: Unique identifier for the source to fetch.
+        
     Returns:
         ScopeSourceRead: The updated source with new fetch_status.
-    
-    ## TODO:
-    - [x] Implement GitHub fetcher
-    - [ ] Implement explorer_fetcher.py for Etherscan-like sources
-    - [ ] Add async/background job support for long-running fetches
     """
     source = _ensure_source_exists(session, source_id)
     _ensure_audit_owned_by(session, source.audit_id, owner_id)
@@ -1079,44 +663,27 @@ def trigger_fetch(session: Session, source_id: UUID, owner_id: UUID) -> ScopeSou
     session.refresh(source)
     
     try:
-        if source.source_type == SourceType.github:
-            contracts_count = _fetch_github(session, source)
-            source.error_message = f"Fetched {contracts_count} contracts"
-        
-        elif source.source_type in (
-            SourceType.etherscan,
-            SourceType.arbiscan,
-            SourceType.polygonscan,
-            SourceType.bscscan,
-            SourceType.basescan,
-            SourceType.optimism,
-        ):
-            # TODO: Implement Explorer fetcher
-            # contracts = explorer_fetcher.fetch(source.source_type, source.contract_address, source.chain_id)
-            raise NotImplementedError("Explorer fetcher not implemented yet")
-        
-        elif source.source_type == SourceType.upload:
-            # Upload sources don't need fetching - they're uploaded directly
-            source.fetch_status = FetchStatus.success
-            source.fetched_at = utcnow()
-        
-        elif source.source_type == SourceType.bug_bounty:
-            # TODO: Implement bug bounty scraper
-            raise NotImplementedError("Bug bounty fetcher not implemented yet")
-        
-        else:
-            raise ValueError(f"Unknown source type: {source.source_type}")
+        # Delegate to the fetchers module
+        contracts_count = fetch_source(session, source, etherscan_api_key)
         
         source.fetch_status = FetchStatus.success
         source.fetched_at = utcnow()
-        source.error_message = None
+        source.error_message = f"Fetched {contracts_count} contracts"
+        
+    except FetchError as e:
+        # Clear error message from fetchers module
+        source.fetch_status = FetchStatus.failed
+        source.error_message = e.message
+        if e.details:
+            source.error_message = f"{e.message}: {e.details}"
         
     except NotImplementedError as e:
         source.fetch_status = FetchStatus.failed
         source.error_message = str(e)
+        
     except Exception as e:
         source.fetch_status = FetchStatus.failed
-        source.error_message = f"Fetch failed: {str(e)}"
+        source.error_message = f"Unexpected error: {str(e)}"
     
     session.add(source)
     _commit(session)
@@ -1127,25 +694,22 @@ def trigger_fetch(session: Session, source_id: UUID, owner_id: UUID) -> ScopeSou
 def upload_contract(
     session: Session,
     audit_id: UUID,
-    file_content: bytes,
-    filename: str,
+    files: list[tuple[str, bytes]],
     metadata: ScopeContractUpload,
     owner_id: UUID,
     source_id: UUID | None = None,
-    explicit_file_path: str | None = None,
 ) -> list[ScopeContractRead]:
-    """Upload and store a .sol, .zip, or .tar file, creating ScopeContract entries.
+    """Upload and store .sol, .zip, or .tar files, creating ScopeContract entries.
     
-    This function handles manual file uploads from users.
+    This function handles manual file and folder uploads from users.
     
     Params:
         session: Database session dependency.
         audit_id: Unique identifier for the audit.
-        file_content: Raw bytes of the uploaded file.
-        filename: Original filename (e.g., "Token.sol" or "contracts.zip").
+        files: List of (filename, content_bytes) tuples.
         metadata: Upload metadata (is_in_scope, scope_reason).
+        owner_id: User performing the upload.
         source_id: Optional source ID if the file comes from a fetched source.
-        explicit_file_path: Optional full path from frontend drag-and-drop.
     Returns:
         list[ScopeContractRead]: The newly created contracts.
     
@@ -1171,7 +735,7 @@ def upload_contract(
             return  # Skip silently if not valid utf-8
 
         # Compute hash and check for duplicates within this audit
-        content_hash = _compute_sha256(content)
+        content_hash = compute_sha256(content)
         existing = session.exec(
             select(ScopeContract).where(
                 ScopeContract.audit_id == audit_id,
@@ -1181,8 +745,8 @@ def upload_contract(
         if existing:
             return  # Skip duplicate
 
-        sloc = _count_sloc(content_str)
-        compiler_version = _extract_solidity_version(content_str)
+        sloc = count_sloc(content_str)
+        compiler_version = extract_solidity_version(content_str)
 
         # Determine scope from metadata
         is_in_scope = metadata.is_in_scope
@@ -1190,7 +754,7 @@ def upload_contract(
         
         # Store file on disk
         try:
-            _ensure_storage_dir(audit_id)
+            ensure_storage_dir(audit_id)
         except OSError as exc:
             raise ScopeValidationError(
                 [{"loc": ["storage"], "msg": f"Cannot create storage directory: {exc}"}]
@@ -1219,39 +783,37 @@ def upload_contract(
             is_in_scope=is_in_scope,
             scope_reason=scope_reason,
             compiler_version=compiler_version,
-            license=_extract_license(content_str),
+            license=extract_license(content_str),
         )
         session.add(contract)
         created_contracts.append(contract)
 
-    # Detect file type based on name or explicit extension
-    lower_filename = filename.lower()
-    if lower_filename.endswith('.zip'):
-        try:
-            with zipfile.ZipFile(io.BytesIO(file_content)) as z:
-                for zinfo in z.infolist():
-                    if not zinfo.is_dir():
-                        _process_single_sol(z.read(zinfo.filename), zinfo.filename)
-        except zipfile.BadZipFile:
-            raise ScopeValidationError([{"loc": ["file"], "msg": "Invalid ZIP archive."}])
-            
-    elif lower_filename.endswith('.tar') or lower_filename.endswith('.tar.gz') or lower_filename.endswith('.tgz'):
-        try:
-            # Determine read mode
-            mode = "r:gz" if lower_filename.endswith("gz") else "r"
-            with tarfile.open(fileobj=io.BytesIO(file_content), mode=mode) as t:
-                for tinfo in t:
-                    if tinfo.isreg(): # Is regular file
-                        f = t.extractfile(tinfo)
-                        if f:
-                            _process_single_sol(f.read(), tinfo.name)
-        except tarfile.TarError:
-            raise ScopeValidationError([{"loc": ["file"], "msg": "Invalid TAR archive."}])
-            
-    else:
-        # Standard fallback for single .sol file
-        used_path = explicit_file_path if explicit_file_path else filename
-        _process_single_sol(file_content, used_path)
+    # Process each uploaded file
+    for filename, file_content in files:
+        lower_filename = filename.lower()
+        if lower_filename.endswith('.zip'):
+            try:
+                with zipfile.ZipFile(io.BytesIO(file_content)) as z:
+                    for zinfo in z.infolist():
+                        if not zinfo.is_dir():
+                            _process_single_sol(z.read(zinfo.filename), zinfo.filename)
+            except zipfile.BadZipFile:
+                raise ScopeValidationError([{"loc": ["file"], "msg": "Invalid ZIP archive."}])
+                
+        elif lower_filename.endswith('.tar') or lower_filename.endswith('.tar.gz') or lower_filename.endswith('.tgz'):
+            try:
+                mode = "r:gz" if lower_filename.endswith("gz") else "r"
+                with tarfile.open(fileobj=io.BytesIO(file_content), mode=mode) as t:
+                    for tinfo in t:
+                        if tinfo.isreg():
+                            f = t.extractfile(tinfo)
+                            if f:
+                                _process_single_sol(f.read(), tinfo.name)
+            except tarfile.TarError:
+                raise ScopeValidationError([{"loc": ["file"], "msg": "Invalid TAR archive."}])
+                
+        else:
+            _process_single_sol(file_content, filename)
     
     if not created_contracts:
          raise ScopeValidationError([{"loc": ["file"], "msg": "No valid .sol files found in upload."}])
@@ -1287,57 +849,163 @@ def get_contract_content(session: Session, contract_id: UUID, owner_id: UUID) ->
     return storage_path.read_bytes()
 
 
-def fetch_verified_code(session: Session, address_id: UUID, owner_id: UUID) -> ScopeAddressRead:
-    """Fetch verified source code for an onchain address from block explorer.
-    
-    If the address has verified source code on Etherscan (or other explorer),
-    this function will:
-    1. Create a new ScopeSource (type=explorer)
-    2. Create ScopeContracts for each source file
-    3. Update the address with is_verified=True
-    
-    Params:
-        session: Database session dependency.
-        address_id: Unique identifier for the address.
-    Returns:
-        ScopeAddressRead: The updated address.
-    
-    ## TODO:
-    - [ ] Implement explorer_fetcher.py with Etherscan API
-    - [ ] Handle proxy detection (EIP-1967)
-    - [ ] Auto-fetch implementation contract if proxy
+def _chain_id_to_source_type(chain_id: int) -> SourceType:
+    """Map a chain ID to the corresponding explorer SourceType."""
+    from app.api.scope.fetchers.explorer import EXPLORER_CHAIN_IDS
+    for src_type, cid in EXPLORER_CHAIN_IDS.items():
+        if cid == chain_id:
+            return src_type
+    raise ScopeValidationError(
+        [{"loc": ["chain_id"], "msg": f"Unsupported chain_id: {chain_id}. Supported: {list(EXPLORER_CHAIN_IDS.values())}"}]
+    )
+
+
+def check_address_status(
+    session: Session,
+    address_id: UUID,
+    owner_id: UUID,
+    etherscan_api_key: str | None = None,
+) -> ScopeAddressRead:
+    """Lightweight check: update is_contract / is_verified without downloading source files.
+
+    Called automatically after address creation to give immediate feedback.
+    Silently returns the unchanged address if no API key is available or the chain
+    is not supported.
     """
+    from app.api.scope.fetchers.explorer import check_contract_status
+
     address = _ensure_address_exists(session, address_id)
     _ensure_audit_owned_by(session, address.audit_id, owner_id)
 
-    # TODO: Implement actual Etherscan API call
-    # result = explorer_fetcher.get_verified_source(address.address, address.chain_id)
-    # 
-    # if result.is_verified:
-    #     # Create source
-    #     source = ScopeSource(
-    #         audit_id=address.audit_id,
-    #         source_type=SourceType.etherscan,
-    #         url=f"https://etherscan.io/address/{address.address}",
-    #         contract_address=address.address,
-    #         chain_id=address.chain_id,
-    #         fetch_status=FetchStatus.success,
-    #         fetched_at=utcnow(),
-    #     )
-    #     session.add(source)
-    #     _commit(session)
-    #     session.refresh(source)
-    #     
-    #     # Create contracts from fetched files
-    #     for file in result.source_files:
-    #         upload_contract(session, address.audit_id, file.content, file.name, ...)
-    #     
-    #     address.is_verified = True
-    #     address.contract_id = main_contract.id  # Link to main contract
-    #     session.add(address)
-    #     _commit(session)
-    
-    raise NotImplementedError(
-        "Explorer API integration not implemented yet. "
-        f"Address: {address.address}, Chain ID: {address.chain_id}"
+    if not etherscan_api_key:
+        return _to_address_read(address)
+
+    try:
+        source_type = _chain_id_to_source_type(address.chain_id)
+    except ScopeValidationError:
+        return _to_address_read(address)
+
+    addr = address.address.strip().lower()
+    if not addr.startswith("0x"):
+        addr = "0x" + addr
+
+    status = check_contract_status(source_type, addr, etherscan_api_key)
+
+    incoming_bytecode = status.get("bytecode")
+    changed = (
+        address.is_contract != status["is_contract"]
+        or address.is_verified != status["is_verified"]
+        or (incoming_bytecode and not address.bytecode)
     )
+    if changed:
+        address.is_contract = status["is_contract"]
+        address.is_verified = status["is_verified"]
+        if incoming_bytecode and not address.bytecode:
+            address.bytecode = incoming_bytecode
+        session.add(address)
+        _commit(session)
+        session.refresh(address)
+
+    return _to_address_read(address)
+
+
+def fetch_verified_code(session: Session, address_id: UUID, owner_id: UUID, etherscan_api_key: str | None = None) -> ScopeAddressRead:
+    """Fetch code for an onchain address from a block explorer.
+
+    Behaviour:
+    - If the contract has verified source code → fetches all .sol files and adds
+      them to the file tree (left panel), marks address as verified + contract.
+    - If the contract is deployed but NOT verified → fetches the deployed bytecode
+      and stores it in address.bytecode, marks address as contract (not verified).
+    - If no API key is set → raises a validation error.
+
+    Params:
+        session: Database session dependency.
+        address_id: Unique identifier for the address.
+        owner_id: User performing the fetch.
+    Returns:
+        ScopeAddressRead: The updated address.
+    """
+    from app.api.scope.fetchers.explorer import fetch_bytecode as _fetch_bytecode
+
+    address = _ensure_address_exists(session, address_id)
+    _ensure_audit_owned_by(session, address.audit_id, owner_id)
+
+    if not etherscan_api_key:
+        raise ScopeValidationError(
+            [{"loc": ["api_key"], "msg": "Add your Etherscan API key in your account settings"}]
+        )
+
+    # Resolve chain_id → source_type (etherscan, arbiscan, etc.)
+    source_type = _chain_id_to_source_type(address.chain_id)
+
+    # Create a backing source for the fetch attempt
+    source = ScopeSource(
+        audit_id=address.audit_id,
+        source_type=source_type,
+        contract_address=address.address,
+        chain_id=address.chain_id,
+        fetch_status=FetchStatus.fetching,
+    )
+    session.add(source)
+    _commit(session)
+    session.refresh(source)
+
+    try:
+        contracts_count = fetch_source(session, source, etherscan_api_key)
+
+        # Source code found → verified contract
+        source.fetch_status = FetchStatus.success
+        source.fetched_at = utcnow()
+        source.error_message = f"Fetched {contracts_count} contracts"
+
+        address.is_verified = True
+        if contracts_count > 0:
+            address.is_contract = True
+
+        # Link the address to the first contract from this source
+        first_contract = session.exec(
+            select(ScopeContract)
+            .where(ScopeContract.source_id == source.id)
+            .order_by(ScopeContract.file_path.asc())
+        ).first()
+        if first_contract:
+            address.contract_id = first_contract.id
+
+    except FetchError as e:
+        not_verified = (
+            "not verified" in e.message.lower()
+            or "not verified" in (e.details or "").lower()
+        )
+        if not_verified:
+            # No source code — try to fetch bytecode instead
+            addr_norm = address.address.strip().lower()
+            if not addr_norm.startswith("0x"):
+                addr_norm = "0x" + addr_norm
+            bytecode = _fetch_bytecode(source_type, addr_norm, etherscan_api_key)
+            if bytecode:
+                address.bytecode = bytecode
+                address.is_contract = True
+                address.is_verified = False
+                source.fetch_status = FetchStatus.failed
+                source.error_message = "Contract not verified — bytecode fetched instead"
+            else:
+                address.is_contract = False
+                address.is_verified = False
+                source.fetch_status = FetchStatus.failed
+                source.error_message = e.message
+        else:
+            source.fetch_status = FetchStatus.failed
+            source.error_message = e.message if not e.details else f"{e.message}: {e.details}"
+            address.is_verified = False
+
+    except Exception as e:
+        source.fetch_status = FetchStatus.failed
+        source.error_message = f"Unexpected error: {str(e)}"
+        address.is_verified = False
+
+    session.add(source)
+    session.add(address)
+    _commit(session)
+    session.refresh(address)
+    return _to_address_read(address)

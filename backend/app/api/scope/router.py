@@ -7,7 +7,6 @@ from sqlmodel import Session
 
 from app.api.auth.auth import get_current_user
 from app.api.scope import service
-from app.models.user import User
 from app.api.scope.schemas import (
     ScopeSourceCreate,
     ScopeSourceRead,
@@ -24,6 +23,7 @@ from app.api.scope.schemas import (
 )
 from app.database import get_session
 from app.models.scope import AddressType
+from app.models.user import User
 
 router = APIRouter(
     prefix="/scope",
@@ -132,7 +132,7 @@ def trigger_fetch(
 ) -> ScopeSourceRead:
     """Trigger fetching code from an external source (GitHub, Etherscan, etc.)."""
     try:
-        return service.trigger_fetch(session, source_id, current_user.id)
+        return service.trigger_fetch(session, source_id, current_user.id, current_user.etherscan_api_key)
     except Exception as exc:
         _raise_service_error(exc)
 
@@ -153,44 +153,31 @@ def list_contracts(
         _raise_service_error(exc)
 
 
-# Manual upload workflow (recommended):
-# 1. Create a source with source_type="upload" via POST /audits/{audit_id}/sources
-# 2. Upload files here with the returned source_id to group them together
 @router.post(
     "/audits/{audit_id}/contracts/upload",
-    response_model=ScopeContractListResponse,
+    response_model=list[ScopeContractRead],
     status_code=status.HTTP_201_CREATED,
 )
 def upload_contract(
     audit_id: UUID,
-    file: UploadFile = File(...),
-    is_in_scope: bool = Form(True),
+    files: list[UploadFile] = File(...),
+    is_in_scope: bool = Form(False),
     scope_reason: str | None = Form(None),
     source_id: UUID | None = Form(None),
-    file_path: str | None = Form(None),
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
-) -> ScopeContractListResponse:
-    """Upload a .sol, .zip, or .tar file and create contract entries."""
+) -> list[ScopeContractRead]:
+    """Upload .sol files and create contract entries."""
     metadata = ScopeContractUpload(is_in_scope=is_in_scope, scope_reason=scope_reason)
     try:
-        file_content = file.file.read()
-        contracts = service.upload_contract(
+        file_list = [(f.filename or "unknown.sol", f.file.read()) for f in files]
+        return service.upload_contract(
             session,
             audit_id,
-            file_content=file_content,
-            filename=file.filename or "unknown",
+            files=file_list,
             metadata=metadata,
             owner_id=current_user.id,
             source_id=source_id,
-            explicit_file_path=file_path,
-        )
-        in_scope = sum(1 for c in contracts if c.is_in_scope)
-        return ScopeContractListResponse(
-            items=contracts,
-            total=len(contracts),
-            in_scope_count=in_scope,
-            out_of_scope_count=len(contracts) - in_scope,
         )
     except Exception as exc:
         _raise_service_error(exc)
@@ -251,6 +238,20 @@ def delete_contract(
         _raise_service_error(exc)
 
 
+@router.delete("/audits/{audit_id}/scope", status_code=status.HTTP_204_NO_CONTENT)
+def delete_audit_scope(
+    audit_id: UUID,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> Response:
+    """Delete all scope data (contracts, sources, addresses) for an audit."""
+    try:
+        service.delete_all_scope_for_audit(session, audit_id, current_user.id)
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+    except Exception as exc:
+        _raise_service_error(exc)
+
+
 # ============================= Addresses =============================
 
 @router.get("/audits/{audit_id}/addresses", response_model=ScopeAddressListResponse)
@@ -274,9 +275,22 @@ def create_address(
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ) -> ScopeAddressRead:
-    """Create a new scope address for an audit."""
+    """Create a new scope address for an audit.
+
+    Automatically checks the address on-chain (is_contract / is_verified) if the
+    user has an Etherscan API key configured.
+    """
     try:
-        return service.create_address(session, audit_id, payload, current_user.id)
+        result = service.create_address(session, audit_id, payload, current_user.id)
+        # Auto-check: lightweight Etherscan call to set is_contract / is_verified
+        if current_user.etherscan_api_key:
+            try:
+                result = service.check_address_status(
+                    session, result.id, current_user.id, current_user.etherscan_api_key
+                )
+            except Exception:
+                pass  # Never block address creation because of a check failure
+        return result
     except Exception as exc:
         _raise_service_error(exc)
 
@@ -322,20 +336,6 @@ def delete_address(
         _raise_service_error(exc)
 
 
-@router.delete("/audits/{audit_id}/scope", status_code=status.HTTP_204_NO_CONTENT)
-def delete_audit_scope(
-    audit_id: UUID,
-    session: Session = Depends(get_session),
-    current_user: User = Depends(get_current_user),
-) -> Response:
-    """Delete all scope data (contracts, sources, addresses, disk files) for an audit."""
-    try:
-        service.delete_all_scope_for_audit(session, audit_id, current_user.id)
-        return Response(status_code=status.HTTP_204_NO_CONTENT)
-    except Exception as exc:
-        _raise_service_error(exc)
-
-
 @router.post("/addresses/{address_id}/fetch-verified", response_model=ScopeAddressRead)
 def fetch_verified_code(
     address_id: UUID,
@@ -344,7 +344,7 @@ def fetch_verified_code(
 ) -> ScopeAddressRead:
     """Fetch verified source code for an onchain address from block explorer."""
     try:
-        return service.fetch_verified_code(session, address_id, current_user.id)
+        return service.fetch_verified_code(session, address_id, current_user.id, current_user.etherscan_api_key)
     except Exception as exc:
         _raise_service_error(exc)
 

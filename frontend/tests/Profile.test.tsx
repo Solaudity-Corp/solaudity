@@ -6,8 +6,10 @@ const authMocks = vi.hoisted(() => ({
   getCurrentUser: vi.fn(),
   getSupportedAIProviders: vi.fn(),
   getUserAIConfig: vi.fn(),
+  getUserEtherscanApiKey: vi.fn(),
   updateUserAIApiKey: vi.fn(),
   updateUserAIProvider: vi.fn(),
+  updateUserEtherscanApiKey: vi.fn(),
   updateUserProfile: vi.fn(),
 }))
 
@@ -28,8 +30,10 @@ vi.mock('../src/auth', () => {
     getCurrentUser: authMocks.getCurrentUser,
     getSupportedAIProviders: authMocks.getSupportedAIProviders,
     getUserAIConfig: authMocks.getUserAIConfig,
+    getUserEtherscanApiKey: authMocks.getUserEtherscanApiKey,
     updateUserAIApiKey: authMocks.updateUserAIApiKey,
     updateUserAIProvider: authMocks.updateUserAIProvider,
+    updateUserEtherscanApiKey: authMocks.updateUserEtherscanApiKey,
     updateUserProfile: authMocks.updateUserProfile,
   }
 })
@@ -43,8 +47,10 @@ describe('Profile', () => {
     authMocks.getCurrentUser.mockReset()
     authMocks.getSupportedAIProviders.mockReset()
     authMocks.getUserAIConfig.mockReset()
+    authMocks.getUserEtherscanApiKey.mockReset()
     authMocks.updateUserAIApiKey.mockReset()
     authMocks.updateUserAIProvider.mockReset()
+    authMocks.updateUserEtherscanApiKey.mockReset()
     authMocks.updateUserProfile.mockReset()
 
     authMocks.getCurrentUser.mockResolvedValue({
@@ -60,6 +66,10 @@ describe('Profile', () => {
       has_api_key: true,
     })
     authMocks.getSupportedAIProviders.mockResolvedValue(['openai', 'groq'])
+    authMocks.getUserEtherscanApiKey.mockResolvedValue({
+      etherscan_api_key: null,
+      has_api_key: false,
+    })
     authMocks.updateUserProfile.mockImplementation(async ({ email }: { email: string }) => ({
       id: 1,
       username: 'alice',

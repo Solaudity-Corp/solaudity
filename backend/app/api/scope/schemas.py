@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import List
 from uuid import UUID
 
 from pydantic import BaseModel
@@ -49,7 +50,7 @@ class ScopeSourceUpdate(SQLModel):
 
 class ScopeContractUpload(SQLModel):
     """Metadata sent with file upload (multipart/form-data)."""
-    is_in_scope: bool = True
+    is_in_scope: bool = False
     scope_reason: str | None = None
 
 
@@ -60,7 +61,7 @@ class ScopeContractCreateInternal(SQLModel):
     content_hash: str
     storage_key: str
     sloc: int = 0
-    is_in_scope: bool = True
+    is_in_scope: bool = False
     scope_reason: str | None = None
     compiler_version: str | None = None
     license: str | None = None
@@ -104,6 +105,8 @@ class ScopeAddressCreate(SQLModel):
     implementation_address: str | None = None
     contract_id: UUID | None = None
     notes: str | None = None
+    is_contract: bool = False
+    bytecode: str | None = None
 
 
 class ScopeAddressRead(ScopeAddressCreate):
@@ -124,6 +127,8 @@ class ScopeAddressUpdate(SQLModel):
     contract_id: UUID | None = None
     is_verified: bool | None = None
     notes: str | None = None
+    is_contract: bool | None = None
+    bytecode: str | None = None
 
 
 # ============================= List Response Schemas =============================

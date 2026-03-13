@@ -41,6 +41,11 @@ export interface UserAPIKeyRead {
   has_api_key: boolean
 }
 
+export interface EtherscanAPIKeyRead {
+  etherscan_api_key: string | null
+  has_api_key: boolean
+}
+
 export class AuthApiError extends Error {
   status: number
   detail: unknown
@@ -245,5 +250,16 @@ export function updateUserAIConfig(aiProvider: string | null, aiApiKey: string |
   return requestAuthedJson<UserAIConfigRead>('/api/auth/me/ai-config', {
     method: 'PUT',
     body: JSON.stringify({ ai_provider: aiProvider, ai_api_key: aiApiKey }),
+  })
+}
+
+export function getUserEtherscanApiKey(): Promise<EtherscanAPIKeyRead> {
+  return requestAuthedJson<EtherscanAPIKeyRead>('/api/auth/me/etherscan-api-key')
+}
+
+export function updateUserEtherscanApiKey(key: string | null): Promise<EtherscanAPIKeyRead> {
+  return requestAuthedJson<EtherscanAPIKeyRead>('/api/auth/me/etherscan-api-key', {
+    method: 'PATCH',
+    body: JSON.stringify({ etherscan_api_key: key }),
   })
 }

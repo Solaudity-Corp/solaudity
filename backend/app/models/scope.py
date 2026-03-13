@@ -121,7 +121,7 @@ class ScopeContract(SQLModel, table=True):
     
     is_in_scope: bool = Field(
         default=False,
-        sa_column=sa.Column(sa.Boolean(), nullable=False, server_default=sa.text("1")),
+        sa_column=sa.Column(sa.Boolean(), nullable=False, server_default=sa.text("0")),
     )
     # if is not is scope, specify the reason why 
     # e.g.  "test", "library", etc.
@@ -147,7 +147,10 @@ class ScopeContract(SQLModel, table=True):
 # For example the deployment address, the proxy address, the implementation address, etc.
 class ScopeAddress(SQLModel, table=True):
     __tablename__ = "scope_addresses"
-    
+    __table_args__ = (
+        sa.UniqueConstraint("audit_id", "address", name="uq_scope_address_audit_address"),
+    )
+
     id: UUID = Field(default_factory=uuid4, primary_key=True)
     audit_id: UUID = Field(foreign_key="audits.id", nullable=False, index=True)
     
@@ -170,6 +173,8 @@ class ScopeAddress(SQLModel, table=True):
     
     contract_id: UUID | None = Field(foreign_key="scope_contracts.id", nullable=True)
     is_verified: bool = Field(default=False)
+    is_contract: bool = Field(default=False, sa_column=sa.Column(sa.Boolean(), nullable=False, server_default=sa.text("0")))
+    bytecode: str | None = Field(default=None, sa_column=sa.Column(sa.Text()))
     # notes about the address
     notes: str | None = Field(sa_column=sa.Column(sa.Text()),default=None)
     

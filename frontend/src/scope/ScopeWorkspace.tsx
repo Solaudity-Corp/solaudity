@@ -4,9 +4,9 @@ import { Box, Flex, Grid } from 'styled-system/jsx'
 import { NavBar } from '../components/NavBar'
 import { getAudit } from '../audits/api'
 import type { AuditRecord } from '../audits/types'
-import { ChevronDown, ChevronRight, File, Folder, FolderOpen, Github, Link2, Trash2, UploadCloud } from 'lucide-react'
+import { ChevronDown, ChevronRight, Copy, File, Folder, FolderOpen, Github, Link2, Trash2, UploadCloud } from 'lucide-react'
 import * as scopeApi from './api'
-import type { ScopeContract } from './api'
+import type { ScopeAddress, ScopeContract } from './api'
 import { getMessageFromError } from './api'
 import SlideButton from '../components/SlideButton'
 
@@ -665,6 +665,446 @@ function ConfirmationSection({ contracts, onSave }: { contracts: ScopeContract[]
     )
 }
 
+// ============================= ADDRESS PANEL =============================
+
+const CHAIN_LABELS: Record<number, string> = {
+    1: 'ETH',
+    56: 'BSC',
+    137: 'POL',
+    42161: 'ARB',
+    8453: 'BASE',
+    10: 'OP',
+    43114: 'AVAX',
+}
+
+const ADDR_TYPE_COLOR: Record<string, string> = {
+    deployment: 'rgba(88, 214, 171, 0.85)',
+    proxy: 'rgba(120, 160, 255, 0.85)',
+    implementation: 'rgba(200, 150, 255, 0.85)',
+    role: 'rgba(255, 200, 80, 0.85)',
+    token: 'rgba(255, 140, 80, 0.85)',
+    external: 'rgba(185, 185, 189, 0.65)',
+    other: 'rgba(140, 140, 150, 0.6)',
+}
+
+function truncateAddr(addr: string): string {
+    if (addr.length <= 14) return addr
+    return `${addr.slice(0, 6)}…${addr.slice(-4)}`
+}
+
+interface AddressPanelProps {
+    auditId: string
+    addresses: ScopeAddress[]
+    onReload: () => Promise<void>
+    onReloadContracts: () => Promise<void>
+    onShowOverlay: (fn: () => Promise<void>) => Promise<void>
+}
+
+function AddressPanel({ auditId, addresses, onReload, onReloadContracts, onShowOverlay }: AddressPanelProps) {
+    const [addrInput, setAddrInput] = useState('')
+    const [labelInput, setLabelInput] = useState('')
+    const [addrType, setAddrType] = useState('other')
+    const [addError, setAddError] = useState<string | null>(null)
+    const [deletingId, setDeletingId] = useState<string | null>(null)
+    const [fetchingId, setFetchingId] = useState<string | null>(null)
+    const [expandedBytecode, setExpandedBytecode] = useState<string | null>(null)
+    const [saved, setSaved] = useState(false)
+
+    const handleAdd = async () => {
+        if (!addrInput.trim()) return
+        setAddError(null)
+        const addrToAdd = addrInput.trim()
+        const labelToAdd = labelInput.trim() || addrInput.trim()
+        await onShowOverlay(async () => {
+            try {
+                await scopeApi.createAddress(auditId, {
+                    address: addrToAdd,
+                    label: labelToAdd,
+                    address_type: addrType,
+                })
+                setAddrInput('')
+                setLabelInput('')
+            } catch (err) {
+                setAddError(getMessageFromError(err))
+            }
+        })
+        await onReload()
+    }
+
+    const handleDelete = async (id: string) => {
+        setDeletingId(id)
+        try {
+            await scopeApi.deleteAddress(id)
+            // Reload both: addresses list and contracts (cascade removes linked .sol files)
+            await Promise.all([onReload(), onReloadContracts()])
+        } catch (err) {
+            console.error('Delete address failed:', err)
+        } finally {
+            setDeletingId(null)
+        }
+    }
+
+    const handleFetchCode = async (id: string) => {
+        setFetchingId(id)
+        try {
+            await onShowOverlay(async () => {
+                await scopeApi.fetchVerifiedCode(id)
+            })
+            // Reload both: addresses (is_verified/is_contract flags) and contracts
+            // (a verified fetch adds .sol files to the file tree)
+            await Promise.all([onReload(), onReloadContracts()])
+        } finally {
+            setFetchingId(null)
+        }
+    }
+
+    const handleSave = () => {
+        setSaved(true)
+        setTimeout(() => setSaved(false), 2000)
+    }
+
+    const verifiedCount = addresses.filter((a) => a.is_verified).length
+    const contractCount = addresses.filter((a) => a.is_contract).length
+
+    const inputCls = css({
+        w: 'full', bg: 'transparent',
+        border: `1px solid ${ui.borderSoft}`, borderRadius: '8px',
+        px: '3', py: '1.5', color: ui.textPrimary, fontSize: 'xs', outline: 'none',
+        _focus: { border: '1px solid rgba(88, 214, 171, 0.5)' },
+    })
+
+    return (
+        <Flex direction="column" gap="4">
+
+            {/* ── Add form ── */}
+            <Box className={css({ p: '4', borderRadius: '16px', border: `1px solid ${ui.borderSoft}`, bg: ui.surfaceContent })}>
+                <Box className={css({ color: ui.textPrimary, fontWeight: '600', fontSize: 'sm', mb: '3' })}>
+                    Scope Addresses
+                </Box>
+
+                {/* Row 1: address + label */}
+                <Flex gap="2" wrap="wrap" mb="2">
+                    <Box flex="1" minW="180px">
+                        <Box className={css({ color: ui.textSecondary, fontSize: 'xs', mb: '1', fontWeight: '500' })}>Address</Box>
+                        <input
+                            type="text"
+                            value={addrInput}
+                            onChange={(e) => setAddrInput(e.target.value)}
+                            onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
+                            placeholder="0x…"
+                            className={css({
+                                w: 'full', bg: 'transparent',
+                                border: `1px solid ${ui.borderSoft}`, borderRadius: '8px',
+                                px: '3', py: '1.5', color: ui.textPrimary, fontSize: 'xs',
+                                fontFamily: "'Roboto Mono', monospace", outline: 'none',
+                                _focus: { border: '1px solid rgba(88, 214, 171, 0.5)' },
+                            })}
+                        />
+                    </Box>
+                    <Box minW="120px">
+                        <Box className={css({ color: ui.textSecondary, fontSize: 'xs', mb: '1', fontWeight: '500' })}>Label</Box>
+                        <input
+                            type="text"
+                            value={labelInput}
+                            onChange={(e) => setLabelInput(e.target.value)}
+                            onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
+                            placeholder="e.g. Vault"
+                            className={inputCls}
+                        />
+                    </Box>
+                </Flex>
+
+                {/* Row 2: type + button */}
+                <Flex gap="2" wrap="wrap" align="flex-end">
+                    <Box minW="130px">
+                        <Box className={css({ color: ui.textSecondary, fontSize: 'xs', mb: '1', fontWeight: '500' })}>Type</Box>
+                        <select
+                            value={addrType}
+                            onChange={(e) => setAddrType(e.target.value)}
+                            className={css({
+                                w: 'full', bg: 'rgba(26,26,32,0.98)',
+                                border: `1px solid ${ui.borderSoft}`, borderRadius: '8px',
+                                px: '3', py: '1.5', color: ui.textPrimary, fontSize: 'xs', outline: 'none',
+                                _focus: { border: '1px solid rgba(88, 214, 171, 0.5)' },
+                            })}
+                        >
+                            {['deployment', 'proxy', 'implementation', 'role', 'token', 'external', 'other'].map((t) => (
+                                <option key={t} value={t}>{t}</option>
+                            ))}
+                        </select>
+                    </Box>
+                    <button
+                        disabled={!addrInput.trim()}
+                        onClick={handleAdd}
+                        className={css({
+                            bg: addrInput.trim() ? 'rgba(88, 214, 171, 0.9)' : 'rgba(88, 214, 171, 0.3)',
+                            color: '#08211a', fontWeight: '600', fontSize: 'xs',
+                            px: '4', py: '1.5', borderRadius: '8px',
+                            cursor: addrInput.trim() ? 'pointer' : 'not-allowed',
+                            transition: 'all 0.2s', whiteSpace: 'nowrap',
+                        })}
+                    >
+                        + Add Address
+                    </button>
+                </Flex>
+
+                {addError && (
+                    <Box className={css({ mt: '2', color: 'rgba(255,130,130,0.9)', fontSize: 'xs', fontFamily: "'Roboto Mono', monospace" })}>
+                        {addError}
+                    </Box>
+                )}
+            </Box>
+
+            {/* ── Address table ── */}
+            {addresses.length > 0 && (
+                <Box className={css({ borderRadius: '16px', border: `1px solid ${ui.borderSoft}`, bg: ui.surfaceContent, overflow: 'hidden' })}>
+                    <Box style={{ overflowX: 'auto' }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                            <thead>
+                                <tr style={{ borderBottom: `1px solid ${ui.borderFaint}`, background: 'rgba(0,0,0,0.3)' }}>
+                                    {['Address', 'Label', 'Chain', 'Type', 'Contract', 'Verified', 'Actions'].map((h) => (
+                                        <th key={h} style={{
+                                            padding: '8px 10px', textAlign: 'left',
+                                            color: ui.textMuted, fontSize: '10px', fontWeight: 600,
+                                            letterSpacing: '0.06em', textTransform: 'uppercase', whiteSpace: 'nowrap',
+                                        }}>{h}</th>
+                                    ))}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {addresses.map((addr, i) => (
+                                    <>
+                                        <tr
+                                            key={addr.id}
+                                            style={{
+                                                borderBottom: expandedBytecode === addr.id ? 'none' : `1px solid ${ui.borderFaint}`,
+                                                background: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.01)',
+                                            }}
+                                        >
+                                            {/* Address */}
+                                            <td style={{ padding: '8px 10px' }}>
+                                                <Flex align="center" gap="1">
+                                                    <Box
+                                                        title={addr.address}
+                                                        className={css({ color: ui.textSecondary, fontSize: 'xs', fontFamily: "'Roboto Mono', monospace" })}
+                                                    >
+                                                        {truncateAddr(addr.address)}
+                                                    </Box>
+                                                    <button
+                                                        onClick={() => navigator.clipboard?.writeText(addr.address)}
+                                                        title="Copy"
+                                                        className={css({ color: ui.textMuted, bg: 'transparent', cursor: 'pointer', display: 'flex', _hover: { color: ui.accent } })}
+                                                    >
+                                                        <Copy size={14} />
+                                                    </button>
+                                                </Flex>
+                                            </td>
+
+                                            {/* Label */}
+                                            <td style={{ padding: '8px 10px' }}>
+                                                <Box
+                                                    title={addr.label}
+                                                    className={css({ color: ui.textPrimary, fontSize: 'xs', fontWeight: 500, maxW: '100px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' })}
+                                                >
+                                                    {addr.label}
+                                                </Box>
+                                            </td>
+
+                                            {/* Chain */}
+                                            <td style={{ padding: '8px 10px' }}>
+                                                <Box className={css({ color: ui.textMuted, fontSize: '10px', fontFamily: "'Roboto Mono', monospace", bg: 'rgba(255,255,255,0.06)', px: '1.5', py: '0.5', borderRadius: '4px', display: 'inline-block', whiteSpace: 'nowrap' })}>
+                                                    {CHAIN_LABELS[addr.chain_id] ?? addr.chain_id}
+                                                </Box>
+                                            </td>
+
+                                            {/* Type */}
+                                            <td style={{ padding: '8px 10px' }}>
+                                                <Box style={{
+                                                    display: 'inline-block', padding: '1px 7px', borderRadius: '10px',
+                                                    fontSize: '10px', fontWeight: 600, whiteSpace: 'nowrap',
+                                                    background: `${(ADDR_TYPE_COLOR[addr.address_type] ?? ADDR_TYPE_COLOR.other).replace('0.85)', '0.12)')}`,
+                                                    color: ADDR_TYPE_COLOR[addr.address_type] ?? ADDR_TYPE_COLOR.other,
+                                                }}>
+                                                    {addr.address_type}
+                                                </Box>
+                                            </td>
+
+                                            {/* is_contract */}
+                                            <td style={{ padding: '8px 10px', textAlign: 'center' }}>
+                                                <Box style={{ color: addr.is_contract ? ui.accentStr : 'rgba(185,185,189,0.35)', fontSize: '16px', fontWeight: 700, lineHeight: 1 }}>
+                                                    {addr.is_contract ? '✓' : '—'}
+                                                </Box>
+                                            </td>
+
+                                            {/* is_verified */}
+                                            <td style={{ padding: '8px 10px', textAlign: 'center' }}>
+                                                <Box style={{
+                                                    width: 8, height: 8, borderRadius: '50%', margin: '0 auto',
+                                                    background: addr.is_verified ? 'rgba(88, 214, 171, 0.85)' : 'rgba(185,185,189,0.25)',
+                                                }} />
+                                            </td>
+
+                                            {/* Actions */}
+                                            <td style={{ padding: '8px 10px' }}>
+                                                <Flex gap="1" align="center">
+                                                    {addr.is_contract && (
+                                                        <button
+                                                            disabled={fetchingId === addr.id}
+                                                            onClick={() => handleFetchCode(addr.id)}
+                                                            title="Fetch verified source code from block explorer"
+                                                            className={css({
+                                                                fontSize: '10px', px: '2', py: '0.5', borderRadius: '5px',
+                                                                border: `1px solid ${ui.borderSoft}`, bg: 'transparent',
+                                                                color: ui.textSecondary, cursor: 'pointer', whiteSpace: 'nowrap',
+                                                                _hover: { borderColor: 'rgba(88, 214, 171, 0.4)', color: ui.accent },
+                                                                opacity: fetchingId === addr.id ? 0.5 : 1,
+                                                            })}
+                                                        >
+                                                            {fetchingId === addr.id ? '…' : 'Fetch Code'}
+                                                        </button>
+                                                    )}
+
+                                                    {addr.bytecode && (
+                                                        <button
+                                                            onClick={() => setExpandedBytecode(expandedBytecode === addr.id ? null : addr.id)}
+                                                            title="View bytecode"
+                                                            className={css({
+                                                                fontSize: '10px', px: '2', py: '0.5', borderRadius: '5px',
+                                                                border: '1px solid rgba(120, 160, 255, 0.3)',
+                                                                bg: expandedBytecode === addr.id ? 'rgba(120, 160, 255, 0.15)' : 'rgba(120, 160, 255, 0.06)',
+                                                                color: 'rgba(120, 160, 255, 0.85)', cursor: 'pointer', whiteSpace: 'nowrap',
+                                                                _hover: { borderColor: 'rgba(120, 160, 255, 0.5)' },
+                                                            })}
+                                                        >
+                                                            bytecode
+                                                        </button>
+                                                    )}
+
+                                                    <button
+                                                        disabled={deletingId === addr.id}
+                                                        onClick={() => handleDelete(addr.id)}
+                                                        title="Remove address"
+                                                        className={css({
+                                                            color: ui.textMuted, bg: 'transparent',
+                                                            cursor: deletingId === addr.id ? 'not-allowed' : 'pointer',
+                                                            display: 'flex', alignItems: 'center',
+                                                            _hover: { color: 'rgba(255,130,130,0.9)' },
+                                                            opacity: deletingId === addr.id ? 0.4 : 1,
+                                                        })}
+                                                    >
+                                                        <Trash2 size={16} />
+                                                    </button>
+                                                </Flex>
+                                            </td>
+                                        </tr>
+
+                                        {/* Bytecode expander */}
+                                        {expandedBytecode === addr.id && addr.bytecode && (
+                                            <tr key={`${addr.id}-bc`} style={{ borderBottom: `1px solid ${ui.borderFaint}` }}>
+                                                <td colSpan={7} style={{ padding: '0 10px 10px' }}>
+                                                    <Box className={css({
+                                                        bg: 'rgba(0,0,0,0.45)', borderRadius: '8px', p: '3', mt: '1',
+                                                        fontFamily: "'Roboto Mono', monospace", fontSize: '10px',
+                                                        color: 'rgba(120, 160, 255, 0.85)',
+                                                        maxH: '80px', overflowY: 'auto', overflowX: 'auto', wordBreak: 'break-all',
+                                                    })}>
+                                                        {addr.bytecode}
+                                                    </Box>
+                                                </td>
+                                            </tr>
+                                        )}
+                                    </>
+                                ))}
+                            </tbody>
+                        </table>
+                    </Box>
+                </Box>
+            )}
+
+            {/* ── Address summary / confirmation ── */}
+            {addresses.length > 0 && (
+                <Box>
+                    <Flex align="center" justify="space-between" mb="2">
+                        <Box className={css({ color: ui.textPrimary, fontSize: 'sm', fontWeight: '700', letterSpacing: '0.08em', textTransform: 'uppercase' })}>
+                            Address Summary
+                        </Box>
+                        <button
+                            onClick={handleSave}
+                            className={css({
+                                px: '4', py: '1.5', borderRadius: '7px', fontSize: 'xs', fontWeight: '600',
+                                letterSpacing: '0.05em', textTransform: 'uppercase', cursor: 'pointer',
+                                border: saved ? '1px solid rgba(88, 214, 171, 0.5)' : `1px solid ${ui.borderSoft}`,
+                                color: saved ? ui.accent : ui.textSecondary,
+                                bg: saved ? 'rgba(88, 214, 171, 0.08)' : 'transparent',
+                                transition: 'all 0.2s',
+                                _hover: { borderColor: 'rgba(88, 214, 171, 0.4)', color: ui.accent },
+                            })}
+                        >
+                            {saved ? 'Saved ✓' : 'Save Addresses'}
+                        </button>
+                    </Flex>
+
+                    <Box className={css({ borderRadius: '12px', border: `1px solid ${ui.borderFaint}`, bg: 'rgba(18, 18, 22, 0.6)', overflow: 'hidden' })}>
+                        {/* Stats */}
+                        <Flex align="center" gap="6" className={css({ px: '4', py: '2', borderBottom: `1px solid ${ui.borderFaint}`, bg: 'rgba(88, 214, 171, 0.04)', flexWrap: 'wrap' })}>
+                            <Flex align="center" gap="2">
+                                <Box className={css({ w: '6px', h: '6px', borderRadius: '50%', bg: 'rgba(88, 214, 171, 0.8)', flexShrink: 0 })} />
+                                <Box className={css({ color: ui.textMuted, fontSize: 'xs' })}>Total</Box>
+                                <Box className={css({ color: ui.textPrimary, fontSize: 'xs', fontWeight: '700', fontFamily: "'Roboto Mono', monospace" })}>{addresses.length}</Box>
+                            </Flex>
+                            <Flex align="center" gap="2">
+                                <Box className={css({ w: '6px', h: '6px', borderRadius: '50%', bg: 'rgba(120, 160, 255, 0.8)', flexShrink: 0 })} />
+                                <Box className={css({ color: ui.textMuted, fontSize: 'xs' })}>Contracts</Box>
+                                <Box className={css({ color: ui.textSecondary, fontSize: 'xs', fontWeight: '700', fontFamily: "'Roboto Mono', monospace" })}>{contractCount}</Box>
+                            </Flex>
+                            <Flex align="center" gap="2">
+                                <Box className={css({ w: '6px', h: '6px', borderRadius: '50%', bg: 'rgba(88, 214, 171, 0.5)', flexShrink: 0 })} />
+                                <Box className={css({ color: ui.textMuted, fontSize: 'xs' })}>Verified</Box>
+                                <Box className={css({ color: ui.textSecondary, fontSize: 'xs', fontWeight: '700', fontFamily: "'Roboto Mono', monospace" })}>{verifiedCount}</Box>
+                            </Flex>
+                        </Flex>
+
+                        {/* Address list */}
+                        <Box className={css({ maxH: '160px', overflowY: 'auto', px: '4', py: '1' })}>
+                            {addresses.map((addr) => (
+                                <Flex key={addr.id} align="center" gap="2" className={css({ py: '1', borderBottom: `1px solid ${ui.borderFaint}`, _last: { borderBottom: 'none' } })}>
+                                    <Box style={{
+                                        width: 6, height: 6, borderRadius: '50%', flexShrink: 0,
+                                        background: addr.is_verified ? 'rgba(88, 214, 171, 0.85)' : 'rgba(185,185,189,0.3)',
+                                    }} />
+                                    <Box className={css({ color: ui.textSecondary, fontSize: 'xs', fontFamily: "'Roboto Mono', monospace", flex: 1 })}>
+                                        {truncateAddr(addr.address)}
+                                    </Box>
+                                    <Box className={css({ color: ui.textMuted, fontSize: 'xs', flexShrink: 0 })}>{addr.label}</Box>
+                                    <Box style={{
+                                        display: 'inline-block', padding: '0 5px', borderRadius: '8px',
+                                        fontSize: '9px', fontWeight: 600,
+                                        background: `${(ADDR_TYPE_COLOR[addr.address_type] ?? ADDR_TYPE_COLOR.other).replace('0.85)', '0.10)')}`,
+                                        color: ADDR_TYPE_COLOR[addr.address_type] ?? ADDR_TYPE_COLOR.other,
+                                        whiteSpace: 'nowrap', flexShrink: 0,
+                                    }}>
+                                        {addr.address_type}
+                                    </Box>
+                                </Flex>
+                            ))}
+                        </Box>
+                    </Box>
+                </Box>
+            )}
+
+            {addresses.length === 0 && (
+                <Box className={css({
+                    p: '8', borderRadius: '16px', border: `1px dashed ${ui.borderFaint}`,
+                    bg: 'rgba(0,0,0,0.15)', textAlign: 'center',
+                })}>
+                    <Box className={css({ color: ui.textMuted, fontSize: 'xs', mb: '1' })}>No addresses yet</Box>
+                    <Box className={css({ color: ui.textMuted, fontSize: 'xs', opacity: 0.6 })}>Add an address above to track deployment, proxy, or role addresses.</Box>
+                </Box>
+            )}
+        </Flex>
+    )
+}
+
 // ============================= MAIN COMPONENT =============================
 
 export default function ScopeWorkspace({ auditId, onNavigate, onOpenProfile }: ScopeWorkspaceProps) {
@@ -679,7 +1119,7 @@ export default function ScopeWorkspace({ auditId, onNavigate, onOpenProfile }: S
     const [githubUrl, setGithubUrl] = useState('')
     const [isConnectingGithub, setIsConnectingGithub] = useState(false)
 
-    // Address
+    // Address (source tab — fetches code into file tree)
     const [contractAddress, setContractAddress] = useState('')
     const [isFetchingAddress, setIsFetchingAddress] = useState(false)
 
@@ -689,23 +1129,29 @@ export default function ScopeWorkspace({ auditId, onNavigate, onOpenProfile }: S
     const [contracts, setContracts] = useState<ScopeContract[]>([])
     const [isDragOver, setIsDragOver] = useState(false)
 
+    // Addresses panel
+    const [addresses, setAddresses] = useState<ScopeAddress[]>([])
+
     // Load audit info
     useEffect(() => {
         let active = true
-
         getAudit(auditId)
             .then((data) => { if (active) { setAudit(data); setError(null); setIsLoading(false) } })
             .catch((err) => { if (active) { setError(err instanceof Error ? err.message : 'Failed to load audit'); setIsLoading(false) } })
-
         return () => { active = false }
     }, [auditId])
 
-    // Load existing contracts on mount
+    // Load contracts + addresses on mount
     useEffect(() => {
         let active = true
-        scopeApi.listContracts(auditId)
-            .then(({ items }) => { if (active) setContracts(items) })
-            .catch((err) => console.error('Failed to load contracts:', err))
+        Promise.all([
+            scopeApi.listContracts(auditId),
+            scopeApi.listAddresses(auditId),
+        ]).then(([contractsRes, addressesRes]) => {
+            if (!active) return
+            setContracts(contractsRes.items)
+            setAddresses(addressesRes.items)
+        }).catch((err) => console.error('Failed to load scope data:', err))
         return () => { active = false }
     }, [auditId])
 
@@ -718,8 +1164,16 @@ export default function ScopeWorkspace({ auditId, onNavigate, onOpenProfile }: S
         }
     }
 
+    const loadAddresses = async () => {
+        try {
+            const { items } = await scopeApi.listAddresses(auditId)
+            setAddresses(items)
+        } catch (err) {
+            console.error('Failed to reload addresses:', err)
+        }
+    }
+
     const handleToggleScope = async (contractIds: string[], isInScope: boolean) => {
-        // Fire all updates in parallel, then reload to sync confirmation section
         await Promise.all(contractIds.map((id) => scopeApi.updateContract(id, { is_in_scope: isInScope })))
         await loadContracts()
     }
@@ -735,13 +1189,27 @@ export default function ScopeWorkspace({ auditId, onNavigate, onOpenProfile }: S
         } catch (err) {
             opError = getMessageFromError(err)
         }
-        // Always enforce 2s minimum — even on error
         const elapsed = Date.now() - start
         const remaining = 2000 - elapsed
         if (remaining > 0) await new Promise((r) => setTimeout(r, remaining))
         await loadContracts()
         setIsProcessing(false)
         if (opError) setProcessError(opError)
+    }
+
+    // Overlay for address operations (doesn't reload contracts)
+    const processAddressWithOverlay = async (fn: () => Promise<void>) => {
+        setIsProcessing(true)
+        const start = Date.now()
+        try {
+            await fn()
+        } catch (err) {
+            console.error('Address fetch error:', err)
+        }
+        const elapsed = Date.now() - start
+        const remaining = 2000 - elapsed
+        if (remaining > 0) await new Promise((r) => setTimeout(r, remaining))
+        setIsProcessing(false)
     }
 
     const handleFilesSelected = async (files: File[]) => {
@@ -814,11 +1282,12 @@ export default function ScopeWorkspace({ auditId, onNavigate, onOpenProfile }: S
             const addr = await scopeApi.createAddress(auditId, {
                 address: contractAddress,
                 label: contractAddress,
-                address_type: 'contract',
+                address_type: 'deployment',
             })
             await scopeApi.fetchVerifiedCode(addr.id)
             setContractAddress('')
         })
+        await loadAddresses()
     }
 
     return (
@@ -869,226 +1338,236 @@ export default function ScopeWorkspace({ auditId, onNavigate, onOpenProfile }: S
                     </Box>
                 )}
 
-                {/* SOURCE SELECTION */}
+                {/* TWO-COLUMN LAYOUT */}
                 {!isLoading && !error && audit && (
-                    <Flex direction="column" gap="4">
-                        <Box className={css({ color: ui.textSecondary, fontSize: 'sm', fontWeight: '500', mb: '-2' })}>Add New Source</Box>
-                        <Grid columns={{ base: 1, md: 3 }} gap="4">
-                            {([
-                                { id: 'github', label: 'Github Repository', icon: Github, desc: 'Clone a public or private repo' },
-                                { id: 'address', label: 'Smart Contract', icon: Link2, desc: 'Fetch verified code from explorer' },
-                                { id: 'upload', label: 'Manual Upload', icon: UploadCloud, desc: 'Upload .sol, ZIP, TAR or folder' },
-                            ] as const).map((tab) => {
-                                const Icon = tab.icon
-                                const isActive = activeTab === tab.id
-                                return (
-                                    <Flex
-                                        key={tab.id}
-                                        onClick={() => setActiveTab(tab.id)}
-                                        direction="column"
-                                        className={css({
-                                            p: '4',
-                                            borderRadius: '16px',
-                                            border: `1px solid ${isActive ? 'rgba(88, 214, 171, 0.4)' : ui.borderSoft}`,
-                                            bg: isActive ? 'rgba(88, 214, 171, 0.05)' : ui.surfaceContent,
-                                            cursor: 'pointer',
-                                            transition: 'all 0.2s',
-                                            _hover: {
-                                                bg: isActive ? 'rgba(88, 214, 171, 0.08)' : 'rgba(255, 255, 255, 0.03)',
-                                            },
-                                        })}
-                                    >
-                                        <Flex align="center" gap="3" mb="2">
-                                            <Icon size={20} style={{ color: isActive ? 'rgba(111, 224, 187, 0.98)' : ui.textMuted }} />
-                                            <Box className={css({ color: isActive ? ui.textPrimary : ui.textSecondary, fontWeight: '600', fontSize: 'sm' })}>
-                                                {tab.label}
-                                            </Box>
+                    <Grid columns={{ base: 1, xl: 2 }} gap="6" alignItems="start">
+
+                        {/* ── LEFT: Sources + File Tree + Confirmation ── */}
+                        <Flex direction="column" gap="4">
+                            <Box className={css({ color: ui.textSecondary, fontSize: 'sm', fontWeight: '500' })}>Add New Source</Box>
+
+                            {/* Source type tabs */}
+                            <Grid columns={{ base: 1, md: 3 }} gap="4">
+                                {([
+                                    { id: 'github', label: 'Github Repository', icon: Github, desc: 'Clone a public or private repo' },
+                                    { id: 'address', label: 'Smart Contract', icon: Link2, desc: 'Fetch verified code from explorer' },
+                                    { id: 'upload', label: 'Manual Upload', icon: UploadCloud, desc: 'Upload .sol, ZIP, TAR or folder' },
+                                ] as const).map((tab) => {
+                                    const Icon = tab.icon
+                                    const isActive = activeTab === tab.id
+                                    return (
+                                        <Flex
+                                            key={tab.id}
+                                            onClick={() => setActiveTab(tab.id)}
+                                            direction="column"
+                                            className={css({
+                                                p: '4',
+                                                borderRadius: '16px',
+                                                border: `1px solid ${isActive ? 'rgba(88, 214, 171, 0.4)' : ui.borderSoft}`,
+                                                bg: isActive ? 'rgba(88, 214, 171, 0.05)' : ui.surfaceContent,
+                                                cursor: 'pointer',
+                                                transition: 'all 0.2s',
+                                                _hover: { bg: isActive ? 'rgba(88, 214, 171, 0.08)' : 'rgba(255, 255, 255, 0.03)' },
+                                            })}
+                                        >
+                                            <Flex align="center" gap="3" mb="2">
+                                                <Icon size={20} style={{ color: isActive ? 'rgba(111, 224, 187, 0.98)' : ui.textMuted }} />
+                                                <Box className={css({ color: isActive ? ui.textPrimary : ui.textSecondary, fontWeight: '600', fontSize: 'sm' })}>
+                                                    {tab.label}
+                                                </Box>
+                                            </Flex>
+                                            <Box className={css({ color: ui.textMuted, fontSize: 'xs' })}>{tab.desc}</Box>
                                         </Flex>
-                                        <Box className={css({ color: ui.textMuted, fontSize: 'xs' })}>{tab.desc}</Box>
-                                    </Flex>
-                                )
-                            })}
-                        </Grid>
+                                    )
+                                })}
+                            </Grid>
 
-                        {/* ACTIVE PANEL */}
-                        <Box className={css({ mt: '2', p: '5', borderRadius: '16px', border: `1px solid ${ui.borderSoft}`, bg: ui.surfaceContent, boxShadow: '0 4px 24px rgba(0,0,0,0.35)' })}>
+                            {/* Active panel */}
+                            <Box className={css({ p: '5', borderRadius: '16px', border: `1px solid ${ui.borderSoft}`, bg: ui.surfaceContent, boxShadow: '0 4px 24px rgba(0,0,0,0.35)' })}>
 
-                            {/* -- GitHub -- */}
-                            {activeTab === 'github' && (
-                                <Flex direction="column" gap="4">
-                                    <Box>
-                                        <Box className={css({ color: ui.textPrimary, fontWeight: '600', fontSize: 'sm', mb: '1' })}>Import from Github</Box>
-                                        <Box className={css({ color: ui.textMuted, fontSize: 'xs' })}>Enter the URL of the repository you want to audit.</Box>
-                                    </Box>
-                                    <Flex gap="3" align="flex-end" wrap="wrap">
-                                        <Box flex="1" minW="260px">
-                                            <Box className={css({ color: ui.textSecondary, fontSize: 'xs', mb: '1.5', fontWeight: '500' })}>Repository URL</Box>
-                                            <input
-                                                type="text"
-                                                value={githubUrl}
-                                                onChange={(e) => setGithubUrl(e.target.value)}
-                                                placeholder="https://github.com/organization/repo"
-                                                className={css({
-                                                    w: 'full', bg: 'transparent',
-                                                    border: `1px solid ${ui.borderSoft}`, borderRadius: '8px',
-                                                    px: '3', py: '2', color: ui.textPrimary, fontSize: 'sm', outline: 'none',
-                                                    _focus: { border: '1px solid rgba(88, 214, 171, 0.5)' },
-                                                })}
-                                            />
+                                {/* -- GitHub -- */}
+                                {activeTab === 'github' && (
+                                    <Flex direction="column" gap="4">
+                                        <Box>
+                                            <Box className={css({ color: ui.textPrimary, fontWeight: '600', fontSize: 'sm', mb: '1' })}>Import from Github</Box>
+                                            <Box className={css({ color: ui.textMuted, fontSize: 'xs' })}>Enter the URL of the repository you want to audit.</Box>
                                         </Box>
-                                        <button
-                                            disabled={!githubUrl || isConnectingGithub}
-                                            onClick={() => {
-                                                setIsConnectingGithub(true)
-                                                handleGithubClone().finally(() => setIsConnectingGithub(false))
-                                            }}
-                                            className={css({
-                                                bg: 'rgba(88, 214, 171, 0.9)', color: '#08211a', fontWeight: '600',
-                                                fontSize: 'sm', px: '5', py: '2', borderRadius: '8px',
-                                                cursor: githubUrl && !isConnectingGithub ? 'pointer' : 'not-allowed',
-                                                opacity: githubUrl && !isConnectingGithub ? 1 : 0.5,
-                                            })}
-                                        >
-                                            {isConnectingGithub ? 'Cloning…' : 'Clone Repository'}
-                                        </button>
-                                    </Flex>
-                                </Flex>
-                            )}
-
-                            {/* -- Address -- */}
-                            {activeTab === 'address' && (
-                                <Flex direction="column" gap="4">
-                                    <Box>
-                                        <Box className={css({ color: ui.textPrimary, fontWeight: '600', fontSize: 'sm', mb: '1' })}>Import from Block Explorer</Box>
-                                        <Box className={css({ color: ui.textMuted, fontSize: 'xs' })}>Fetch verified smart contract source code directly from the blockchain.</Box>
-                                    </Box>
-                                    <Flex gap="3" align="flex-end" wrap="wrap">
-                                        <Box flex="1" minW="260px">
-                                            <Box className={css({ color: ui.textSecondary, fontSize: 'xs', mb: '1.5', fontWeight: '500' })}>Contract Address</Box>
-                                            <input
-                                                type="text"
-                                                value={contractAddress}
-                                                onChange={(e) => setContractAddress(e.target.value)}
-                                                placeholder="0x…"
-                                                className={css({
-                                                    w: 'full', bg: 'transparent',
-                                                    border: `1px solid ${ui.borderSoft}`, borderRadius: '8px',
-                                                    px: '3', py: '2', color: ui.textPrimary, fontSize: 'sm', outline: 'none',
-                                                    _focus: { border: '1px solid rgba(88, 214, 171, 0.5)' },
-                                                })}
-                                            />
-                                        </Box>
-                                        <button
-                                            disabled={!contractAddress || isFetchingAddress}
-                                            onClick={() => {
-                                                setIsFetchingAddress(true)
-                                                handleAddressLookup().finally(() => setIsFetchingAddress(false))
-                                            }}
-                                            className={css({
-                                                bg: 'rgba(88, 214, 171, 0.9)', color: '#08211a', fontWeight: '600',
-                                                fontSize: 'sm', px: '5', py: '2', borderRadius: '8px',
-                                                cursor: contractAddress && !isFetchingAddress ? 'pointer' : 'not-allowed',
-                                                opacity: contractAddress && !isFetchingAddress ? 1 : 0.5,
-                                            })}
-                                        >
-                                            {isFetchingAddress ? 'Fetching…' : 'Fetch Contracts'}
-                                        </button>
-                                    </Flex>
-                                </Flex>
-                            )}
-
-                            {/* -- Upload -- */}
-                            {activeTab === 'upload' && (
-                                <Flex direction="column" gap="4">
-                                    <Box>
-                                        <Box className={css({ color: ui.textPrimary, fontWeight: '600', fontSize: 'sm', mb: '1' })}>Manual Upload</Box>
-                                        <Box className={css({ color: ui.textMuted, fontSize: 'xs' })}>Upload ZIP, TAR or just grab the folder directly to the audit scope.</Box>
-                                    </Box>
-
-                                    {/* Drop zone */}
-                                    <Flex
-                                        direction="column"
-                                        align="center"
-                                        justify="center"
-                                        className={css({
-                                            border: `1px dashed ${isDragOver ? 'rgba(88, 214, 171, 0.6)' : ui.borderSoft}`,
-                                            borderRadius: '12px',
-                                            py: '8',
-                                            bg: isDragOver ? 'rgba(88, 214, 171, 0.04)' : 'rgba(0,0,0,0.2)',
-                                            transition: 'all 0.2s',
-                                            cursor: 'pointer',
-                                        })}
-                                        onDragOver={(e) => { e.preventDefault(); setIsDragOver(true) }}
-                                        onDragLeave={() => setIsDragOver(false)}
-                                        onDrop={handleDrop}
-                                    >
-                                        <UploadCloud size={32} style={{ color: isDragOver ? ui.accentStr : ui.textMuted, marginBottom: '12px', transition: 'color 0.2s' }} />
-                                        <Box className={css({ color: ui.textPrimary, fontSize: 'sm', fontWeight: '500', mb: '1' })}>
-                                            Drag &amp; drop a folder here, or
-                                        </Box>
-                                        <Flex gap="3" mt="2">
+                                        <Flex gap="3" align="flex-end" wrap="wrap">
+                                            <Box flex="1" minW="260px">
+                                                <Box className={css({ color: ui.textSecondary, fontSize: 'xs', mb: '1.5', fontWeight: '500' })}>Repository URL</Box>
+                                                <input
+                                                    type="text"
+                                                    value={githubUrl}
+                                                    onChange={(e) => setGithubUrl(e.target.value)}
+                                                    placeholder="https://github.com/organization/repo"
+                                                    className={css({
+                                                        w: 'full', bg: 'transparent',
+                                                        border: `1px solid ${ui.borderSoft}`, borderRadius: '8px',
+                                                        px: '3', py: '2', color: ui.textPrimary, fontSize: 'sm', outline: 'none',
+                                                        _focus: { border: '1px solid rgba(88, 214, 171, 0.5)' },
+                                                    })}
+                                                />
+                                            </Box>
                                             <button
-                                                onClick={openFilePicker}
+                                                disabled={!githubUrl || isConnectingGithub}
+                                                onClick={() => {
+                                                    setIsConnectingGithub(true)
+                                                    handleGithubClone().finally(() => setIsConnectingGithub(false))
+                                                }}
                                                 className={css({
                                                     bg: 'rgba(88, 214, 171, 0.9)', color: '#08211a', fontWeight: '600',
-                                                    fontSize: 'xs', px: '4', py: '1.5', borderRadius: '7px', cursor: 'pointer',
-                                                    _hover: { bg: 'rgba(88, 214, 171, 1)' }
+                                                    fontSize: 'sm', px: '5', py: '2', borderRadius: '8px',
+                                                    cursor: githubUrl && !isConnectingGithub ? 'pointer' : 'not-allowed',
+                                                    opacity: githubUrl && !isConnectingGithub ? 1 : 0.5,
                                                 })}
                                             >
-                                                Select Files (.sol / .zip / .tar)
-                                            </button>
-                                            <button
-                                                onClick={openFolderPicker}
-                                                className={css({
-                                                    bg: 'transparent', color: ui.textSecondary,
-                                                    border: `1px solid ${ui.borderSoft}`, fontWeight: '500',
-                                                    fontSize: 'xs', px: '4', py: '1.5', borderRadius: '7px', cursor: 'pointer',
-                                                    _hover: { borderColor: 'rgba(88, 214, 171, 0.4)', color: ui.textPrimary }
-                                                })}
-                                            >
-                                                Select Folder
+                                                {isConnectingGithub ? 'Cloning…' : 'Clone Repository'}
                                             </button>
                                         </Flex>
-                                        <Box className={css({ color: ui.textMuted, fontSize: 'xs', mt: '2' })}>
-                                            Only .sol files are indexed · ZIP and TAR archives are extracted automatically
-                                        </Box>
                                     </Flex>
-                                </Flex>
-                            )}
-                        </Box>
+                                )}
 
-                        {/* ERROR */}
-                        {processError && (
-                            <Box
-                                className={css({
-                                    mt: '3',
-                                    px: '4',
-                                    py: '3',
-                                    borderRadius: '10px',
-                                    border: '1px solid rgba(255, 80, 80, 0.3)',
-                                    bg: 'rgba(255, 80, 80, 0.06)',
-                                    color: 'rgba(255, 130, 130, 0.9)',
-                                    fontSize: 'xs',
-                                    fontFamily: "'Roboto Mono', ui-monospace, monospace",
-                                })}
-                            >
-                                {processError}
+                                {/* -- Address -- */}
+                                {activeTab === 'address' && (
+                                    <Flex direction="column" gap="4">
+                                        <Box>
+                                            <Box className={css({ color: ui.textPrimary, fontWeight: '600', fontSize: 'sm', mb: '1' })}>Import from Block Explorer</Box>
+                                            <Box className={css({ color: ui.textMuted, fontSize: 'xs' })}>Fetch verified smart contract source code directly from the blockchain.</Box>
+                                        </Box>
+                                        <Flex gap="3" align="flex-end" wrap="wrap">
+                                            <Box flex="1" minW="260px">
+                                                <Box className={css({ color: ui.textSecondary, fontSize: 'xs', mb: '1.5', fontWeight: '500' })}>Contract Address</Box>
+                                                <input
+                                                    type="text"
+                                                    value={contractAddress}
+                                                    onChange={(e) => setContractAddress(e.target.value)}
+                                                    placeholder="0x…"
+                                                    className={css({
+                                                        w: 'full', bg: 'transparent',
+                                                        border: `1px solid ${ui.borderSoft}`, borderRadius: '8px',
+                                                        px: '3', py: '2', color: ui.textPrimary, fontSize: 'sm', outline: 'none',
+                                                        _focus: { border: '1px solid rgba(88, 214, 171, 0.5)' },
+                                                    })}
+                                                />
+                                            </Box>
+                                            <button
+                                                disabled={!contractAddress || isFetchingAddress}
+                                                onClick={() => {
+                                                    setIsFetchingAddress(true)
+                                                    handleAddressLookup().finally(() => setIsFetchingAddress(false))
+                                                }}
+                                                className={css({
+                                                    bg: 'rgba(88, 214, 171, 0.9)', color: '#08211a', fontWeight: '600',
+                                                    fontSize: 'sm', px: '5', py: '2', borderRadius: '8px',
+                                                    cursor: contractAddress && !isFetchingAddress ? 'pointer' : 'not-allowed',
+                                                    opacity: contractAddress && !isFetchingAddress ? 1 : 0.5,
+                                                })}
+                                            >
+                                                {isFetchingAddress ? 'Fetching…' : 'Fetch Contracts'}
+                                            </button>
+                                        </Flex>
+                                    </Flex>
+                                )}
+
+                                {/* -- Upload -- */}
+                                {activeTab === 'upload' && (
+                                    <Flex direction="column" gap="4">
+                                        <Box>
+                                            <Box className={css({ color: ui.textPrimary, fontWeight: '600', fontSize: 'sm', mb: '1' })}>Manual Upload</Box>
+                                            <Box className={css({ color: ui.textMuted, fontSize: 'xs' })}>Upload ZIP, TAR or just grab the folder directly to the audit scope.</Box>
+                                        </Box>
+
+                                        <Flex
+                                            direction="column"
+                                            align="center"
+                                            justify="center"
+                                            className={css({
+                                                border: `1px dashed ${isDragOver ? 'rgba(88, 214, 171, 0.6)' : ui.borderSoft}`,
+                                                borderRadius: '12px',
+                                                py: '8',
+                                                bg: isDragOver ? 'rgba(88, 214, 171, 0.04)' : 'rgba(0,0,0,0.2)',
+                                                transition: 'all 0.2s',
+                                                cursor: 'pointer',
+                                            })}
+                                            onDragOver={(e) => { e.preventDefault(); setIsDragOver(true) }}
+                                            onDragLeave={() => setIsDragOver(false)}
+                                            onDrop={handleDrop}
+                                        >
+                                            <UploadCloud size={32} style={{ color: isDragOver ? ui.accentStr : ui.textMuted, marginBottom: '12px', transition: 'color 0.2s' }} />
+                                            <Box className={css({ color: ui.textPrimary, fontSize: 'sm', fontWeight: '500', mb: '1' })}>
+                                                Drag &amp; drop a folder here, or
+                                            </Box>
+                                            <Flex gap="3" mt="2">
+                                                <button
+                                                    onClick={openFilePicker}
+                                                    className={css({
+                                                        bg: 'rgba(88, 214, 171, 0.9)', color: '#08211a', fontWeight: '600',
+                                                        fontSize: 'xs', px: '4', py: '1.5', borderRadius: '7px', cursor: 'pointer',
+                                                        _hover: { bg: 'rgba(88, 214, 171, 1)' }
+                                                    })}
+                                                >
+                                                    Select Files (.sol / .zip / .tar)
+                                                </button>
+                                                <button
+                                                    onClick={openFolderPicker}
+                                                    className={css({
+                                                        bg: 'transparent', color: ui.textSecondary,
+                                                        border: `1px solid ${ui.borderSoft}`, fontWeight: '500',
+                                                        fontSize: 'xs', px: '4', py: '1.5', borderRadius: '7px', cursor: 'pointer',
+                                                        _hover: { borderColor: 'rgba(88, 214, 171, 0.4)', color: ui.textPrimary }
+                                                    })}
+                                                >
+                                                    Select Folder
+                                                </button>
+                                            </Flex>
+                                            <Box className={css({ color: ui.textMuted, fontSize: 'xs', mt: '2' })}>
+                                                Only .sol files are indexed · ZIP and TAR archives are extracted automatically
+                                            </Box>
+                                        </Flex>
+                                    </Flex>
+                                )}
                             </Box>
-                        )}
 
-                        {/* FILE TREE */}
-                        {contracts.length > 0 && (
-                            <FileTree contracts={contracts} onClearAll={handleClearAll} onToggleScope={handleToggleScope} />
-                        )}
+                            {/* ERROR */}
+                            {processError && (
+                                <Box
+                                    className={css({
+                                        px: '4', py: '3', borderRadius: '10px',
+                                        border: '1px solid rgba(255, 80, 80, 0.3)',
+                                        bg: 'rgba(255, 80, 80, 0.06)',
+                                        color: 'rgba(255, 130, 130, 0.9)',
+                                        fontSize: 'xs',
+                                        fontFamily: "'Roboto Mono', ui-monospace, monospace",
+                                    })}
+                                >
+                                    {processError}
+                                </Box>
+                            )}
 
-                        {/* CONFIRMATION SECTION */}
-                        {contracts.length > 0 && (
-                            <ConfirmationSection
-                                contracts={contracts}
-                                onSave={() => onNavigate(`/menu/audits`)}
+                            {/* FILE TREE */}
+                            {contracts.length > 0 && (
+                                <FileTree contracts={contracts} onClearAll={handleClearAll} onToggleScope={handleToggleScope} />
+                            )}
+
+                            {/* CONFIRMATION SECTION */}
+                            {contracts.length > 0 && (
+                                <ConfirmationSection contracts={contracts} onSave={() => {}} />
+                            )}
+                        </Flex>
+
+                        {/* ── RIGHT: Addresses Panel ── */}
+                        <Flex direction="column" gap="4">
+                            <Box className={css({ color: ui.textSecondary, fontSize: 'sm', fontWeight: '500' })}>Add new addresses to scope</Box>
+                            <AddressPanel
+                                auditId={auditId}
+                                addresses={addresses}
+                                onReload={loadAddresses}
+                                onReloadContracts={loadContracts}
+                                onShowOverlay={processAddressWithOverlay}
                             />
-                        )}
-                    </Flex>
+                        </Flex>
+
+                    </Grid>
                 )}
             </Flex>
 

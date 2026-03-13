@@ -106,6 +106,8 @@ export interface ScopeAddress {
     contract_id?: string
     notes?: string
     is_verified: boolean
+    is_contract: boolean
+    bytecode?: string
     created_at: string
 }
 
@@ -119,6 +121,8 @@ export interface ScopeAddressCreate {
     implementation_address?: string
     contract_id?: string
     notes?: string
+    is_contract?: boolean
+    bytecode?: string
 }
 
 export interface ScopeContract {
@@ -194,6 +198,21 @@ export async function fetchVerifiedCode(addressId: string): Promise<ScopeAddress
     return res.json()
 }
 
+export async function deleteAddress(addressId: string): Promise<void> {
+    await fetchWithAuth(`${API_BASE}/addresses/${addressId}`, {
+        method: 'DELETE',
+    })
+}
+
+export async function updateAddress(addressId: string, payload: Partial<ScopeAddressCreate>): Promise<ScopeAddress> {
+    const res = await fetchWithAuth(`${API_BASE}/addresses/${addressId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+    })
+    return res.json()
+}
+
 export async function deleteAuditScope(auditId: string): Promise<void> {
     await fetchWithAuth(`${API_BASE}/audits/${auditId}/scope`, {
         method: 'DELETE',
@@ -217,8 +236,8 @@ export async function listContracts(auditId: string): Promise<ScopeContractListR
 
 export async function uploadContract(auditId: string, file: File, sourceId?: string, filePath?: string): Promise<ScopeContractListResponse> {
     const formData = new FormData()
-    formData.append('file', file)
-    formData.append('is_in_scope', 'true')
+    formData.append('files', file)
+    formData.append('is_in_scope', 'false')
     if (sourceId) {
         formData.append('source_id', sourceId)
     }

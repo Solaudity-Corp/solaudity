@@ -44,6 +44,15 @@ class UserAPIKeyUpdate(BaseModel):
     ai_api_key: str | None = None
 
 
+class EtherscanAPIKeyRead(BaseModel):
+    etherscan_api_key: str | None
+    has_api_key: bool
+
+
+class EtherscanAPIKeyUpdate(BaseModel):
+    etherscan_api_key: str | None = None
+
+
 class UserProfileUpdate(BaseModel):
     email: str | None = None
 
@@ -84,6 +93,20 @@ def _normalize_ai_api_key(ai_api_key: str | None) -> str | None:
             detail="ai_api_key is too long. Maximum length is 512 characters.",
         )
 
+    return normalized
+
+
+def _normalize_etherscan_api_key(key: str | None) -> str | None:
+    if key is None:
+        return None
+    normalized = key.strip()
+    if not normalized:
+        return None
+    if len(normalized) > 512:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="etherscan_api_key is too long. Maximum length is 512 characters.",
+        )
     return normalized
 
 
@@ -427,3 +450,23 @@ def delete_user_ai_api_key(
     """
     updated_user = clear_user_api_key(session=session, current_user=current_user)
     return UserAPIKeyRead(ai_api_key=updated_user.ai_api_key, has_api_key=False)
+
+
+@router.get("/me/etherscan-api-key", response_model=EtherscanAPIKeyRead)
+def read_user_etherscan_api_key(current_user: User = Depends(get_current_user)):
+    """Return the Etherscan API key for the currently authenticated user."""
+    key = current_user.etherscan_api_key
+    return EtherscanAPIKeyRead(etherscan_api_key=key, has_api_key=bool(key))
+
+
+@router.patch("/me/etherscan-api-key", response_model=EtherscanAPIKeyRead)
+def update_user_etherscan_api_key(
+    payload: EtherscanAPIKeyUpdate,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+):
+    """Update (or clear) the Etherscan API key for the currently authenticated user."""
+    current_user.etherscan_api_key = _normalize_etherscan_api_key(payload.etherscan_api_key)
+    updated_user = _save_user(session, current_user)
+    key = updated_user.etherscan_api_key
+    return EtherscanAPIKeyRead(etherscan_api_key=key, has_api_key=bool(key))
