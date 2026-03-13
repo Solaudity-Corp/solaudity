@@ -9,5 +9,6 @@ COPY package.json package-lock.json ./
 RUN npm install --no-fund --no-audit
 
 COPY . .
+RUN npm run panda:generate
 
 CMD ["npm", "run", "test:run", "--", "--reporter=verbose"]

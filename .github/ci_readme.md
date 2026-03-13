@@ -1,15 +1,16 @@
 # CI/CD Workflows
 
-Two GitHub Actions workflows run on every pull request to `main`.
+Three GitHub Actions workflows run on every pull request to `main`.
 
 ## Workflows
 
 | Workflow | File | Jobs | Purpose |
 |----------|------|------|---------|
 | **CI** | `ci.yml` | frontend, backend, semgrep | Fast feedback: lint, build, security scans |
+| **Unit Tests** | `unit-tests.yml` | frontend, backend | Frontend vitest + backend pytest via `test.sh` |
 | **Integration** | `integration.yml` | integration | Docker build (cached), health checks, Trivy |
 
-Both run in parallel on PRs. Branch protection should require both to pass before merge.
+All three run in parallel on PRs. Branch protection should require all to pass before merge.
 
 ## CI (`ci.yml`)
 
@@ -40,6 +41,26 @@ Free static analysis replacing CodeQL (which requires GitHub Advanced Security, 
 3. Covers OWASP Top 10, injection flaws, XSS, insecure patterns, and more
 
 No account or token required — fully open-source.
+
+## Unit Tests (`unit-tests.yml`)
+
+Runs the actual test suites via `test.sh`, which builds Docker test images and executes tests inside containers. This ensures CI tests run in the same environment as local development.
+
+Two parallel jobs:
+
+### Frontend Tests
+
+1. `bash test.sh frontend` — builds `docker/frontend.test.Dockerfile` and runs vitest
+2. Parses vitest output for passed/failed counts
+3. On failure: shows last 80 lines of output (ANSI-stripped) in a collapsible block
+
+### Backend Tests
+
+1. `bash test.sh backend` — builds `docker/backend.test.Dockerfile` and runs pytest
+2. Parses pytest output for passed/failed/error counts
+3. On failure: shows last 80 lines of output (ANSI-stripped) in a collapsible block
+
+Both jobs distinguish between Docker build failures and test failures in their summaries.
 
 ## Integration (`integration.yml`)
 
@@ -97,14 +118,21 @@ semgrep --config p/default --config p/javascript --config p/typescript --config 
 ## Running Checks Locally
 
 ```bash
-# Frontend
+# Frontend (lint + build + security)
 cd frontend && npm ci && npm run lint && npm run build && npm audit --audit-level=moderate
 
-# Backend
+# Backend (security)
 cd backend && pip install -r requirements.txt && pip install "safety<3" bandit && safety check --file requirements.txt && bandit -r app/
 
 # Semgrep
 pip install semgrep && semgrep --config p/default --config p/owasp-top-ten .
+
+# Unit tests (requires Docker)
+bash test.sh frontend          # frontend only
+bash test.sh backend           # backend only
+bash test.sh all               # both
+bash test.sh smoke             # post-upgrade integration
+bash test.sh full              # unit + smoke
 
 # Integration (requires Docker)
 ./start.sh prod
@@ -119,9 +147,11 @@ Every job writes a rich markdown summary to `$GITHUB_STEP_SUMMARY`, visible on t
 
 | Job | Summary contents |
 |-----|-----------------|
-| **Frontend** | Pass/fail table (install, lint, build, audit) + npm vulnerability counts by severity |
-| **Backend** | Pass/fail table (install, safety, bandit) + safety vuln count + bandit severity breakdown |
-| **Semgrep** | Pass/fail status for SAST scan |
+| **CI — Frontend** | Pass/fail table (install, lint, build, audit) + npm vulnerability counts by severity |
+| **CI — Backend** | Pass/fail table (install, safety, bandit) + safety vuln count + bandit severity breakdown |
+| **CI — Semgrep** | Pass/fail status for SAST scan |
+| **Unit Tests — Frontend** | Docker build + vitest pass/fail status + test counts (passed/failed) |
+| **Unit Tests — Backend** | Docker build + pytest pass/fail status + test counts (passed/failed/errors) |
 | **Integration** | Docker build status + health check status + Trivy vuln counts per image (Critical/High) |
 
 **How it works:**

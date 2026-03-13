@@ -17,10 +17,3 @@ body:
       placeholder: "Example: Add support for..."
     validations:
       required: true
-
-  - type: textarea
-    id: why
-    attributes:
-      label: Why?
-      description: What's it for?
-      placeholder: "Example: This would help with..."
