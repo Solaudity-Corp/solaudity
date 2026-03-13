@@ -93,8 +93,8 @@ describe('App', () => {
 
     render(<App />)
 
-    await waitFor(() => expect(screen.getByText('menu-page:/menu/audits')).toBeInTheDocument())
-    expect(window.location.pathname).toBe('/menu/audits')
+    await waitFor(() => expect(screen.getByText('menu-page:/menu/dashboard')).toBeInTheDocument())
+    expect(window.location.pathname).toBe('/menu/dashboard')
   })
 
   it('navigates through auth success and profile actions', async () => {
@@ -104,7 +104,7 @@ describe('App', () => {
     render(<App />)
 
     fireEvent.click(screen.getByText('login-success'))
-    await waitFor(() => expect(screen.getByText('menu-page:/menu/audits')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('menu-page:/menu/dashboard')).toBeInTheDocument())
 
     fireEvent.click(screen.getByText('open-profile'))
     await waitFor(() => expect(screen.getByText('profile-page')).toBeInTheDocument())
