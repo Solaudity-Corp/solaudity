@@ -105,6 +105,8 @@ class ScopeAddressCreate(SQLModel):
     implementation_address: str | None = None
     contract_id: UUID | None = None
     notes: str | None = None
+    is_contract: bool = False
+    bytecode: str | None = None
 
 
 class ScopeAddressRead(ScopeAddressCreate):
@@ -125,6 +127,8 @@ class ScopeAddressUpdate(SQLModel):
     contract_id: UUID | None = None
     is_verified: bool | None = None
     notes: str | None = None
+    is_contract: bool | None = None
+    bytecode: str | None = None
 
 
 # ============================= List Response Schemas =============================

@@ -10,9 +10,12 @@ import {
   getCurrentUser,
   getSupportedAIProviders,
   getUserAIConfig,
+  getUserEtherscanApiKey,
+  type EtherscanAPIKeyRead,
   type UserAIConfigRead,
   type UserRead,
   updateUserAIConfig,
+  updateUserEtherscanApiKey,
   updateUserProfile,
 } from './auth'
 
@@ -42,6 +45,7 @@ export default function Profile({ onNavigateMenu, onOpenProfile }: ProfileProps)
   const [search, setSearch] = useState('')
   const [user, setUser] = useState<UserRead | null>(null)
   const [aiConfig, setAiConfig] = useState<UserAIConfigRead | null>(null)
+  const [etherscanConfig, setEtherscanConfig] = useState<EtherscanAPIKeyRead | null>(null)
   const [supportedProviders, setSupportedProviders] = useState<string[]>(fallbackProviders)
   const [isLoading, setIsLoading] = useState(true)
   const [status, setStatus] = useState<StatusState>(null)
@@ -54,6 +58,10 @@ export default function Profile({ onNavigateMenu, onOpenProfile }: ProfileProps)
   const [showApiKey, setShowApiKey] = useState(false)
   const [isSavingAiSettings, setIsSavingAiSettings] = useState(false)
 
+  const [etherscanKeyDraft, setEtherscanKeyDraft] = useState('')
+  const [showEtherscanKey, setShowEtherscanKey] = useState(false)
+  const [isSavingEtherscanKey, setIsSavingEtherscanKey] = useState(false)
+
   useEffect(() => {
     let isMounted = true
 
@@ -61,15 +69,17 @@ export default function Profile({ onNavigateMenu, onOpenProfile }: ProfileProps)
       setIsLoading(true)
       setStatus(null)
       try {
-        const [currentUser, config, providers] = await Promise.all([
+        const [currentUser, config, providers, etherscan] = await Promise.all([
           getCurrentUser(),
           getUserAIConfig(),
           getSupportedAIProviders(),
+          getUserEtherscanApiKey(),
         ])
         if (!isMounted) return
 
         setUser(currentUser)
         setAiConfig(config)
+        setEtherscanConfig(etherscan)
         if (providers.length > 0) {
           setSupportedProviders(providers)
         }
@@ -77,6 +87,7 @@ export default function Profile({ onNavigateMenu, onOpenProfile }: ProfileProps)
         setEmailDraft(currentUser.email)
         setProviderDraft(config.ai_provider ?? '')
         setApiKeyDraft(config.ai_api_key ?? '')
+        setEtherscanKeyDraft(etherscan.etherscan_api_key ?? '')
       } catch (error) {
         if (!isMounted) return
         setStatus({ kind: 'error', message: getErrorMessage(error) })
@@ -94,6 +105,7 @@ export default function Profile({ onNavigateMenu, onOpenProfile }: ProfileProps)
   const currentEmail = user?.email ?? ''
   const currentProvider = aiConfig?.ai_provider ?? ''
   const currentApiKey = aiConfig?.ai_api_key ?? ''
+  const currentEtherscanKey = etherscanConfig?.etherscan_api_key ?? ''
 
   const emailDirty = emailDraft.trim() !== currentEmail.trim()
   const providerDirty = providerDraft !== currentProvider
@@ -102,6 +114,7 @@ export default function Profile({ onNavigateMenu, onOpenProfile }: ProfileProps)
   const bothEmpty = !providerDraft && !apiKeyDraft.trim()
   const bothFilled = !!providerDraft && !!apiKeyDraft.trim()
   const aiSettingsValid = aiSettingsDirty && (bothEmpty || bothFilled)
+  const etherscanKeyDirty = etherscanKeyDraft.trim() !== currentEtherscanKey
 
   const iconButtonClass = css({
     width: '2rem',
@@ -273,6 +286,26 @@ export default function Profile({ onNavigateMenu, onOpenProfile }: ProfileProps)
       setStatus({ kind: 'error', message: getErrorMessage(error) })
     } finally {
       setIsSavingAiSettings(false)
+    }
+  }
+
+  const saveEtherscanKey = async () => {
+    const normalized = etherscanKeyDraft.trim()
+    if (normalized.length > 512) {
+      setStatus({ kind: 'error', message: 'API key is too long (max 512 characters).' })
+      return
+    }
+    setIsSavingEtherscanKey(true)
+    setStatus(null)
+    try {
+      const updated = await updateUserEtherscanApiKey(normalized || null)
+      setEtherscanConfig(updated)
+      setEtherscanKeyDraft(updated.etherscan_api_key ?? '')
+      setStatus({ kind: 'success', message: 'Etherscan API key updated.' })
+    } catch (error) {
+      setStatus({ kind: 'error', message: getErrorMessage(error) })
+    } finally {
+      setIsSavingEtherscanKey(false)
     }
   }
 
@@ -503,6 +536,73 @@ export default function Profile({ onNavigateMenu, onOpenProfile }: ProfileProps)
                             }}
                             aria-label="Reset AI settings"
                             disabled={!aiSettingsDirty || isSavingAiSettings}
+                          >
+                            <X size={14} />
+                          </button>
+                        </Box>
+                      </Box>
+                    </Box>
+                  </Stack>
+                </Card.Body>
+              </Card.Root>
+
+              <Card.Root
+                variant="outline"
+                className={css({
+                  borderColor: 'rgba(185, 185, 189, 0.14)',
+                  bg: 'rgba(18, 18, 23, 0.78)',
+                })}
+              >
+                <Card.Header>
+                  <Card.Title className={css({ color: 'rgba(231, 228, 239, 0.9)', fontSize: 'md' })}>
+                    Explorer Settings
+                  </Card.Title>
+                </Card.Header>
+                <Card.Body>
+                  <Stack gap="3">
+                    <Box className={rowClass}>
+                      <Box className={rowLabelClass}>Etherscan Key</Box>
+                      <Box className={fieldWithActionsClass}>
+                        <Input
+                          type={showEtherscanKey ? 'text' : 'password'}
+                          value={etherscanKeyDraft}
+                          onChange={(event) => {
+                            setEtherscanKeyDraft(event.target.value)
+                            setStatus(null)
+                          }}
+                          placeholder="Enter Etherscan API key"
+                          className={cx(inputClass, css({ w: 'full' }))}
+                          disabled={isLoading}
+                        />
+                        <Box className={actionGroupClass}>
+                          <button
+                            type="button"
+                            className={iconButtonClass}
+                            onClick={() => setShowEtherscanKey((previous) => !previous)}
+                            aria-label={showEtherscanKey ? 'Hide key' : 'Show key'}
+                            disabled={!etherscanKeyDraft}
+                          >
+                            {showEtherscanKey ? <EyeOff size={14} /> : <Eye size={14} />}
+                          </button>
+                          <button
+                            type="button"
+                            className={cx(
+                              iconButtonClass,
+                              etherscanKeyDirty && confirmButtonActiveClass,
+                              etherscanKeyDirty && confirmButtonDirtyClass,
+                            )}
+                            onClick={() => { void saveEtherscanKey() }}
+                            aria-label="Save Etherscan key"
+                            disabled={!etherscanKeyDirty || isSavingEtherscanKey}
+                          >
+                            <Check size={14} />
+                          </button>
+                          <button
+                            type="button"
+                            className={iconButtonClass}
+                            onClick={() => setEtherscanKeyDraft(currentEtherscanKey)}
+                            aria-label="Reset Etherscan key"
+                            disabled={!etherscanKeyDirty || isSavingEtherscanKey}
                           >
                             <X size={14} />
                           </button>

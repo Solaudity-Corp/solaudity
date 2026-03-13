@@ -275,9 +275,22 @@ def create_address(
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ) -> ScopeAddressRead:
-    """Create a new scope address for an audit."""
+    """Create a new scope address for an audit.
+
+    Automatically checks the address on-chain (is_contract / is_verified) if the
+    user has an Etherscan API key configured.
+    """
     try:
-        return service.create_address(session, audit_id, payload, current_user.id)
+        result = service.create_address(session, audit_id, payload, current_user.id)
+        # Auto-check: lightweight Etherscan call to set is_contract / is_verified
+        if current_user.etherscan_api_key:
+            try:
+                result = service.check_address_status(
+                    session, result.id, current_user.id, current_user.etherscan_api_key
+                )
+            except Exception:
+                pass  # Never block address creation because of a check failure
+        return result
     except Exception as exc:
         _raise_service_error(exc)
 

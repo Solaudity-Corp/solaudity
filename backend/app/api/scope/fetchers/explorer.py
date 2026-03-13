@@ -283,6 +283,99 @@ def fetch_source_code(
     return contract_data
 
 
+# ============================= Lightweight Status Check =============================
+
+def check_contract_status(
+    source_type: SourceType,
+    contract_address: str,
+    etherscan_api_key: str | None = None,
+) -> dict:
+    """Check whether an address is a contract and whether it has verified source code.
+
+    Uses a single ``getsourcecode`` call — no source files are downloaded.
+
+    Returns:
+        ``{"is_contract": bool, "is_verified": bool}``
+    """
+    chain_id = EXPLORER_CHAIN_IDS.get(source_type)
+    if not chain_id or not etherscan_api_key:
+        return {"is_contract": False, "is_verified": False}
+
+    params = {
+        "chainid": chain_id,
+        "module": "contract",
+        "action": "getsourcecode",
+        "address": contract_address,
+        "apikey": etherscan_api_key,
+    }
+
+    try:
+        response = httpx.get(ETHERSCAN_API_V2_URL, params=params, timeout=EXPLORER_TIMEOUT)
+        response.raise_for_status()
+        data = response.json()
+    except Exception:
+        return {"is_contract": False, "is_verified": False}
+
+    if data.get("status") != "1":
+        return {"is_contract": False, "is_verified": False}
+
+    results = data.get("result", [])
+    if not results or not isinstance(results, list):
+        return {"is_contract": False, "is_verified": False}
+
+    contract_data = results[0]
+    source_code = contract_data.get("SourceCode", "")
+
+    is_verified = bool(source_code)
+
+    # Use eth_getCode for a definitive contract check — "0x" means EOA, anything else is a contract
+    bytecode = fetch_bytecode(source_type, contract_address, etherscan_api_key)
+    is_contract = bytecode is not None
+
+    # Return bytecode only for unverified contracts (verified ones get full source via fetch_verified_code)
+    return {
+        "is_contract": is_contract,
+        "is_verified": is_verified,
+        "bytecode": bytecode if is_contract and not is_verified else None,
+    }
+
+
+def fetch_bytecode(
+    source_type: SourceType,
+    contract_address: str,
+    etherscan_api_key: str | None = None,
+) -> str | None:
+    """Fetch the deployed bytecode for a contract address via the Etherscan proxy.
+
+    Returns the hex bytecode string, or ``None`` if unavailable / not a contract.
+    """
+    chain_id = EXPLORER_CHAIN_IDS.get(source_type)
+    if not chain_id or not etherscan_api_key:
+        return None
+
+    params = {
+        "chainid": chain_id,
+        "module": "proxy",
+        "action": "eth_getCode",
+        "address": contract_address,
+        "tag": "latest",
+        "apikey": etherscan_api_key,
+    }
+
+    try:
+        response = httpx.get(ETHERSCAN_API_V2_URL, params=params, timeout=EXPLORER_TIMEOUT)
+        response.raise_for_status()
+        data = response.json()
+    except Exception:
+        return None
+
+    result = data.get("result", "0x")
+    # "0x" means the address is an EOA (no code)
+    if result and result != "0x":
+        return result
+    return None
+
+
 # ============================= Main Fetcher =============================
 
 def fetch_explorer(session: Session, source: ScopeSource, etherscan_api_key: str | None = None) -> int:
