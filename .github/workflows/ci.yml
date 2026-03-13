@@ -300,7 +300,7 @@ jobs:
             TOTAL=$(jq -r '.results | length' bandit-results.json)
 
             echo "| Severity | Count |" >> $GITHUB_STEP_SUMMARY
-            echo "|----------|-------|-----------|" >> $GITHUB_STEP_SUMMARY
+            echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
             echo "| High | $HIGH |" >> $GITHUB_STEP_SUMMARY
             echo "| Medium | $MEDIUM |" >> $GITHUB_STEP_SUMMARY
             echo "| Low | $LOW |" >> $GITHUB_STEP_SUMMARY
