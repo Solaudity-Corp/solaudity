@@ -7,13 +7,14 @@ from typing import Any
 from urllib import error, parse, request
 
 
-SUPPORTED_AI_PROVIDERS = {"openai", "groq", "xai", "gemini"}
+SUPPORTED_AI_PROVIDERS = {"openai", "groq", "xai", "gemini", "claude"}
 
 DEFAULT_MODELS = {
     "openai": "gpt-4o-mini",
     "groq": "llama-3.3-70b-versatile",
     "xai": "grok-2-latest",
     "gemini": "gemini-2.0-flash",
+    "claude": "claude-sonnet-4-5-20250929",
 }
 
 OPENAI_COMPATIBLE_BASE_URL = {
@@ -299,6 +300,40 @@ def _call_gemini(
     return text
 
 
+def _call_claude(
+    *,
+    api_key: str,
+    model: str,
+    user_text: str,
+    timeout_seconds: int,
+) -> str:
+    """Call Anthropic Messages API and return first text block."""
+    url = "https://api.anthropic.com/v1/messages"
+    payload = {
+        "model": model,
+        "max_tokens": 1024,
+        "system": EXTRACTION_SYSTEM_PROMPT,
+        "messages": [{"role": "user", "content": user_text}],
+    }
+    headers = {
+        "x-api-key": api_key,
+        "anthropic-version": "2023-06-01",
+        "Content-Type": "application/json",
+    }
+
+    parsed = _post_json(url, payload, headers, timeout_seconds, provider="claude")
+
+    content = parsed.get("content")
+    if not isinstance(content, list) or not content:
+        raise AIProviderError("Claude response did not include content blocks.")
+
+    text = content[0].get("text")
+    if not isinstance(text, str) or not text.strip():
+        raise AIProviderError("Claude response did not include text.")
+
+    return text
+
+
 def extract_audit_fields(
     *,
     user_text: str,
@@ -343,6 +378,13 @@ def extract_audit_fields(
     if provider_name in OPENAI_COMPATIBLE_BASE_URL:
         raw_content = _call_openai_compatible(
             provider=provider_name,
+            api_key=api_key,
+            model=selected_model,
+            user_text=user_text,
+            timeout_seconds=timeout_seconds,
+        )
+    elif provider_name == "claude":
+        raw_content = _call_claude(
             api_key=api_key,
             model=selected_model,
             user_text=user_text,

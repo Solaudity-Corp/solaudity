@@ -29,7 +29,7 @@ type StatusState =
   | { kind: 'error'; message: string }
   | null
 
-const fallbackProviders = ['openai', 'groq', 'xai', 'gemini']
+const fallbackProviders = ['claude', 'openai', 'groq', 'xai', 'gemini']
 
 function getErrorMessage(error: unknown): string {
   if (error instanceof AuthApiError && error.message.trim()) return error.message

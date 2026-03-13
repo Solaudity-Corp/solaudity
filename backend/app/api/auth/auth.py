@@ -13,7 +13,7 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 # From where FastAPI looks for the token
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
-SUPPORTED_AI_PROVIDERS = {"openai", "groq", "xai", "gemini"}
+SUPPORTED_AI_PROVIDERS = {"claude", "openai", "groq", "xai", "gemini"}
 
 
 class UserAIConfigRead(BaseModel):
