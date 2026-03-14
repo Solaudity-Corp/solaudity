@@ -1590,7 +1590,7 @@ export default function ScopeWorkspace({ auditId, onNavigate, onOpenProfile }: S
                 />
                 <SlideButton
                     text="Goto Enum"
-                    onComplete={() => onNavigate(`/menu/enum/${auditId}`)}
+                    onComplete={() => onNavigate('/menu/enum')}
                 />
             </Flex>
         </Flex>
