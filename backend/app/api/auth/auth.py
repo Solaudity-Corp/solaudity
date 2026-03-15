@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 
+import sqlalchemy as sa
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from pydantic import BaseModel
@@ -286,14 +287,21 @@ def register_user(user_in: UserCreate, session: Session = Depends(get_session)):
 @router.post("/login")
 def auth_user(user_in: UserLogin, session: Session = Depends(get_session)):
     """
-    Login user with username and password.
+    Login user with username OR email and password.
     Checks if the user exists and if the password_hash is correct.
     Returns user info if credentials are valid.
     
-    user_in: UserLogin = The login data sent in the request body. Contains username and password (plaintext).
+    user_in: UserLogin = The login data sent in the request body. Contains identifier and password (plaintext).
     session: Session = The database session, injected by FastAPI's dependency system.
     """
-    db_user = session.exec(select(User).where(User.username == user_in.username)).first()
+    identifier = user_in.username.strip()
+    email_lookup = identifier.lower()
+    db_user = session.exec(
+        select(User).where(
+            (User.username == identifier)
+            | (sa.func.lower(User.email) == email_lookup)
+        )
+    ).first()
     
     if not db_user or not verify_password(user_in.password,db_user.password_hash) :
         raise HTTPException(

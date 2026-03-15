@@ -185,11 +185,11 @@ export function hasAccessToken(): boolean {
   return getAccessToken() !== null
 }
 
-export async function loginUser(username: string, password: string): Promise<AuthTokenResponse> {
+export async function loginUser(identifier: string, password: string): Promise<AuthTokenResponse> {
   const payload = await requestAuthJson<AuthTokenResponse>('/api/auth/login', {
     method: 'POST',
     body: JSON.stringify({
-      username: username.trim(),
+      username: identifier.trim(),
       password,
     }),
   })

@@ -33,7 +33,7 @@ function getLoginErrorMessage(error: unknown): string {
 }
 
 export default function Login({ onLoginSuccess, onNavigateRegister }: LoginProps) {
-  const [username, setUsername] = useState('')
+  const [identifier, setIdentifier] = useState('')
   const [password, setPassword] = useState('')
   const [status, setStatus] = useState<AuthStatus>(null)
   const [loading, setLoading] = useState(false)
@@ -67,14 +67,14 @@ export default function Login({ onLoginSuccess, onNavigateRegister }: LoginProps
     setStatus(null)
 
     try {
-      const normalizedUsername = username.trim()
-      if (!normalizedUsername || !password) {
-        setStatus({ kind: 'error', message: 'Please enter both username and password.' })
+      const normalizedIdentifier = identifier.trim()
+      if (!normalizedIdentifier || !password) {
+        setStatus({ kind: 'error', message: 'Please enter both username/email and password.' })
         return
       }
 
-      await loginUser(normalizedUsername, password)
-      setStatus({ kind: 'success', message: `Welcome ${normalizedUsername}.` })
+      await loginUser(normalizedIdentifier, password)
+      setStatus({ kind: 'success', message: `Welcome ${normalizedIdentifier}.` })
       onLoginSuccess()
     } catch (error) {
       setStatus({ kind: 'error', message: getLoginErrorMessage(error) })
@@ -121,8 +121,8 @@ export default function Login({ onLoginSuccess, onNavigateRegister }: LoginProps
             <Card.Body>
               <form onSubmit={submit} className={css({ display: 'grid', gap: '4' })}>
                 <Field.Root>
-                  <Field.Label className={css({ color: 'rgba(224, 224, 231, 0.86)' })}>Username</Field.Label>
-                  <Input placeholder="Username" value={username} onChange={(event) => setUsername(event.target.value)} autoComplete="username"
+                  <Field.Label className={css({ color: 'rgba(224, 224, 231, 0.86)' })}>Username or Email</Field.Label>
+                  <Input placeholder="Username or Email" value={identifier} onChange={(event) => setIdentifier(event.target.value)} autoComplete="username"
                     className={css({
                       bg: 'rgba(10, 10, 12, 0.6)', borderRadius: '8px', borderColor: 'rgba(255, 255, 255, 0.1)', color: '#e7e4ef',
                       _placeholder: { color: 'rgba(167, 167, 174, 0.52)' }, transition: 'all 0.2s',
