@@ -188,9 +188,6 @@ function CallGraphCanvas({
 
   const { nodes, edges: layoutEdges } = buildLayout(functions, edges)
 
-  const maxX = nodes.reduce((m, n) => Math.max(m, n.x + n.width), 0)
-  const maxY = nodes.reduce((m, n) => Math.max(m, n.y + n.height), 0)
-
   const nodeMap = new Map(nodes.map(n => [n.id, n]))
 
   const onMouseDown = (e: React.MouseEvent) => {
