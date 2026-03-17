@@ -5,8 +5,9 @@ import Menu, { type MenuPath } from './Menu'
 import Profile from './Profile'
 import Register from './Register'
 import ScopeWorkspace from './scope/ScopeWorkspace'
+import { EnumWorkspace } from './enum/EnumWorkspace'
 
-type AppPath = string // Support dynamic paths like /scope/:auditId
+type AppPath = string // Support dynamic paths like /scope/:auditId and /enum/:auditId
 
 function normalizePathname(pathname: string): AppPath {
   const normalized = pathname.toLowerCase()
@@ -19,11 +20,9 @@ function normalizePathname(pathname: string): AppPath {
   if (normalized === '/menu/audits') return '/menu/audits'
   if (normalized === '/menu/reports') return '/menu/reports'
   if (normalized === '/menu/activity') return '/menu/activity'
-  if (normalized === '/menu/enum') return '/menu/enum'
 
-  if (normalized.startsWith('/scope/')) {
-    return pathname
-  }
+  if (normalized.startsWith('/scope/')) return pathname
+  if (normalized.startsWith('/enum/')) return pathname
 
   return '/login'
 }
@@ -70,7 +69,7 @@ export default function App() {
     navigate('/menu/dashboard', true)
   }
 
-  // Auth guard: redirect during render (React-approved setState-during-render pattern)
+  // Auth guard
   if (!isAuthenticated && pathname !== '/login' && pathname !== '/register') {
     window.history.replaceState(null, '', '/login')
     setPathname('/login')
@@ -113,6 +112,17 @@ export default function App() {
     const auditId = pathname.split('/')[2]
     return (
       <ScopeWorkspace
+        auditId={auditId}
+        onNavigate={(nextPath: string) => navigate(nextPath)}
+        onOpenProfile={() => navigate('/profile')}
+      />
+    )
+  }
+
+  if (pathname.startsWith('/enum/')) {
+    const auditId = pathname.split('/')[2]
+    return (
+      <EnumWorkspace
         auditId={auditId}
         onNavigate={(nextPath: string) => navigate(nextPath)}
         onOpenProfile={() => navigate('/profile')}

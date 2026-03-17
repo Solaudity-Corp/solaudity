@@ -13,7 +13,9 @@ const authMocks = vi.hoisted(() => ({
   updateUserProfile: vi.fn(),
 }))
 
-vi.mock('../src/auth', () => {
+vi.mock('../src/auth', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/auth')>()
+
   class AuthApiError extends Error {
     status: number
     detail: unknown
@@ -26,6 +28,7 @@ vi.mock('../src/auth', () => {
   }
 
   return {
+    ...actual,
     AuthApiError,
     getCurrentUser: authMocks.getCurrentUser,
     getSupportedAIProviders: authMocks.getSupportedAIProviders,

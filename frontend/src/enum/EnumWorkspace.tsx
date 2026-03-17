@@ -2,23 +2,43 @@ import { useState } from 'react'
 import { css } from 'styled-system/css'
 import { Box, Flex } from 'styled-system/jsx'
 import { ChevronUp, ChevronDown } from 'lucide-react'
+import { NavBar } from '../components/NavBar'
+import { TreeView } from './TreeView'
+import { ParseView } from './ParseView'
+import SlideButton from '../components/SlideButton'
 
-type EnumView = 'code' | 'tree' | 'assembly' | 'filter' | 'aidoc'
+type EnumView = 'code' | 'parse' | 'tree' | 'assembly' | 'filter' | 'aidoc'
 
 const views: Array<{ id: EnumView; label: string }> = [
   { id: 'code', label: 'Code View' },
   { id: 'tree', label: 'TreeView' },
+  { id: 'parse', label: 'ParseView' },
   { id: 'assembly', label: 'AssemblyView' },
   { id: 'filter', label: 'FilterView' },
   { id: 'aidoc', label: 'AI Doc' },
 ]
 
-export function EnumWorkspace() {
-  const [activeView, setActiveView] = useState<EnumView>('code')
+interface EnumWorkspaceProps {
+  auditId: string
+  onNavigate: (path: string) => void
+  onOpenProfile: () => void
+}
+
+export function EnumWorkspace({ auditId, onNavigate, onOpenProfile }: EnumWorkspaceProps) {
+  const [activeView, setActiveView] = useState<EnumView>('tree')
   const [subNavOpen, setSubNavOpen] = useState(true)
 
   return (
-    <Flex direction="column" flex="1" position="relative">
+    <Flex direction="column" minH="100vh" className={css({ background: '#101014' })}>
+      <NavBar
+        activeSection="audits"
+        searchValue=""
+        onSearchChange={() => {}}
+        onNavigate={(section) => onNavigate(`/menu/${section}`)}
+        onOpenProfile={onOpenProfile}
+        showSearch={false}
+      />
+
       {/* Collapsible sub-navbar */}
       <Box
         className={css({
@@ -29,7 +49,6 @@ export function EnumWorkspace() {
           overflow: 'visible',
         })}
       >
-        {/* Tab strip — only rendered when open */}
         <Box
           className={css({
             overflow: 'hidden',
@@ -38,12 +57,7 @@ export function EnumWorkspace() {
             opacity: subNavOpen ? 1 : 0,
           })}
         >
-          <Flex
-            align="center"
-            gap="1"
-            px={{ base: '4', md: '8' }}
-            h="52px"
-          >
+          <Flex align="center" gap="1" px={{ base: '4', md: '8' }} h="52px">
             {views.map((view) => {
               const isActive = activeView === view.id
               return (
@@ -52,17 +66,12 @@ export function EnumWorkspace() {
                   type="button"
                   onClick={() => setActiveView(view.id)}
                   className={css({
-                    px: '4',
-                    py: '1.5',
-                    borderRadius: '6px',
-                    fontSize: 'sm',
+                    px: '4', py: '1.5', borderRadius: '6px', fontSize: 'sm',
                     fontWeight: isActive ? '600' : '400',
                     color: isActive ? 'rgba(88, 214, 171, 1)' : 'rgba(185, 185, 193, 0.72)',
                     background: isActive ? 'rgba(88, 214, 171, 0.08)' : 'transparent',
                     border: isActive ? '1px solid rgba(88, 214, 171, 0.22)' : '1px solid transparent',
-                    cursor: 'pointer',
-                    transition: 'all 0.15s ease',
-                    whiteSpace: 'nowrap',
+                    cursor: 'pointer', transition: 'all 0.15s ease', whiteSpace: 'nowrap',
                     _hover: {
                       color: isActive ? 'rgba(88, 214, 171, 1)' : 'rgba(231, 228, 239, 0.88)',
                       background: isActive ? 'rgba(88, 214, 171, 0.08)' : 'rgba(255, 255, 255, 0.04)',
@@ -76,44 +85,23 @@ export function EnumWorkspace() {
           </Flex>
         </Box>
 
-        {/* Collapse / expand handle — centered pill at the bottom of the strip */}
-        <Flex
-          justify="center"
-          className={css({ position: 'relative' })}
-        >
+        {/* Collapse pill */}
+        <Flex justify="center" className={css({ position: 'relative' })}>
           <Box
             onClick={() => setSubNavOpen((o) => !o)}
-            role="button"
-            tabIndex={0}
+            role="button" tabIndex={0}
             aria-label={subNavOpen ? 'Collapse view selector' : 'Expand view selector'}
             onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault()
-                setSubNavOpen((o) => !o)
-              }
+              if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSubNavOpen((o) => !o) }
             }}
             className={css({
-              position: 'absolute',
-              top: '0px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              px: '6',
-              minW: '40',
-              h: '5',
-              borderRadius: '0 0 8px 8px',
-              bg: 'rgba(28, 28, 34, 0.96)',
-              border: '1px solid rgba(185, 185, 189, 0.18)',
-              borderTop: 'none',
-              cursor: 'pointer',
-              color: 'rgba(167, 167, 174, 0.72)',
-              transition: 'color 0.15s ease, background 0.15s ease',
-              userSelect: 'none',
-              zIndex: 10,
-              _hover: {
-                bg: 'rgba(38, 38, 46, 0.98)',
-                color: 'rgba(231, 228, 239, 0.88)',
-              },
+              position: 'absolute', top: '0px', display: 'flex', alignItems: 'center',
+              justifyContent: 'center', px: '6', minW: '40', h: '5',
+              borderRadius: '0 0 8px 8px', bg: 'rgba(28, 28, 34, 0.96)',
+              border: '1px solid rgba(185, 185, 189, 0.18)', borderTop: 'none',
+              cursor: 'pointer', color: 'rgba(167, 167, 174, 0.72)',
+              transition: 'color 0.15s ease, background 0.15s ease', userSelect: 'none', zIndex: 10,
+              _hover: { bg: 'rgba(38, 38, 46, 0.98)', color: 'rgba(231, 228, 239, 0.88)' },
             })}
           >
             {subNavOpen ? <ChevronUp size={11} strokeWidth={2.5} /> : <ChevronDown size={11} strokeWidth={2.5} />}
@@ -131,33 +119,55 @@ export function EnumWorkspace() {
           paddingTop: subNavOpen ? undefined : 'calc(20px + 1.25rem)',
         })}
       >
-        <Box
-          className={css({
-            width: '100%',
-            borderRadius: '18px',
-            border: '1px solid rgba(185, 185, 189, 0.14)',
-            bg: 'rgba(24, 24, 29, 0.82)',
-            boxShadow: '0 12px 28px rgba(0, 0, 0, 0.3)',
-            minH: '320px',
-            p: '6',
-            color: 'rgba(185, 185, 193, 0.66)',
-            fontSize: 'sm',
-          })}
-        >
+        {activeView === 'parse' ? (
+          <Box width="100%">
+            <ParseView auditId={auditId} />
+          </Box>
+        ) : activeView === 'tree' ? (
+          <Box width="100%">
+            <TreeView auditId={auditId} />
+          </Box>
+        ) : (
           <Box
             className={css({
-              color: 'rgba(231, 228, 239, 0.91)',
-              fontSize: 'lg',
-              fontWeight: '700',
-              mb: '2',
+              width: '100%', borderRadius: '18px',
+              border: '1px solid rgba(185, 185, 189, 0.14)',
+              bg: 'rgba(24, 24, 29, 0.82)',
+              boxShadow: '0 12px 28px rgba(0, 0, 0, 0.3)',
+              minH: '320px', p: '6',
+              color: 'rgba(185, 185, 193, 0.66)', fontSize: 'sm',
             })}
           >
-            {views.find((v) => v.id === activeView)?.label}
+            <Box className={css({ color: 'rgba(231, 228, 239, 0.91)', fontSize: 'lg', fontWeight: '700', mb: '2' })}>
+              {views.find((v) => v.id === activeView)?.label}
+            </Box>
+            <Box className={css({ lineHeight: '1.65' })}>
+              UI scaffold ready — wire this view to its data source when available.
+            </Box>
           </Box>
-          <Box className={css({ lineHeight: '1.65' })}>
-            UI scaffold ready — wire this view to its data source when available.
-          </Box>
-        </Box>
+        )}
+      </Flex>
+
+      {/* Bottom navigation */}
+      <Flex
+        align="center"
+        justify="space-between"
+        className={css({
+          px: '8', py: '6',
+          borderTop: '1px solid rgba(185, 185, 189, 0.22)',
+          bg: 'rgba(14, 14, 18, 0.9)',
+          flexShrink: 0,
+        })}
+      >
+        <SlideButton
+          reversed
+          text="Goto Scope"
+          onComplete={() => onNavigate(`/scope/${auditId}`)}
+        />
+        <SlideButton
+          text="Goto Static Analysis"
+          onComplete={() => {}}
+        />
       </Flex>
     </Flex>
   )
