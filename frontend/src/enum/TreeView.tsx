@@ -190,8 +190,6 @@ function CallGraphCanvas({
 
   const maxX = nodes.reduce((m, n) => Math.max(m, n.x + n.width), 0)
   const maxY = nodes.reduce((m, n) => Math.max(m, n.y + n.height), 0)
-  const svgW = maxX + 60
-  const svgH = maxY + 60
 
   const nodeMap = new Map(nodes.map(n => [n.id, n]))
 
@@ -520,6 +518,7 @@ export function TreeView({ auditId }: { auditId: string }) {
     setLoading(false)
   }, [auditId])
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { reload() }, [reload])
 
   const handleAnalyzeAll = async () => {
@@ -580,7 +579,9 @@ export function TreeView({ auditId }: { auditId: string }) {
 
   const handleToggleFile = (id: string) => {
     setExpandedFiles(prev => {
-      const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next
+      const next = new Set(prev)
+      if (next.has(id)) { next.delete(id) } else { next.add(id) }
+      return next
     })
   }
 

@@ -382,7 +382,7 @@ function LeftFileRow({
         </Box>
         {/* Re-Parse button */}
         <button
-          onClick={e => { e.stopPropagation(); !reparsing && onParse(sc.id) }}
+          onClick={e => { e.stopPropagation(); if (!reparsing) onParse(sc.id) }}
           style={{
             fontSize: 9, padding: '1px 6px', borderRadius: 4, cursor: reparsing ? 'not-allowed' : 'pointer',
             border: `1px solid ${c.border}`, background: 'transparent',
@@ -488,6 +488,7 @@ export function ParseView({ auditId }: { auditId: string }) {
   const handleAnalyzeAll = async () => {
     if (scopeContracts.length === 0) return
     setProcessing(true)
+    // eslint-disable-next-line react-hooks/purity
     const start = Date.now()
 
     // Step 1: parse any contracts that haven't been parsed yet
@@ -515,6 +516,7 @@ export function ParseView({ auditId }: { auditId: string }) {
       try { await solApi.triggerAnalyze(pc.id) } catch (err) { console.error(err) }
     }
 
+    // eslint-disable-next-line react-hooks/purity
     const remaining = 2000 - (Date.now() - start)
     if (remaining > 0) await new Promise(r => setTimeout(r, remaining))
     setProcessing(false)
@@ -530,7 +532,9 @@ export function ParseView({ auditId }: { auditId: string }) {
 
   const handleToggleFile = (id: string) => {
     setExpandedFiles(prev => {
-      const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next
+      const next = new Set(prev)
+      if (next.has(id)) { next.delete(id) } else { next.add(id) }
+      return next
     })
   }
 
