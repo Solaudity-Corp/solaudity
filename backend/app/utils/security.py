@@ -1,6 +1,9 @@
-from jose import jwt
-import dotenv,os,bcrypt
-from datetime import datetime, timezone, timedelta
+import os
+from datetime import datetime, timedelta, timezone
+
+import bcrypt
+import dotenv
+import jwt
 dotenv.load_dotenv()
 
 SECRET_KEY = os.getenv("SECRET_KEY")
@@ -55,5 +58,5 @@ def verify_access_token(token:str) -> dict:
         
         return payload
     
-    except jwt.JWTError:
+    except jwt.InvalidTokenError:
         return None

@@ -39,7 +39,7 @@ describe('Login', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /sign in/i }))
 
-    expect(await screen.findByText('Please enter both username and password.')).toBeInTheDocument()
+    expect(await screen.findByText('Please enter both username/email and password.')).toBeInTheDocument()
     expect(authMocks.loginUser).not.toHaveBeenCalled()
   })
 
@@ -54,7 +54,7 @@ describe('Login', () => {
       />,
     )
 
-    fireEvent.change(screen.getByPlaceholderText('Username'), {
+    fireEvent.change(screen.getByPlaceholderText('Username or Email'), {
       target: { value: 'alice' },
     })
     fireEvent.change(screen.getByPlaceholderText('Password'), {

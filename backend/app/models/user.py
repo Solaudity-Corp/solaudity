@@ -1,6 +1,6 @@
 from sqlmodel import Field, SQLModel
 from datetime import datetime, timezone
-from pydantic import field_validator
+from pydantic import field_validator, EmailStr
 
 from uuid import UUID, uuid4
 
@@ -9,7 +9,7 @@ from uuid import UUID, uuid4
 # fields, which can be useful for data validation and serialization.
 # Basically, is the schema (API shape) of the User, while the User class is the actual table definition.
 class UserBase(SQLModel):
-    email : str = Field(index=True, unique=True)
+    email : EmailStr = Field(index=True, unique=True)
     username : str = Field(index=True, unique=True)
     
 # The User class is the actual table definition, it inherits from UserBase
