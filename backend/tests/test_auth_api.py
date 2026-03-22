@@ -55,6 +55,26 @@ def test_login_returns_a_jwt_token(
     assert body["token_type"] == "bearer"
 
 
+def test_login_accepts_email_identifier(
+    client: TestClient,
+    credentials: dict[str, str],
+) -> None:
+    client.post("/api/auth/register", json=credentials)
+
+    response = client.post(
+        "/api/auth/login",
+        json={
+            "username": credentials["email"],
+            "password": credentials["password"],
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["access_token"]
+    assert body["token_type"] == "bearer"
+
+
 def test_login_rejects_invalid_credentials(
     client: TestClient,
     credentials: dict[str, str],
