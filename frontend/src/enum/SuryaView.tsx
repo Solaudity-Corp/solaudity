@@ -582,16 +582,18 @@ function FtraceTab({ auditId, scopeContracts, includedScIds }: {
     setFileId(id)
     setFunctions([])
     setFn('')
+    setFnLoading(!!id)
   }, [])
 
   // When a file is picked, fetch its functions via describe
   useEffect(() => {
     if (!fileId) return
-    setFnLoading(true)
+    let active = true
     surya.getDescribe(auditId, [fileId])
-      .then(text => setFunctions(parseFunctionNames(text)))
-      .catch(() => setFunctions([]))
-      .finally(() => setFnLoading(false))
+      .then(text => { if (active) setFunctions(parseFunctionNames(text)) })
+      .catch(() => { if (active) setFunctions([]) })
+      .finally(() => { if (active) setFnLoading(false) })
+    return () => { active = false }
   }, [auditId, fileId])
 
   const run = useCallback(async () => {

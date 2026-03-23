@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { css } from 'styled-system/css'
 import { Box, Flex } from 'styled-system/jsx'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
@@ -22,11 +22,11 @@ export default function SlideButton({ onComplete, text = 'Goto Scope', reversed 
     const THUMB_W = 44
     const MAX_DRAG = TRACK_W - THUMB_W - 8
 
-    const complete = () => {
+    const complete = useCallback(() => {
         setDragProgress(1)
         setIsCompleted(true)
         onComplete()
-    }
+    }, [onComplete])
 
     // Auto-slide animation (triggered on click)
     const triggerAutoSlide = () => {
@@ -63,7 +63,7 @@ export default function SlideButton({ onComplete, text = 'Goto Scope', reversed 
         setIsDragging(true)
     }
 
-    const handleDragEnd = () => {
+    const handleDragEnd = useCallback(() => {
         if (!isDragging || isCompleted) return
         setIsDragging(false)
         if (dragProgress >= 0.85) {
@@ -71,16 +71,16 @@ export default function SlideButton({ onComplete, text = 'Goto Scope', reversed 
         } else {
             setDragProgress(0)
         }
-    }
+    }, [isDragging, isCompleted, dragProgress, complete])
 
-    const handleDragMove = (clientX: number) => {
+    const handleDragMove = useCallback((clientX: number) => {
         if (!isDragging || isCompleted || !trackRef.current) return
         const trackRect = trackRef.current.getBoundingClientRect()
         const raw = reversed
             ? trackRect.right - clientX - THUMB_W / 2
             : clientX - trackRect.left - THUMB_W / 2
         setDragProgress(Math.max(0, Math.min(raw, MAX_DRAG)) / MAX_DRAG)
-    }
+    }, [isDragging, isCompleted, reversed, THUMB_W, MAX_DRAG])
 
     useEffect(() => {
         const onPointerMove = (e: PointerEvent) => { if (isDragging) handleDragMove(e.clientX) }
@@ -95,7 +95,7 @@ export default function SlideButton({ onComplete, text = 'Goto Scope', reversed 
             window.removeEventListener('pointerup', onPointerUp)
             window.removeEventListener('pointercancel', onPointerUp)
         }
-    }, [isDragging, dragProgress])
+    }, [isDragging, handleDragEnd, handleDragMove])
 
     useEffect(() => {
         return () => { if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current) }
