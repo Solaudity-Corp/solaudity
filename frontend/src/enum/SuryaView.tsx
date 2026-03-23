@@ -74,11 +74,11 @@ function DotGraph({ dot, loading }: { dot: string | null; loading: boolean }) {
   // Render SVG whenever dot changes, reset view
   useEffect(() => {
     if (!dot || !contentRef.current) return
-    setRenderErr(null)
-    setZoom(1); setPan({ x: 0, y: 0 })
     let cancelled = false
     getViz().then(viz => {
       if (cancelled || !contentRef.current) return
+      setRenderErr(null)
+      setZoom(1); setPan({ x: 0, y: 0 })
       try {
         const svg = viz.renderSVGElement(dot)
         svg.style.display = 'block'
@@ -289,8 +289,6 @@ function MdOutput({ md, loading }: { md: string | null; loading: boolean }) {
     <Box style={{ height: '100%', overflow: 'auto' }}>
       <div
         style={{ padding: '20px 24px', fontFamily: c.mono, maxWidth: 900 }}
-        // surya mdreport is trusted internal output — not user-supplied HTML
-        // eslint-disable-next-line react/no-danger
         dangerouslySetInnerHTML={{ __html: renderMd(md) }}
       />
     </Box>
@@ -580,10 +578,16 @@ function FtraceTab({ auditId, scopeContracts, includedScIds }: {
   const [fnLoading, setFnLoading] = useState(false)
   const [err, setErr]           = useState<string | null>(null)
 
+  const handleFileChange = useCallback((id: string) => {
+    setFileId(id)
+    setFunctions([])
+    setFn('')
+  }, [])
+
   // When a file is picked, fetch its functions via describe
   useEffect(() => {
-    if (!fileId) { setFunctions([]); setFn(''); return }
-    setFnLoading(true); setFn(''); setFunctions([])
+    if (!fileId) return
+    setFnLoading(true)
     surya.getDescribe(auditId, [fileId])
       .then(text => setFunctions(parseFunctionNames(text)))
       .catch(() => setFunctions([]))
@@ -603,7 +607,7 @@ function FtraceTab({ auditId, scopeContracts, includedScIds }: {
       <Flex align="center" gap="2" style={{ padding: '8px 12px', borderBottom: `1px solid ${c.border}`, flexShrink: 0, flexWrap: 'wrap' }}>
         <FileSelect
           scopeContracts={scopeContracts} includedScIds={includedScIds}
-          value={fileId} onChange={setFileId} placeholder="Contract file"
+          value={fileId} onChange={handleFileChange} placeholder="Contract file"
         />
         {/* Function dropdown — populated after describe */}
         <select
@@ -840,7 +844,7 @@ export function SuryaView({ auditId }: { auditId: string }) {
 
   const includedScIdsArr = Array.from(includedScIds)
 
-  const handleToggleInclude = (id: string) => setIncludedScIds(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s })
+  const handleToggleInclude = (id: string) => setIncludedScIds(prev => { const s = new Set(prev); if (s.has(id)) { s.delete(id) } else { s.add(id) }; return s })
   const handleSelectAll     = () => setIncludedScIds(new Set(scopeContracts.map(sc => sc.id)))
   const handleSelectNone    = () => setIncludedScIds(new Set())
 
