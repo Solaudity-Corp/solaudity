@@ -46,15 +46,15 @@ wait_for_service() {
 
 if [ "$MODE" = "dev" ]; then
   echo "[+] Starting containers (Docker Compose)"
-  "${DOCKER_COMPOSE[@]}" -f "$COMPOSE_FILE" --profile dev up -d --remove-orphans solaudity-backend-dev solaudity-frontend-dev
+  "${DOCKER_COMPOSE[@]}" -f "$COMPOSE_FILE" --profile dev up -d --remove-orphans solaudity-backend solaudity-frontend-dev
 
   echo "[~] Installing dependencies & syncing packages (this may take a moment)..."
   wait_for_service "Backend"  "http://localhost:8001/health" 120
   wait_for_service "Frontend" "http://localhost:5173" 180
 
-  echo "[+] Started in dev mode (live reload)"
+  echo "[+] Started in dev mode"
   echo "[i] Backend:  http://localhost:8001"
-  echo "[i] Frontend: http://localhost:5173"
+  echo "[i] Frontend: http://localhost:5173 (live reload in Docker)"
   exit 0
 fi
 

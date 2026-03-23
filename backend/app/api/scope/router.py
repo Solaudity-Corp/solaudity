@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, Response, UploadFile, status
 from sqlmodel import Session
 
 from app.api.auth.auth import get_current_user
@@ -210,16 +210,44 @@ def get_contract_content(
         _raise_service_error(exc)
 
 
+def _background_parse(contract_id: UUID, audit_id: UUID, owner_id: UUID) -> None:
+    """Fire-and-forget parse triggered when a contract is marked in-scope."""
+    from app.api.enum.solparsing import service as sol_service
+    from app.database import engine
+    with Session(engine) as bg_session:
+        try:
+            sol_service.trigger_parse(bg_session, audit_id, contract_id, owner_id)
+        except Exception:
+            pass  # best-effort; user can Re-Parse manually
+
+
 @router.patch("/contracts/{contract_id}", response_model=ScopeContractRead)
 def update_contract(
     contract_id: UUID,
     payload: ScopeContractUpdate,
+    background_tasks: BackgroundTasks,
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ) -> ScopeContractRead:
     """Patch editable fields on an existing contract."""
     try:
-        return service.update_contract(session, contract_id, payload, current_user.id)
+        # Capture previous in-scope state before updating
+        from app.models.scope import ScopeContract as _SC
+        prev = session.get(_SC, contract_id)
+        was_in_scope = prev.is_in_scope if prev else False
+
+        result = service.update_contract(session, contract_id, payload, current_user.id)
+
+        # Auto-parse when a contract is first marked in-scope
+        if payload.is_in_scope and not was_in_scope:
+            background_tasks.add_task(
+                _background_parse,
+                contract_id=contract_id,
+                audit_id=result.audit_id,
+                owner_id=current_user.id,
+            )
+
+        return result
     except Exception as exc:
         _raise_service_error(exc)
 

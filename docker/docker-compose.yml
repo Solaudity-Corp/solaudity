@@ -11,24 +11,6 @@ services:
       - ../data:/data
     environment:
       - DB_PATH=/data/solaudity.db
-    profiles:
-      - prod
-
-  solaudity-backend-dev:
-    image: python:3.13-slim
-    working_dir: /app
-    command: sh /app/dev-entrypoint.sh
-    environment:
-      - DB_PATH=/data/solaudity.db
-      - PYTHONDONTWRITEBYTECODE=1
-    volumes:
-      - ../backend:/app
-      - ../data:/data
-      - backend_pip_cache:/root/.cache/pip
-    ports:
-      - "8001:8001"
-    profiles:
-      - dev
 
   solaudity-frontend:
     build:
@@ -54,10 +36,9 @@ services:
     ports:
       - "5173:5173"
     depends_on:
-      - solaudity-backend-dev
+      - solaudity-backend
     profiles:
       - dev
 
 volumes:
   frontend_node_modules:
-  backend_pip_cache:

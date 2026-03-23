@@ -5,7 +5,6 @@ import { Card } from './components/ui'
 import { AuditsWorkspace } from './audits/AuditsWorkspace'
 import { type MenuSection, NavBar } from './components/NavBar'
 import { DashboardWorkspace } from './dashboard/DashboardWorkspace'
-
 export type MenuPath = '/menu/dashboard' | '/menu/audits' | '/menu/reports' | '/menu/activity'
 
 interface MenuProps {
@@ -46,7 +45,6 @@ export default function Menu({ path, onNavigate, onOpenProfile }: MenuProps) {
       />
       {activeSection === 'dashboard' && <DashboardWorkspace onNavigate={navigateBySection} />}
       {activeSection === 'audits' && <AuditsWorkspace searchQuery={search} />}
-
       {(activeSection === 'reports' || activeSection === 'activity') && (
         <Flex flex="1" px={{ base: '4', md: '8' }} py={{ base: '5', md: '7' }}>
           <Card.Root

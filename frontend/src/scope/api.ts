@@ -229,8 +229,11 @@ export async function updateContract(contractId: string, payload: { is_in_scope?
 }
 
 // Contracts / Uploads
-export async function listContracts(auditId: string): Promise<ScopeContractListResponse> {
-    const res = await fetchWithAuth(`${API_BASE}/audits/${auditId}/contracts`)
+export async function listContracts(auditId: string, inScope?: boolean): Promise<ScopeContractListResponse> {
+    const url = inScope !== undefined
+        ? `${API_BASE}/audits/${auditId}/contracts?in_scope=${inScope}`
+        : `${API_BASE}/audits/${auditId}/contracts`
+    const res = await fetchWithAuth(url)
     return res.json()
 }
 
