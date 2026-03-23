@@ -182,10 +182,12 @@ def _post_json(
         "User-Agent": "SolaudityBackend/1.0",
         **headers,
     }
+    if not url.startswith("https://"):
+        raise ValueError(f"Only HTTPS endpoints are permitted, got: {url!r}")
     req = request.Request(url=url, method="POST", headers=request_headers, data=body)
 
     try:
-        with request.urlopen(req, timeout=timeout_seconds) as response:
+        with request.urlopen(req, timeout=timeout_seconds) as response:  # nosec B310
             raw = response.read().decode("utf-8")
     except error.HTTPError as exc:
         err_payload = exc.read().decode("utf-8", errors="replace")
