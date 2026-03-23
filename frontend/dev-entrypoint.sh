@@ -3,11 +3,17 @@ set -eu
 
 cd /app
 
-echo "📦 Installing npm dependencies..."
-npm ci 2>/dev/null || {
-  echo "⚠️ package-lock.json out of sync, running npm install to fix..."
+# Only install when package.json changed since the last install.
+# node_modules is a named Docker volume so it persists across restarts —
+# this makes subsequent starts near-instant instead of reinstalling every time.
+STAMP=/app/node_modules/.install-stamp
+if [ ! -f "$STAMP" ] || [ /app/package.json -nt "$STAMP" ] || [ /app/package-lock.json -nt "$STAMP" ]; then
+  echo "📦 Installing npm dependencies..."
   npm install
-}
+  touch "$STAMP"
+else
+  echo "📦 Dependencies up to date, skipping install"
+fi
 
 npm run panda:generate
 

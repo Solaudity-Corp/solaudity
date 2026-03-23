@@ -20,6 +20,7 @@
   },
   "dependencies": {
     "@ark-ui/react": "^5.31.0",
+    "@viz-js/viz": "^3.11.0",
     "@fontsource-variable/roboto-mono": "^5.2.8",
     "framer-motion": "^12.34.0",
     "lucide-react": "^0.563.0",

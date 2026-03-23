@@ -3,7 +3,7 @@ import { css } from 'styled-system/css'
 import { Box, Flex } from 'styled-system/jsx'
 import { ChevronUp, ChevronDown } from 'lucide-react'
 import { NavBar } from '../components/NavBar'
-import { TreeView } from './TreeView'
+import { SuryaView } from './SuryaView'
 import { ParseView } from './ParseView'
 import SlideButton from '../components/SlideButton'
 
@@ -11,7 +11,7 @@ type EnumView = 'code' | 'parse' | 'tree' | 'assembly' | 'filter' | 'aidoc'
 
 const views: Array<{ id: EnumView; label: string }> = [
   { id: 'code', label: 'Code View' },
-  { id: 'tree', label: 'TreeView' },
+  { id: 'tree', label: 'SuryaView' },
   { id: 'parse', label: 'ParseView' },
   { id: 'assembly', label: 'AssemblyView' },
   { id: 'filter', label: 'FilterView' },
@@ -125,7 +125,7 @@ export function EnumWorkspace({ auditId, onNavigate, onOpenProfile }: EnumWorksp
           </Box>
         ) : activeView === 'tree' ? (
           <Box width="100%">
-            <TreeView auditId={auditId} />
+            <SuryaView auditId={auditId} />
           </Box>
         ) : (
           <Box
