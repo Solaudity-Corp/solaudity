@@ -151,7 +151,16 @@ function DotGraph({ dot, loading }: { dot: string | null; loading: boolean }) {
 
   if (loading)   return <CenteredMsg icon={<Spinner />} text="Running surya…" />
   if (!dot)      return <CenteredMsg icon={<GitBranch size={32} style={{ opacity: 0.25 }} />} text="Press Run to generate the graph" />
-  if (renderErr) return <CenteredMsg icon={<GitBranch size={32} style={{ opacity: 0.25 }} />} text={`Render error: ${renderErr}`} />
+  if (renderErr) return (
+    <Box style={{ height: '100%', overflow: 'auto', padding: '20px 24px' }}>
+      <span style={{ fontSize: 12, color: c.orange, fontFamily: c.mono, display: 'block', marginBottom: 12 }}>
+        Render error: {renderErr}
+      </span>
+      <pre style={{ fontSize: 11, color: c.textMuted, fontFamily: c.mono, whiteSpace: 'pre-wrap', wordBreak: 'break-all', margin: 0 }}>
+        {dot}
+      </pre>
+    </Box>
+  )
 
   return (
     <Box ref={wrapperRef} style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden', background: c.bg }}>
@@ -341,7 +350,41 @@ function RunButton({ onClick, loading, disabled }: { onClick: () => void; loadin
   )
 }
 
-function OptionToggle({ label, checked, onChange }: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
+function WarningBadge({ text }: { text: string }) {
+  const [visible, setVisible] = useState(false)
+  return (
+    <span
+      style={{ position: 'relative', display: 'inline-flex', flexShrink: 0 }}
+      onMouseEnter={() => setVisible(true)}
+      onMouseLeave={() => setVisible(false)}
+    >
+      <span style={{
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        width: 14, height: 14, borderRadius: '50%',
+        border: `1px solid rgba(255, 150, 80, 0.6)`,
+        color: c.orange, fontSize: 9, fontWeight: 700, fontFamily: c.mono,
+        lineHeight: 1, cursor: 'help',
+      }}>!</span>
+      {visible && (
+        <span style={{
+          position: 'absolute', top: '100%', left: '50%',
+          transform: 'translateX(-50%)',
+          marginTop: 6, zIndex: 100,
+          background: 'rgba(20, 20, 26, 0.97)',
+          border: `1px solid rgba(255, 150, 80, 0.35)`,
+          borderRadius: 6, padding: '6px 10px',
+          fontSize: 11, color: c.textSub, fontFamily: c.mono,
+          whiteSpace: 'nowrap', pointerEvents: 'none',
+          boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+        }}>
+          {text}
+        </span>
+      )}
+    </span>
+  )
+}
+
+function OptionToggle({ label, checked, onChange, warning }: { label: string; checked: boolean; onChange: (v: boolean) => void; warning?: string }) {
   return (
     <label style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', userSelect: 'none' }}>
       <input
@@ -349,6 +392,7 @@ function OptionToggle({ label, checked, onChange }: { label: string; checked: bo
         style={{ accentColor: c.accent }}
       />
       <span style={{ fontSize: 11, color: c.textMuted, fontFamily: c.mono }}>{label}</span>
+      {warning && <WarningBadge text={warning} />}
     </label>
   )
 }
@@ -482,7 +526,7 @@ function GraphTab({ auditId, includedScIds }: { auditId: string; includedScIds: 
   const [libraries, setLibraries] = useState(true)
 
   const run = useCallback(async () => {
-    setLoading(true); setErr(null)
+    setDot(null); setLoading(true); setErr(null)
     try { setDot(await surya.getGraph(auditId, { simple, modifiers, libraries }, includedScIds)) }
     catch (e) { setErr(String((e as Error).message)) }
     setLoading(false)
@@ -492,8 +536,8 @@ function GraphTab({ auditId, includedScIds }: { auditId: string; includedScIds: 
     <Flex direction="column" style={{ height: '100%', gap: 0 }}>
       <Flex align="center" gap="3" style={{ padding: '8px 12px', borderBottom: `1px solid ${c.border}`, flexShrink: 0, flexWrap: 'wrap' }}>
         <OptionToggle label="Simple (contract-level)" checked={simple} onChange={setSimple} />
-        <OptionToggle label="Show modifiers" checked={modifiers} onChange={setModifiers} />
-        <OptionToggle label="Show libraries" checked={libraries} onChange={setLibraries} />
+        <OptionToggle label="Show modifiers" checked={modifiers} onChange={setModifiers} warning="May cause errors if contracts use unresolved modifiers or missing library imports" />
+        <OptionToggle label="Show libraries" checked={libraries} onChange={setLibraries} warning="May cause errors if library imports cannot be resolved in the current scope" />
         <RunButton onClick={run} loading={loading} />
         {err && <span style={{ fontSize: 11, color: c.orange, fontFamily: c.mono }}>{err}</span>}
       </Flex>
@@ -510,7 +554,7 @@ function InheritanceTab({ auditId, includedScIds }: { auditId: string; includedS
   const [err, setErr] = useState<string | null>(null)
 
   const run = useCallback(async () => {
-    setLoading(true); setErr(null)
+    setDot(null); setLoading(true); setErr(null)
     try { setDot(await surya.getInheritance(auditId, includedScIds)) }
     catch (e) { setErr(String((e as Error).message)) }
     setLoading(false)

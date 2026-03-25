@@ -54,6 +54,34 @@ def _clean_output(text: str) -> str:
     return "\n".join(clean).strip()
 
 
+_LEGEND_RE = re.compile(r"\s*rankdir\s*=\s*LR.*", re.DOTALL)
+
+
+def _extract_dot(text: str) -> str:
+    """Extract only the DOT graph block from surya output.
+
+    Surya sometimes emits warning/error lines before the actual digraph block
+    (e.g. parse failures on individual files).  Graphviz rejects anything that
+    isn't valid DOT, so we strip everything before the first 'digraph' keyword.
+    If no digraph is found the original text is returned so the caller can show
+    a meaningful error.
+
+    Also strips the legend subgraph that surya appends: it uses HTML table labels
+    with &nbsp; entities and nested tables that break Viz.js / Graphviz WASM.
+    """
+    idx = text.find("digraph")
+    if idx < 0:
+        return text
+    dot = text[idx:]
+    # Remove the legend block (rankdir=LR ... subgraph cluster_01 { ... })
+    # and re-close the digraph with its own closing brace.
+    stripped = _LEGEND_RE.sub("", dot)
+    if stripped != dot:
+        # Legend was removed — re-close the digraph which lost its final brace
+        return stripped.rstrip() + "\n}"
+    return dot
+
+
 def _ensure_audit(session: Session, audit_id: UUID, owner_id: UUID) -> Audit:
     audit = session.get(Audit, audit_id)
     if audit is None:
@@ -151,7 +179,16 @@ def get_graph(
         if not libraries:
             args.append("--libraries")
         args += [str(p.relative_to(tmpdir)) for p in paths]
-        return _run_surya(args, cwd=str(tmpdir))
+        dot = _extract_dot(_run_surya(args, cwd=str(tmpdir)))
+        if "digraph" not in dot:
+            if "--simple" not in args:
+                # Full graph failed — retry with simple (contract-level) mode as fallback
+                simple_args = ["graph", "--simple"] + [str(p.relative_to(tmpdir)) for p in paths]
+                fallback = _extract_dot(_run_surya(simple_args, cwd=str(tmpdir)))
+                if "digraph" in fallback:
+                    return fallback
+            raise HTTPException(status_code=422, detail=dot or "Surya did not produce a valid graph")
+        return dot
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
 
@@ -176,7 +213,10 @@ def get_inheritance(
     try:
         if not paths:
             raise HTTPException(status_code=404, detail="No contract files found in scope")
-        return _run_surya(["inheritance"] + [str(p.relative_to(tmpdir)) for p in paths], cwd=str(tmpdir))
+        dot = _extract_dot(_run_surya(["inheritance"] + [str(p.relative_to(tmpdir)) for p in paths], cwd=str(tmpdir)))
+        if "digraph" not in dot:
+            raise HTTPException(status_code=422, detail=dot or "Surya did not produce a valid graph")
+        return dot
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
 
