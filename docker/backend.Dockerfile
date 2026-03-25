@@ -25,33 +25,6 @@ RUN mkdir -p /usr/local/sol-libs/node_modules \
     && (cp -rn /tmp/oz2/node_modules/@openzeppelin /usr/local/sol-libs/node_modules/ 2>/dev/null || true) \
     && rm -rf /tmp/oz2 /tmp/oz3 /tmp/oz4 /tmp/oz5
 
-# Pre-install common Solidity libraries used across DeFi/NFT/tooling projects.
-# solady is also aliased as @solady/ since many projects use that import prefix.
-RUN npm install --prefix /tmp/libs \
-        forge-std \
-        solady \
-        solmate \
-        erc721a \
-        hardhat \
-        @uniswap/v2-core \
-        @uniswap/v3-core \
-        @uniswap/v3-periphery \
-        @chainlink/contracts \
-        @prb/math \
-        @aave/core-v3 \
-    2>/dev/null || true \
-    && cp -rn /tmp/libs/node_modules/forge-std      /usr/local/sol-libs/node_modules/ \
-    && cp -rn /tmp/libs/node_modules/solady         /usr/local/sol-libs/node_modules/ \
-    && mkdir -p /usr/local/sol-libs/node_modules/@solady \
-    && cp -rn /tmp/libs/node_modules/solady/.        /usr/local/sol-libs/node_modules/@solady/ \
-    && (cp -rn /tmp/libs/node_modules/solmate        /usr/local/sol-libs/node_modules/ 2>/dev/null || true) \
-    && (cp -rn /tmp/libs/node_modules/erc721a        /usr/local/sol-libs/node_modules/ 2>/dev/null || true) \
-    && (cp -rn /tmp/libs/node_modules/hardhat        /usr/local/sol-libs/node_modules/ 2>/dev/null || true) \
-    && (cp -rn /tmp/libs/node_modules/@uniswap       /usr/local/sol-libs/node_modules/ 2>/dev/null || true) \
-    && (cp -rn /tmp/libs/node_modules/@chainlink     /usr/local/sol-libs/node_modules/ 2>/dev/null || true) \
-    && (cp -rn /tmp/libs/node_modules/@prb           /usr/local/sol-libs/node_modules/ 2>/dev/null || true) \
-    && (cp -rn /tmp/libs/node_modules/@aave          /usr/local/sol-libs/node_modules/ 2>/dev/null || true) \
-    && rm -rf /tmp/libs
 
 COPY requirements.txt .
 RUN pip install -r requirements.txt
