@@ -1,16 +1,17 @@
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import { css } from 'styled-system/css'
 import { Box, Flex } from 'styled-system/jsx'
 import { ChevronUp, ChevronDown } from 'lucide-react'
 import { NavBar } from '../components/NavBar'
 import { SuryaView } from './SuryaView'
 import { ParseView } from './ParseView'
+import { CodeView } from './CodeView'
 import SlideButton from '../components/SlideButton'
 
 type EnumView = 'code' | 'parse' | 'tree' | 'assembly' | 'filter' | 'aidoc'
 
 const views: Array<{ id: EnumView; label: string }> = [
-  { id: 'code', label: 'Code View' },
+  { id: 'code', label: 'CodeView' },
   { id: 'tree', label: 'SuryaView' },
   { id: 'parse', label: 'ParseView' },
   { id: 'assembly', label: 'AssemblyView' },
@@ -24,9 +25,17 @@ interface EnumWorkspaceProps {
   onOpenProfile: () => void
 }
 
+type JumpTarget = { contractId: string; line: number } | null
+
 export function EnumWorkspace({ auditId, onNavigate, onOpenProfile }: EnumWorkspaceProps) {
   const [activeView, setActiveView] = useState<EnumView>('tree')
   const [subNavOpen, setSubNavOpen] = useState(true)
+  const [jumpTo, setJumpTo] = useState<JumpTarget>(null)
+
+  const handleGoToCode = useCallback((contractId: string, line: number) => {
+    setJumpTo({ contractId, line })
+    setActiveView('code')
+  }, [])
 
   return (
     <Flex direction="column" minH="100vh" className={css({ background: '#101014' })}>
@@ -119,9 +128,13 @@ export function EnumWorkspace({ auditId, onNavigate, onOpenProfile }: EnumWorksp
           paddingTop: subNavOpen ? undefined : 'calc(20px + 1.25rem)',
         })}
       >
-        {activeView === 'parse' ? (
+        {activeView === 'code' ? (
           <Box width="100%">
-            <ParseView auditId={auditId} />
+            <CodeView auditId={auditId} jumpTo={jumpTo} onJumpHandled={() => setJumpTo(null)} />
+          </Box>
+        ) : activeView === 'parse' ? (
+          <Box width="100%">
+            <ParseView auditId={auditId} onGoToCode={handleGoToCode} />
           </Box>
         ) : activeView === 'tree' ? (
           <Box width="100%">

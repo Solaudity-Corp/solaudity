@@ -849,6 +849,23 @@ def get_contract_content(session: Session, contract_id: UUID, owner_id: UUID) ->
     return storage_path.read_bytes()
 
 
+def update_contract_content(session: Session, contract_id: UUID, owner_id: UUID, content: str) -> None:
+    """Overwrite the raw Solidity source of a contract and refresh metadata."""
+    contract = _ensure_contract_exists(session, contract_id)
+    _ensure_audit_owned_by(session, contract.audit_id, owner_id)
+
+    storage_path = CONTRACTS_STORAGE_DIR / contract.storage_key
+    if not storage_path.exists():
+        raise ScopeNotFoundError(f"Contract file not found on disk: {contract.storage_key}")
+
+    encoded = content.encode("utf-8")
+    storage_path.write_bytes(encoded)
+
+    contract.content_hash = compute_sha256(encoded)
+    contract.sloc = count_sloc(content)
+    _commit(session)
+
+
 def _chain_id_to_source_type(chain_id: int) -> SourceType:
     """Map a chain ID to the corresponding explorer SourceType."""
     from app.api.scope.fetchers.explorer import EXPLORER_CHAIN_IDS

@@ -52,6 +52,9 @@ if [ "$MODE" = "dev" ]; then
   wait_for_service "Backend"  "http://localhost:8001/health" 120
   wait_for_service "Frontend" "http://localhost:5173" 180
 
+  echo "[~] Fixing sol-libs permissions..."
+  docker exec -u root solaudity-solaudity-backend-1 chmod -R 777 /usr/local/sol-libs 2>/dev/null && echo "[+] sol-libs permissions fixed" || echo "[!] Could not fix sol-libs permissions (non-fatal)"
+
   echo "[+] Started in dev mode"
   echo "[i] Backend:  http://localhost:8001"
   echo "[i] Frontend: http://localhost:5173 (live reload in Docker)"
@@ -60,6 +63,10 @@ fi
 
 echo "[+] Starting solaudity-backend + solaudity-frontend (Docker Compose)"
 "${DOCKER_COMPOSE[@]}" -f "$COMPOSE_FILE" --profile prod up -d --build --remove-orphans solaudity-backend solaudity-frontend
+
+echo "[~] Fixing sol-libs permissions..."
+wait_for_service "Backend" "http://localhost:8001/health" 120
+docker exec -u root solaudity-solaudity-backend-1 chmod -R 777 /usr/local/sol-libs 2>/dev/null && echo "[+] sol-libs permissions fixed" || echo "[!] Could not fix sol-libs permissions (non-fatal)"
 
 echo "[+] Started"
 echo "[i] Website: http://localhost:5173"
