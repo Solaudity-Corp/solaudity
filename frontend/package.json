@@ -28,6 +28,13 @@
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
   },
+  "overrides": {
+    "dompurify": "3.3.3",
+    "picomatch": "4.0.4",
+    "micromatch": {
+      "picomatch": "2.3.2"
+    }
+  },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
     "@pandacss/dev": "^1.8.1",
