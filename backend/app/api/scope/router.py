@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, Response, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile, status
 from sqlmodel import Session
 
 from app.api.auth.auth import get_current_user
@@ -248,6 +248,23 @@ def update_contract(
             )
 
         return result
+    except Exception as exc:
+        _raise_service_error(exc)
+
+
+@router.put("/contracts/{contract_id}/content", status_code=status.HTTP_204_NO_CONTENT)
+async def update_contract_content(
+    contract_id: UUID,
+    request: Request,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> Response:
+    """Overwrite the raw Solidity source of a contract (autosave endpoint)."""
+    try:
+        body = await request.body()
+        content = body.decode("utf-8")
+        service.update_contract_content(session, contract_id, current_user.id, content)
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
     except Exception as exc:
         _raise_service_error(exc)
 

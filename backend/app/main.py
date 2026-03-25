@@ -8,6 +8,7 @@ from app.api.ai.router import router as ai_router
 from app.api.scope.router import router as scope_router
 from app.api.enum.solparsing.router import router as solparsing_router
 from app.api.enum.surya.router import router as surya_router
+from app.api.libraries.router import router as libraries_router
 
 app = FastAPI()
 
@@ -25,6 +26,7 @@ app.include_router(ai_router)
 app.include_router(scope_router)
 app.include_router(solparsing_router)
 app.include_router(surya_router)
+app.include_router(libraries_router)
 
 
 @app.get("/health")

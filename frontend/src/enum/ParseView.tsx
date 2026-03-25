@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useState } from 'react'
 import { css } from 'styled-system/css'
 import { Box, Flex } from 'styled-system/jsx'
 import {
@@ -13,6 +13,37 @@ import type {
   ParsedContractRead, ParsedFunctionRead, ParsedStateVariableRead,
   ParsedEventRead, ParsedModifierRead, CallEdgeRead,
 } from './api'
+
+// ---------------------------------------------------------------------------
+// Go-to-code context — avoids threading onGoToCode + scopeContractId through every prop
+// ---------------------------------------------------------------------------
+interface GoToCodeCtxValue {
+  onGoToCode: (contractId: string, line: number) => void
+  scopeContractId: string
+}
+const GoToCodeCtx = createContext<GoToCodeCtxValue | null>(null)
+
+// Wrapper that makes any element show a green underline on hover and jump to code on click
+function GoToLine({ line, children }: { line: number | null; children: React.ReactNode }) {
+  const ctx = useContext(GoToCodeCtx)
+  const [hovered, setHovered] = useState(false)
+  if (!line || !ctx) return <>{children}</>
+  return (
+    <span
+      onClick={(e) => { e.stopPropagation(); ctx.onGoToCode(ctx.scopeContractId, line) }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        cursor: 'pointer',
+        borderBottom: hovered ? '1.5px solid rgba(88, 214, 171, 0.8)' : '1.5px solid transparent',
+        transition: 'border-color 0.12s ease',
+        display: 'inline',
+      }}
+    >
+      {children}
+    </span>
+  )
+}
 
 // ---------------------------------------------------------------------------
 // Colours
@@ -137,13 +168,17 @@ function FunctionRow({ fn, varMap }: { fn: ParsedFunctionRead; varMap: Map<strin
   const writes = (fn.writes_var_ids ?? []).map(id => varMap.get(id) ?? id.slice(0, 8))
   return (
     <Box style={{ borderBottom: `1px solid ${c.border}` }}>
-      <Flex align="center" gap="2" onClick={() => setExpanded(e => !e)}
+      <Flex align="center" gap="2"
         className={css({ px: '3', py: '1.5', cursor: 'pointer', _hover: { bg: 'rgba(255,255,255,0.02)' } })}
       >
-        {expanded ? <ChevronDown size={10} style={{ color: c.textMuted, flexShrink: 0 }} /> : <ChevronRight size={10} style={{ color: c.textMuted, flexShrink: 0 }} />}
-        <span style={{ fontSize: 11, color: c.text, fontFamily: c.mono, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {sig}
+        <span onClick={() => setExpanded(e => !e)} style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+          {expanded ? <ChevronDown size={10} style={{ color: c.textMuted }} /> : <ChevronRight size={10} style={{ color: c.textMuted }} />}
         </span>
+        <GoToLine line={fn.source_line_start}>
+          <span style={{ fontSize: 11, color: c.text, fontFamily: c.mono, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {sig}
+          </span>
+        </GoToLine>
         <Flex gap="1" align="center" style={{ flexShrink: 0 }}>
           <VisBadge v={fn.visibility} />
           <MutBadge m={fn.mutability} />
@@ -170,11 +205,13 @@ function FunctionRow({ fn, varMap }: { fn: ParsedFunctionRead; varMap: Map<strin
 function StateVarRow({ v }: { v: ParsedStateVariableRead }) {
   return (
     <Flex align="center" gap="2" className={css({ px: '3', py: '1.5', borderBottom: `1px solid ${c.border}` })}>
-      <span style={{ fontSize: 11, color: c.text, fontFamily: c.mono, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-        <span style={{ color: c.purple }}>{v.type_str}</span>{' '}
-        <span style={{ color: c.text }}>{v.name}</span>
-        {v.initial_value && <span style={{ color: c.textMuted }}> = {v.initial_value}</span>}
-      </span>
+      <GoToLine line={v.source_line_start}>
+        <span style={{ fontSize: 11, color: c.text, fontFamily: c.mono, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <span style={{ color: c.purple }}>{v.type_str}</span>{' '}
+          <span style={{ color: c.text }}>{v.name}</span>
+          {v.initial_value && <span style={{ color: c.textMuted }}> = {v.initial_value}</span>}
+        </span>
+      </GoToLine>
       <Flex gap="1" align="center" style={{ flexShrink: 0 }}>
         <VisBadge v={v.visibility} />
         {v.is_constant && <Badge color={c.yellow} bg="rgba(255,210,80,0.10)">constant</Badge>}
@@ -189,9 +226,11 @@ function EventRow({ ev }: { ev: ParsedEventRead }) {
   const paramStr = (ev.params ?? []).map(p => `${p.type}${p.indexed ? ' indexed' : ''} ${p.name}`).join(', ')
   return (
     <Flex align="center" gap="2" className={css({ px: '3', py: '1.5', borderBottom: `1px solid ${c.border}` })}>
-      <span style={{ fontSize: 11, color: c.text, fontFamily: c.mono, flex: 1 }}>
-        <span style={{ color: c.blue }}>{ev.name}</span>({paramStr})
-      </span>
+      <GoToLine line={ev.source_line_start}>
+        <span style={{ fontSize: 11, color: c.text, fontFamily: c.mono, flex: 1 }}>
+          <span style={{ color: c.blue }}>{ev.name}</span>({paramStr})
+        </span>
+      </GoToLine>
       <LineRange start={ev.source_line_start} end={null} />
     </Flex>
   )
@@ -201,9 +240,11 @@ function ModifierRow({ mod }: { mod: ParsedModifierRead }) {
   const paramStr = (mod.params ?? []).map(p => `${p.type} ${p.name}`).join(', ')
   return (
     <Flex align="center" gap="2" className={css({ px: '3', py: '1.5', borderBottom: `1px solid ${c.border}` })}>
-      <span style={{ fontSize: 11, color: c.text, fontFamily: c.mono, flex: 1 }}>
-        <span style={{ color: c.yellow }}>{mod.name}</span>({paramStr})
-      </span>
+      <GoToLine line={mod.source_line_start}>
+        <span style={{ fontSize: 11, color: c.text, fontFamily: c.mono, flex: 1 }}>
+          <span style={{ color: c.yellow }}>{mod.name}</span>({paramStr})
+        </span>
+      </GoToLine>
       <Flex gap="1" style={{ flexShrink: 0 }}>
         <VisBadge v={mod.visibility} />
         <LineRange start={mod.source_line_start} end={mod.source_line_end} />
@@ -224,10 +265,11 @@ type ContractDetails = {
 }
 
 function ContractDetailsPanel({
-  pc, details,
+  pc, details, onGoToCode,
 }: {
   pc: ParsedContractRead
   details: ContractDetails | null | undefined
+  onGoToCode?: (contractId: string, line: number) => void
 }) {
   const [openSections, setOpenSections] = useState<Set<string>>(new Set(['functions', 'variables', 'events', 'modifiers']))
   const toggleSection = (s: string) => setOpenSections(prev => {
@@ -239,12 +281,19 @@ function ContractDetailsPanel({
   const varMap = new Map<string, string>()
   ;(details?.variables ?? []).forEach(v => varMap.set(v.id, v.name))
 
+  const ctxValue = onGoToCode && pc.scope_contract_id
+    ? { onGoToCode, scopeContractId: pc.scope_contract_id }
+    : null
+
   return (
+    <GoToCodeCtx.Provider value={ctxValue}>
     <Box>
       {/* Contract header */}
       <Flex align="center" gap="2" mb="3" pb="3" style={{ borderBottom: `1px solid ${c.borderSoft}` }}>
         <Cpu size={16} style={{ color: c.accentStr }} />
-        <span style={{ fontSize: 15, fontWeight: 700, color: c.text, fontFamily: c.mono }}>{pc.name}</span>
+        <GoToLine line={pc.source_line_start}>
+          <span style={{ fontSize: 15, fontWeight: 700, color: c.text, fontFamily: c.mono }}>{pc.name}</span>
+        </GoToLine>
         <KindBadge kind={pc.contract_kind} />
         <StatusBadge status={pc.parse_status} />
         {(pc.inheritance ?? []).length > 0 && (
@@ -302,6 +351,7 @@ function ContractDetailsPanel({
         </Box>
       )}
     </Box>
+    </GoToCodeCtx.Provider>
   )
 }
 
@@ -420,7 +470,7 @@ function LeftFileRow({
 // ---------------------------------------------------------------------------
 // Main ParseView — 30/70 split layout
 // ---------------------------------------------------------------------------
-export function ParseView({ auditId }: { auditId: string }) {
+export function ParseView({ auditId, onGoToCode }: { auditId: string; onGoToCode?: (contractId: string, line: number) => void }) {
   const [scopeContracts, setScopeContracts] = useState<scopeApi.ScopeContract[]>([])
   const [parsedContracts, setParsedContracts] = useState<ParsedContractRead[]>([])
   const [callGraph, setCallGraph] = useState<{ edges: CallEdgeRead[]; functions: ParsedFunctionRead[] } | null>(null)
@@ -655,6 +705,7 @@ export function ParseView({ auditId }: { auditId: string }) {
               <ContractDetailsPanel
                 pc={selectedPc}
                 details={details[selectedPcId!]}
+                onGoToCode={onGoToCode}
               />
             )}
           </Box>
