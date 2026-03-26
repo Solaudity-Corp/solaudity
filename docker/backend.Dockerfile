@@ -38,6 +38,11 @@ RUN mkdir -p /usr/local/sol-libs/node_modules \
     && rm -rf /tmp/solady-main
 
 
+# Installing heimdall 
+ENV HEIMDAL_VERSION="0.9.2"
+RUN curl -L "https://github.com/Jon-Becker/heimdall-rs/releases/download/${HEIMDAL_VERSION}/heimdall-linux-amd64" --output /usr/local/bin/heimdall \
+    && chmod +x /usr/local/bin/heimdall
+
 COPY requirements.txt .
 RUN pip install -r requirements.txt
 
