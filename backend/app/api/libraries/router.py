@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import shutil
+import tarfile
+import urllib.request
 from pathlib import Path
 from typing import Literal
 
@@ -108,6 +110,17 @@ CATALOGUE: list[dict] = [
         "copies": [("@prb/math", "@prb/math")],
         "check_path": "@prb/math",
     },
+    {
+        "id": "ds-test",
+        "display_name": "ds-test",
+        "description": "DappSys base test contract — used by Foundry test suites",
+        "packages": [],   # not on npm — installed via GitHub tarball
+        "copies": [],
+        "check_path": "ds-test",
+        "tarball_url": "https://github.com/dapphub/ds-test/archive/refs/heads/master.tar.gz",
+        "tarball_src": "src",   # subdirectory inside extracted archive to expose
+        "tarball_dst": "ds-test",
+    },
 ]
 
 _CATALOGUE_BY_ID = {lib["id"]: lib for lib in CATALOGUE}
@@ -162,6 +175,39 @@ async def _run_install(lib_id: str, packages: list[str], copies: list[tuple[str,
         shutil.rmtree(tmpdir, ignore_errors=True)
         shutil.rmtree(f"/tmp/npm-cache-{lib_id}", ignore_errors=True)
 
+
+def _extract_tarball_sync(tarball_path: str, extract_to: str, src_subdir: str, dst_name: str) -> None:
+    """Synchronous helper — runs in a thread via asyncio.to_thread."""
+    with tarfile.open(tarball_path) as tf:
+        tf.extractall(extract_to)
+    # GitHub tarballs unpack as "<repo>-<ref>/"
+    extracted_dirs = [p for p in Path(extract_to).iterdir() if p.is_dir()]
+    if not extracted_dirs:
+        raise RuntimeError("Tarball contained no directories")
+    repo_dir = extracted_dirs[0]
+    src = repo_dir / src_subdir
+    dst = SOL_LIBS / dst_name
+    if dst.exists():
+        shutil.rmtree(str(dst))
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(str(src), str(dst))
+
+
+async def _run_install_tarball(lib_id: str, tarball_url: str, src_subdir: str, dst_name: str) -> None:
+    _status[lib_id] = "downloading"
+    tmpdir = Path(f"/tmp/sol-lib-{lib_id}")
+    tarball_path = str(tmpdir / "archive.tar.gz")
+    try:
+        tmpdir.mkdir(parents=True, exist_ok=True)
+        await asyncio.to_thread(urllib.request.urlretrieve, tarball_url, tarball_path)
+        SOL_LIBS.mkdir(parents=True, exist_ok=True)
+        await asyncio.to_thread(_extract_tarball_sync, tarball_path, str(tmpdir), src_subdir, dst_name)
+        _status.pop(lib_id, None)
+    except Exception:
+        _status[lib_id] = "error"
+    finally:
+        shutil.rmtree(str(tmpdir), ignore_errors=True)
+
 # ---------------------------------------------------------------------------
 # Router
 # ---------------------------------------------------------------------------
@@ -207,7 +253,12 @@ async def install_library(
     if current == "downloaded":
         return {"status": "downloaded"}
 
-    asyncio.create_task(
-        _run_install(lib_id, lib["packages"], lib["copies"])
-    )
+    if lib.get("tarball_url"):
+        asyncio.create_task(
+            _run_install_tarball(lib_id, lib["tarball_url"], lib["tarball_src"], lib["tarball_dst"])
+        )
+    else:
+        asyncio.create_task(
+            _run_install(lib_id, lib["packages"], lib["copies"])
+        )
     return {"status": "downloading"}

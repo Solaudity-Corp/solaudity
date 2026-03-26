@@ -131,6 +131,9 @@ def _build_temp_dir(
     return tmpdir, paths
 
 
+_PARSE_ERR_FILE_RE = re.compile(r"Error found while parsing file:\s*(\S+\.sol)")
+
+
 def _run_surya(args: list[str], timeout: int = 60, cwd: str | None = None) -> str:
     try:
         result = subprocess.run(
@@ -146,6 +149,46 @@ def _run_surya(args: list[str], timeout: int = 60, cwd: str | None = None) -> st
         raise HTTPException(status_code=408, detail="Surya timed out") from exc
     except FileNotFoundError as exc:
         raise HTTPException(status_code=501, detail="Surya is not installed on this server") from exc
+
+
+def _run_surya_on_files(
+    base_args: list[str],
+    tmpdir: Path,
+    paths: list[Path],
+    timeout: int = 60,
+) -> str:
+    """
+    Run surya <base_args> <files…> with cwd=tmpdir.
+    If any file causes a parse error surya can't recover from, remove it
+    and retry automatically — so one bad script/test file can't block the
+    rest of the analysis.
+    """
+    def _exec(file_list: list[Path]) -> tuple[str, str]:
+        rel = [str(p.relative_to(tmpdir)) for p in file_list]
+        try:
+            r = subprocess.run(
+                ["surya"] + base_args + rel,
+                capture_output=True, text=True,
+                timeout=timeout, cwd=str(tmpdir),
+            )
+            return r.stdout or "", r.stderr or ""
+        except subprocess.TimeoutExpired as exc:
+            raise HTTPException(status_code=408, detail="Surya timed out") from exc
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=501, detail="Surya is not installed on this server") from exc
+
+    stdout, stderr = _exec(paths)
+    combined = stdout + "\n" + stderr
+
+    bad_abs = {m.group(1).strip() for m in _PARSE_ERR_FILE_RE.finditer(combined)}
+    if bad_abs:
+        good = [p for p in paths if str(p) not in bad_abs]
+        if good and len(good) < len(paths):
+            stdout, stderr = _exec(good)
+            combined = stdout + "\n" + stderr
+
+    output = stdout or stderr or combined
+    return _clean_output(_strip_ansi(output))
 
 
 # ---------------------------------------------------------------------------
@@ -171,20 +214,18 @@ def get_graph(
     try:
         if not paths:
             raise HTTPException(status_code=404, detail="No contract files found in scope")
-        args = ["graph"]
+        base_args = ["graph"]
         if simple:
-            args.append("--simple")
+            base_args.append("--simple")
         if modifiers:
-            args.append("--modifiers")
+            base_args.append("--modifiers")
         if not libraries:
-            args.append("--libraries")
-        args += [str(p.relative_to(tmpdir)) for p in paths]
-        dot = _extract_dot(_run_surya(args, cwd=str(tmpdir)))
+            base_args.append("--libraries")
+        dot = _extract_dot(_run_surya_on_files(base_args, tmpdir, paths))
         if "digraph" not in dot:
-            if "--simple" not in args:
+            if "--simple" not in base_args:
                 # Full graph failed — retry with simple (contract-level) mode as fallback
-                simple_args = ["graph", "--simple"] + [str(p.relative_to(tmpdir)) for p in paths]
-                fallback = _extract_dot(_run_surya(simple_args, cwd=str(tmpdir)))
+                fallback = _extract_dot(_run_surya_on_files(["graph", "--simple"], tmpdir, paths))
                 if "digraph" in fallback:
                     return fallback
             raise HTTPException(status_code=422, detail=dot or "Surya did not produce a valid graph")
@@ -213,7 +254,7 @@ def get_inheritance(
     try:
         if not paths:
             raise HTTPException(status_code=404, detail="No contract files found in scope")
-        dot = _extract_dot(_run_surya(["inheritance"] + [str(p.relative_to(tmpdir)) for p in paths], cwd=str(tmpdir)))
+        dot = _extract_dot(_run_surya_on_files(["inheritance"], tmpdir, paths))
         if "digraph" not in dot:
             raise HTTPException(status_code=422, detail=dot or "Surya did not produce a valid graph")
         return dot
@@ -253,7 +294,7 @@ def get_ftrace(
         if not paths:
             raise HTTPException(status_code=404, detail="No contract files found in scope")
         fn_id = f"{contract_name}::{function}"
-        return _run_surya(["ftrace", "-i", fn_id, visibility] + [str(p.relative_to(tmpdir)) for p in paths], cwd=str(tmpdir))
+        return _run_surya_on_files(["ftrace", "-i", fn_id, visibility], tmpdir, paths)
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
 
@@ -278,7 +319,7 @@ def get_describe(
     try:
         if not paths:
             raise HTTPException(status_code=404, detail="No contract files found in scope")
-        return _run_surya(["describe"] + [str(p.relative_to(tmpdir)) for p in paths], cwd=str(tmpdir))
+        return _run_surya_on_files(["describe"], tmpdir, paths)
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
 
@@ -328,7 +369,7 @@ def get_dependencies(
     try:
         if not paths:
             raise HTTPException(status_code=404, detail="No contract files found in scope")
-        return _run_surya(["dependencies", contract_name] + [str(p.relative_to(tmpdir)) for p in paths], cwd=str(tmpdir))
+        return _run_surya_on_files(["dependencies", contract_name], tmpdir, paths)
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
 
@@ -428,7 +469,7 @@ def get_mdreport(
     try:
         if not paths:
             raise HTTPException(status_code=404, detail="No contract files found in scope")
-        _run_surya(["mdreport", "report.md"] + [str(p.relative_to(tmpdir)) for p in paths], cwd=str(tmpdir))
+        _run_surya_on_files(["mdreport", "report.md"], tmpdir, paths)
         if report_path.exists():
             return report_path.read_text(encoding="utf-8")
         return "# Report\n\nSurya produced no output."
