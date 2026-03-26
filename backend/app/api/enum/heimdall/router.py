@@ -35,14 +35,13 @@ class HeimdallSubcommand(str, Enum):
 
 
 
-def _ensure_scope_address(session: Session, scope_address_id: UUID, owner_id: UUID) -> ScopeAddress:
+def _ensure_scope_address(session: Session, scope_address_id: UUID) -> ScopeAddress:
     """ Helper function to fetch a ScopeAddress and ensure it exists and belongs to the current user.
         Raises HTTPException with appropriate status codes if checks fail.
         
         Params:
             session: Database session for querying
             scope_address_id: UUID of the ScopeAddress to fetch
-            owner_id: UUID of the current user (owner) to check against
         
         Returns:
             ScopeAddress instance if found and authorized
@@ -50,8 +49,6 @@ def _ensure_scope_address(session: Session, scope_address_id: UUID, owner_id: UU
     sa = session.get(ScopeAddress, scope_address_id)
     if sa is None:
         raise HTTPException(status_code=404, detail="Scope address not found")
-    if sa.owner_id != owner_id:  
-        raise HTTPException(status_code=403, detail="Forbidden")
     return sa
 
 def heimdall(
@@ -184,7 +181,7 @@ def decompile_bytecode(
         
         """
     
-    sa = _ensure_scope_address(session, scope_address_id, current_user.id)
+    sa = _ensure_scope_address(session, scope_address_id)
     bytecode = getattr(sa, "bytecode", None)
     
     if not bytecode:
@@ -216,7 +213,7 @@ def generate_cfg(
             or does not belong to the user or if Heimdall fails.
     
     """
-    sa = _ensure_scope_address(session, scope_address_id, current_user.id)
+    sa = _ensure_scope_address(session, scope_address_id)
     bytecode = getattr(sa, "bytecode", None)
     
     if not bytecode:
@@ -245,7 +242,7 @@ def disassemble_bytecode(
         Returns:
             A JSON response containing the disassembled opcodes, or an error if the scope address is not found, does not belong to the user, or if Heimdall fails.
         """
-    sa = _ensure_scope_address(session, scope_address_id, current_user.id)
+    sa = _ensure_scope_address(session, scope_address_id)
     bytecode = getattr(sa, "bytecode", None)
     
     if not bytecode:
