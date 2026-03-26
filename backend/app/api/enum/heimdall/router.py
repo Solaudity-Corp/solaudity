@@ -166,8 +166,7 @@ def heimdall(
 )
 def decompile_bytecode(
     scope_address_id: UUID,
-    session: Session = Depends(get_session),
-    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session)
 ):
     """ Decompile the bytecode of a contract at a given scope address using Heimdall.
         
@@ -182,6 +181,11 @@ def decompile_bytecode(
         """
     
     sa = _ensure_scope_address(session, scope_address_id)
+    
+    # If already decompiled, return results from database
+    if sa.decompiled_sol and sa.abi_json:
+        return {"pseudo_code": sa.decompiled_sol, "abi": sa.abi_json}
+    
     bytecode = getattr(sa, "bytecode", None)
     
     if not bytecode:
@@ -189,6 +193,13 @@ def decompile_bytecode(
     
     # Run Heimdall to decompile the bytecode
     out = heimdall(HeimdallSubcommand.DECOMPILE, bytecode=bytecode)
+    
+    # Store results in database
+    sa.decompiled_sol = out.get("sol")
+    sa.abi_json = out.get("abi")
+    session.add(sa)
+    session.commit()
+    
     return {"pseudo_code": out.get("sol"), "abi": out.get("abi")}
 
 @router.post(
@@ -199,7 +210,6 @@ def decompile_bytecode(
 def generate_cfg(
     scope_address_id: UUID,
     session: Session = Depends(get_session),
-    current_user: User = Depends(get_current_user),
 ):
     """ Generate a control flow graph (CFG) for the contract at the given scope address using Heimdall.
     
