@@ -52,7 +52,7 @@ def _raise_service_error(exc: Exception) -> None:
 
 @router.get("", response_model=AuditListResponse)
 def list_audits(
-    search: str | None = Query(default=None),
+    search: str | None = Query(default=None, max_length=200),
     status_filter: AuditStatus | None = Query(default=None, alias="status"),
     chain: str | None = Query(default=None),
     network: str | None = Query(default=None),
