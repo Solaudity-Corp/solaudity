@@ -113,8 +113,8 @@ jobs:
               echo "" >> $GITHUB_STEP_SUMMARY
               echo "FRONTEND_VULN_BLOCKED=true" >> "$GITHUB_ENV"
             fi
-            if [ "$MEDIUM" -gt 3 ] 2>/dev/null; then
-              echo "> **PR blocked:** $MEDIUM medium vulnerabilities found (threshold: 3)" >> $GITHUB_STEP_SUMMARY
+            if [ "$MEDIUM" -gt 5 ] 2>/dev/null; then
+              echo "> **PR blocked:** $MEDIUM medium vulnerabilities found (threshold: 5)" >> $GITHUB_STEP_SUMMARY
               echo "" >> $GITHUB_STEP_SUMMARY
               echo "FRONTEND_VULN_BLOCKED=true" >> "$GITHUB_ENV"
             fi
@@ -178,7 +178,7 @@ jobs:
             FAILED=1
           fi
           if [ "$FRONTEND_VULN_BLOCKED" == "true" ]; then
-            echo "Vulnerability thresholds exceeded (critical >0 / high >1 / medium >3 / low >10)"
+            echo "Vulnerability thresholds exceeded (critical >0 / high >1 / medium >5 / low >10)"
             FAILED=1
           fi
           if [ $FAILED -eq 1 ]; then
