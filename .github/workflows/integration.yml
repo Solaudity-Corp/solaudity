@@ -73,7 +73,7 @@ jobs:
       - name: Trivy scan frontend image
         id: trivy-frontend
         if: steps.build-frontend.outcome == 'success'
-        uses: aquasecurity/trivy-action@0.35.0
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
         with:
           image-ref: docker-frontend:latest
           format: sarif
@@ -85,7 +85,7 @@ jobs:
       - name: Trivy scan frontend (JSON)
         id: trivy-frontend-json
         if: steps.build-frontend.outcome == 'success'
-        uses: aquasecurity/trivy-action@0.35.0
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
         with:
           image-ref: docker-frontend:latest
           format: json
@@ -97,7 +97,7 @@ jobs:
       - name: Trivy scan backend image
         id: trivy-backend
         if: steps.build-backend.outcome == 'success'
-        uses: aquasecurity/trivy-action@0.35.0
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0 — pinned SHA (supply chain attack mitigation, GHSA-69fq-xp46-6x23)
         with:
           image-ref: docker-backend:latest
           format: sarif
@@ -109,7 +109,7 @@ jobs:
       - name: Trivy scan backend (JSON)
         id: trivy-backend-json
         if: steps.build-backend.outcome == 'success'
-        uses: aquasecurity/trivy-action@0.35.0
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
         with:
           image-ref: docker-backend:latest
           format: json
