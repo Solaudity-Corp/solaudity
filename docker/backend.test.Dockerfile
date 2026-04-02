@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM python:3.13.12-slim
+FROM python:3.13-slim-bookworm
 
 WORKDIR /app
 
@@ -12,7 +12,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONPATH=/app
 
 # Installing heimdall — amd64 from upstream, arm64 from fork (aircag/heimdall-rs)
-RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates \
+RUN apt-get update \
+    && apt-get full-upgrade -y \
+    && apt-get install -y --no-install-recommends curl ca-certificates \
+    && apt-get autoremove -y \
+    && apt-get clean \
     && rm -rf /var/lib/apt/lists/* \
     && ARCH=$(uname -m) \
     && if [ "$ARCH" = "aarch64" ]; then \
