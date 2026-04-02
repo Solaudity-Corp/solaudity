@@ -13,7 +13,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 # Installing heimdall — amd64 from upstream, arm64 from fork (aircag/heimdall-rs)
 RUN apt-get update \
+    && apt-get full-upgrade -y \
     && apt-get install -y --no-install-recommends curl ca-certificates \
+    && apt-get autoremove -y \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* \
     && ARCH=$(uname -m) \
