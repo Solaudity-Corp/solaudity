@@ -3,7 +3,7 @@ import { css } from 'styled-system/css'
 import { Box, Flex, Stack } from 'styled-system/jsx'
 import { ChevronRight, Settings2 } from 'lucide-react'
 import { Menu, NavLink } from '@/components/ui'
-import { darkMenuContentClass, disconnectMenuItemClass } from '@/components/ui/menu.styles'
+import { darkMenuContentClass, darkMenuItemClass, disconnectMenuItemClass } from '@/components/ui/menu.styles'
 import { logoutUser } from '../auth'
 import { SvgLogo } from './SvgLogo'
 import { SideNav } from './SideNav'
@@ -368,6 +368,9 @@ export function NavBar({
               </Menu.Trigger>
               <Menu.Positioner>
                 <Menu.Content className={darkMenuContentClass}>
+                  <Menu.Item value="profile" className={darkMenuItemClass} onClick={() => onOpenProfile?.()}>
+                    Profile
+                  </Menu.Item>
                   <Menu.Item value="logout" className={disconnectMenuItemClass} onClick={() => logoutUser()}>
                     Disconnect
                   </Menu.Item>
@@ -378,7 +381,7 @@ export function NavBar({
         </Flex>
       </Box>
 
-      <SideNav open={sideNavOpen} onClose={() => setSideNavOpen(false)} onOpenProfile={onOpenProfile} />
+      <SideNav open={sideNavOpen} onClose={() => setSideNavOpen(false)} />
     </>
   )
 }
