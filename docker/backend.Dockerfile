@@ -1,16 +1,23 @@
 # syntax=docker/dockerfile:1
-FROM python:3.13.12-slim
+FROM python:3.13-slim-bookworm
 
 WORKDIR /app
 
 # Install Node.js + surya for Solidity analysis
-RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends curl ca-certificates \
+RUN apt-get update \
+    && apt-get full-upgrade -y \
+    && apt-get install -y --no-install-recommends curl ca-certificates \
     && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get update \
     && apt-get install -y --no-install-recommends nodejs \
+    && apt-get autoremove -y \
+    && apt-get clean \
     && rm -rf /var/lib/apt/lists/* \
     && npm install -g surya \
     && npm install --prefix /usr/lib/node_modules/surya @solidity-parser/parser@latest --cache /tmp/npm-cache-parser \
-    && cd $(npm root -g)/surya && npm audit fix --force || true
+    && (npm audit fix --prefix /usr/lib/node_modules/surya --omit=dev || true) \
+    && (npm update --prefix /usr/lib/node_modules/surya || true) \
+    && npm cache clean --force
 
 # Pre-install all major OpenZeppelin versions so surya can resolve any import.
 # Each version is installed in a temp dir, then merged with cp -n (no-clobber)
@@ -49,7 +56,7 @@ RUN ARCH=$(uname -m) \
     && chmod +x /usr/local/bin/heimdall
 
 COPY requirements.txt .
-RUN pip install --upgrade pip wheel "jaraco.context>=6.1.1" \
+RUN pip install --upgrade pip setuptools wheel "jaraco.context>=6.1.1" \
     && pip install -r requirements.txt
 
 COPY app ./app
