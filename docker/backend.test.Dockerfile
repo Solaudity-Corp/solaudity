@@ -23,7 +23,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certifi
     && chmod +x /usr/local/bin/heimdall
 
 COPY requirements.txt requirements-dev.txt ./
-RUN pip install -r requirements.txt -r requirements-dev.txt
+RUN pip install --upgrade pip wheel "jaraco.context>=6.1.1" \
+    && pip install -r requirements.txt -r requirements-dev.txt
 
 COPY app ./app
 COPY pytest.ini ./pytest.ini
