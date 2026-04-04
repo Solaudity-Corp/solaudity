@@ -26,6 +26,10 @@ os.environ["ACCESS_TOKEN_EXPIRE_MINUTES"] = "30"
 from app.database import get_session
 from app.main import app
 
+@pytest.fixture()
+def session(engine):
+    with Session(engine) as session:
+        yield session
 
 @pytest.fixture()
 def engine(tmp_path: Path):

@@ -174,7 +174,11 @@ class ScopeAddress(SQLModel, table=True):
     contract_id: UUID | None = Field(foreign_key="scope_contracts.id", nullable=True)
     is_verified: bool = Field(default=False)
     is_contract: bool = Field(default=False, sa_column=sa.Column(sa.Boolean(), nullable=False, server_default=sa.text("0")))
+    
+    # Bytecode of the address and status of the decompilation/abi
     bytecode: str | None = Field(default=None, sa_column=sa.Column(sa.Text()))
+    decompiled_sol : str | None = Field(default=None, sa_column=sa.Column(sa.Text()))
+    abi_json : list | None = Field(default=None, sa_column=sa.Column(sa.JSON(), nullable=True))
     # notes about the address
     notes: str | None = Field(sa_column=sa.Column(sa.Text()),default=None)
     

@@ -9,7 +9,8 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-reco
     && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/* \
     && npm install -g surya \
-    && npm install --prefix /usr/lib/node_modules/surya @solidity-parser/parser@latest --cache /tmp/npm-cache-parser
+    && npm install --prefix /usr/lib/node_modules/surya @solidity-parser/parser@latest --cache /tmp/npm-cache-parser \
+    && cd $(npm root -g)/surya && npm audit fix --force || true
 
 # Pre-install all major OpenZeppelin versions so surya can resolve any import.
 # Each version is installed in a temp dir, then merged with cp -n (no-clobber)
@@ -38,8 +39,18 @@ RUN mkdir -p /usr/local/sol-libs/node_modules \
     && rm -rf /tmp/solady-main
 
 
+# Installing heimdall — amd64 from upstream, arm64 from fork (aircag/heimdall-rs)
+RUN ARCH=$(uname -m) \
+    && if [ "$ARCH" = "aarch64" ]; then \
+         curl -L "https://github.com/aircag/heimdall-rs/releases/download/v0.9.2-test/heimdall-linux-arm64" --output /usr/local/bin/heimdall; \
+       else \
+         curl -L "https://github.com/Jon-Becker/heimdall-rs/releases/download/0.9.2/heimdall-linux-amd64" --output /usr/local/bin/heimdall; \
+       fi \
+    && chmod +x /usr/local/bin/heimdall
+
 COPY requirements.txt .
-RUN pip install -r requirements.txt
+RUN pip install --upgrade pip wheel "jaraco.context>=6.1.1" \
+    && pip install -r requirements.txt
 
 COPY app ./app
 COPY entrypoint.sh .
