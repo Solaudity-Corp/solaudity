@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 
 # ================================= Helpers =================================
 # read from file to put in FAKE_BYTECODE:
-with open("backend/tests/bytecode") as f:
+with open("tests/bytecode") as f:
     FAKE_BYTECODE = f.read().strip()
 FAKE_ABI = [{"type": "function", "name": "foo", "inputs": []}]
 FAKE_SOL = "contract Decompiled { function foo() public {} }"
