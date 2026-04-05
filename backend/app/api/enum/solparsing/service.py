@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import re
 from datetime import datetime, timezone
 from pathlib import Path
@@ -171,7 +172,7 @@ def delete_parsed_contract(
 # ---------------------------------------------------------------------------
 
 _CONTRACTS_STORAGE_DIR = Path(
-    __import__('os').getenv("CONTRACTS_STORAGE_DIR", "/data/contracts")
+    os.getenv("CONTRACTS_STORAGE_DIR", "/data/contracts")
 )
 
 _KIND_MAP = {
