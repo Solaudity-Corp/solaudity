@@ -140,6 +140,7 @@ SMOKE_CLEANUP_NEEDED=0
 SMOKE_COMPOSE_CMD=""
 SMOKE_COMPOSE_FILE=""
 SMOKE_PROJECT="solaudity-smoke"
+SMOKE_DATA_DIR=""
 
 cleanup_smoke() {
   if [ "$SMOKE_CLEANUP_NEEDED" -eq 1 ]; then
@@ -147,6 +148,10 @@ cleanup_smoke() {
     $SMOKE_COMPOSE_CMD -f "$SMOKE_COMPOSE_FILE" -p "$SMOKE_PROJECT" \
       --profile prod down -v --remove-orphans >/dev/null 2>&1
     SMOKE_CLEANUP_NEEDED=0
+  fi
+  # Remove the isolated temp data directory
+  if [ -n "$SMOKE_DATA_DIR" ] && [ -d "$SMOKE_DATA_DIR" ]; then
+    rm -rf "$SMOKE_DATA_DIR"
   fi
 }
 trap cleanup_smoke EXIT INT TERM
@@ -243,7 +248,10 @@ run_smoke_tests() {
 
   export HOST_UID=$(id -u)
   export HOST_GID=$(id -g)
-  mkdir -p "$PROJECT_ROOT/data"
+
+  # Isolated temp data dir so the smoke test never touches the real DB
+  SMOKE_DATA_DIR=$(mktemp -d)
+  export SOLAUDITY_DATA="$SMOKE_DATA_DIR"
 
   local BASE="http://localhost:8001"
   local FRONTEND="http://localhost:5173"
@@ -283,7 +291,7 @@ run_smoke_tests() {
   # Register (accept 200 or 400 if user already exists from a prior run)
   api -X POST "$BASE/api/auth/register" \
     -H "Content-Type: application/json" \
-    -d '{"username":"smokeuser","email":"smoke@test.local","password":"Sm0kePass1"}'
+    -d '{"username":"smokeuser","email":"smoke@example.com","password":"Sm0kePass1"}'
   assert_http_any "POST /api/auth/register" "200" "400"
 
   # Login (JSON body)
@@ -308,7 +316,7 @@ run_smoke_tests() {
   # Update profile (PATCH)
   api -X PATCH "$BASE/api/auth/me/profile" \
     -H "$AUTH" -H "Content-Type: application/json" \
-    -d '{"email":"smoke-updated@test.local"}'
+    -d '{"email":"smoke-updated@example.com"}'
   assert_http "PATCH /api/auth/me/profile" "200"
 
   # AI providers list
@@ -421,7 +429,7 @@ run_smoke_tests() {
 
     api -X POST "$BASE/scope/audits/$AUDIT_ID/contracts/upload" \
       -H "$AUTH" \
-      -F "file=@$SOL_TMP"
+      -F "files=@$SOL_TMP"
     assert_http "POST /scope/…/contracts/upload" "201"
     CONTRACT_ID=$(json_val "id")
     rm -f "$SOL_TMP"
