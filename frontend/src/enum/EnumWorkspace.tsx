@@ -48,6 +48,11 @@ export function EnumWorkspace({ auditId, onNavigate, onOpenProfile }: EnumWorksp
         onNavigate={(section) => onNavigate(`/menu/${section}`)}
         onOpenProfile={onOpenProfile}
         showSearch={false}
+        journeyItems={[
+          { label: 'Scope', onClick: () => onNavigate(`/scope/${auditId}`) },
+          { label: 'Enum', isCurrent: true},
+          { label: 'Static Analysis'}
+        ]}
       />
 
       {/* Collapsible sub-navbar */}
