@@ -1,14 +1,21 @@
 import { useState } from 'react'
 import { css } from 'styled-system/css'
 import { Box, Flex, Stack } from 'styled-system/jsx'
-import { Settings2 } from 'lucide-react'
-import { Menu, NavLink } from '@/components/ui'
+import { ChevronRight, Settings2 } from 'lucide-react'
+import { Badge, Menu, NavLink } from '@/components/ui'
 import { darkMenuContentClass, disconnectMenuItemClass } from '@/components/ui/menu.styles'
 import { logoutUser } from '../auth'
 import { SvgLogo } from './SvgLogo'
 import { SideNav } from './SideNav'
 
 export type MenuSection = 'dashboard' | 'audits' | 'reports' | 'activity'
+
+export interface JourneyItem {
+  label: string
+  onClick?: () => void
+  isCurrent?: boolean
+  disabled?: boolean
+}
 
 interface NavBarProps {
   activeSection: MenuSection
@@ -17,6 +24,7 @@ interface NavBarProps {
   onNavigate: (section: MenuSection) => void
   onOpenProfile?: () => void
   showSearch?: boolean
+  journeyItems?: JourneyItem[]
 }
 
 const links: Array<{ label: string; section: MenuSection }> = [
@@ -32,6 +40,7 @@ export function NavBar({
   onNavigate,
   onOpenProfile,
   showSearch = true,
+  journeyItems = [],
 }: NavBarProps) {
   const controlRadius = '8px'
   const [sideNavOpen, setSideNavOpen] = useState(false)
@@ -116,6 +125,90 @@ export function NavBar({
               ))}
             </Flex>
           </Flex>
+
+          {journeyItems.length > 0 && (
+            <Flex
+              flex="1"
+              justify="center"
+              px={{ base: '2', md: '4' }}
+              ml={{ base: '2', md: '6' }}
+              mr={{ base: '2', md: '4' }}
+              minW="0"
+            >
+              <Flex
+                align="center"
+                gap="1.5"
+                className={css({
+                  w: 'full',
+                  h: '10',
+                  px: '3',
+                  borderRadius: '10px',
+                  borderLeft: '1px solid rgba(185, 185, 193, 0.22)',
+                  border: '1px solid rgba(176, 176, 184, 0.28)',
+                  background: 'rgba(16, 16, 20, 0.92)',
+                  boxShadow: '0 4px 12px rgba(0, 0, 0, 0.18)',
+                  overflow: 'hidden',
+                })}
+              >
+                {journeyItems.map((item, idx) => {
+                  const isClickable = !!item.onClick && !item.disabled
+                  return (
+                    <Flex key={`${item.label}-${idx}`} align="center" gap="1" minW="0" flex="1">
+                      <Box minW="0" flex="1">
+                        {item.isCurrent ? (
+                          <Badge
+                            colorPalette="green"
+                            className={css({
+                              display: 'block',
+                              w: 'full',
+                              fontSize: 'sm',
+                              lineHeight: '1',
+                              textAlign: 'center',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                            })}
+                          >
+                            {item.label}
+                          </Badge>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => item.onClick?.()}
+                            disabled={!isClickable}
+                            className={css({
+                              w: 'full',
+                              fontSize: 'sm',
+                              lineHeight: '1',
+                              textAlign: 'center',
+                              color: isClickable ? 'rgba(185, 185, 193, 0.78)' : 'rgba(185, 185, 193, 0.45)',
+                              bg: 'transparent',
+                              border: 'none',
+                              cursor: isClickable ? 'pointer' : 'not-allowed',
+                              px: '2',
+                              py: '1',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                              _hover: isClickable
+                                ? { color: 'rgba(231, 228, 239, 0.92)' }
+                                : undefined,
+                            })}
+                          >
+                            {item.label}
+                          </button>
+                        )}
+                      </Box>
+
+                      {idx < journeyItems.length - 1 && (
+                        <ChevronRight size={12} className={css({ color: 'rgba(167, 167, 174, 0.7)', flexShrink: 0 })} />
+                      )}
+                    </Flex>
+                  )
+                })}
+              </Flex>
+            </Flex>
+          )}
 
           <Flex align="center" gap="3" ml="auto">
             {showSearch && (

@@ -1144,6 +1144,12 @@ export default function ScopeWorkspace({ auditId, onNavigate, onOpenProfile }: S
                 onSearchChange={() => { }}
                 onNavigate={(section) => onNavigate(`/menu/${section}`)}
                 onOpenProfile={onOpenProfile}
+                showSearch={false}
+                journeyItems={[
+                    { label: 'Scope', isCurrent: true },
+                    { label: 'Enum', onClick: () => onNavigate(`/enum/${auditId}`) },
+                    { label: 'Static Analysis' },
+                ]}
             />
 
             <Flex flex="1" px={{ base: '4', md: '8' }} py={{ base: '4', md: '6' }} direction="column" gap="6">
