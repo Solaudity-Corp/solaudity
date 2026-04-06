@@ -6,14 +6,16 @@ import { NavBar } from '../components/NavBar'
 import { SuryaView } from './SuryaView'
 import { ParseView } from './ParseView'
 import { CodeView } from './CodeView'
+import { SolaudityView } from './SolaudityView'
 import SlideButton from '../components/SlideButton'
 
-type EnumView = 'code' | 'parse' | 'tree' | 'assembly' | 'filter' | 'aidoc'
+type EnumView = 'code' | 'parse' | 'tree' | 'assembly' | 'filter' | 'aidoc' | 'solaudity'
 
 const views: Array<{ id: EnumView; label: string }> = [
   { id: 'code', label: 'CodeView' },
   { id: 'tree', label: 'SuryaView' },
   { id: 'parse', label: 'ParseView' },
+  { id: 'solaudity', label: 'SolaudityView' },
   { id: 'assembly', label: 'AssemblyView' },
   { id: 'filter', label: 'FilterView' },
   { id: 'aidoc', label: 'AI Doc' },
@@ -139,6 +141,10 @@ export function EnumWorkspace({ auditId, onNavigate, onOpenProfile }: EnumWorksp
         ) : activeView === 'tree' ? (
           <Box width="100%">
             <SuryaView auditId={auditId} />
+          </Box>
+        ) : activeView === 'solaudity' ? (
+          <Box width="100%">
+            <SolaudityView auditId={auditId} />
           </Box>
         ) : (
           <Box

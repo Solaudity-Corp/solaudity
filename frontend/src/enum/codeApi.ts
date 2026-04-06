@@ -1,4 +1,4 @@
-import { API_BASE_URL, getAccessToken } from '../auth'
+import { API_BASE_URL, getAccessToken, logoutUser } from '../auth'
 
 function authHeaders(extra: Record<string, string> = {}): Record<string, string> {
   const token = getAccessToken()
@@ -9,6 +9,7 @@ async function apiFetch(url: string, options: RequestInit = {}): Promise<Respons
   const headers = { ...authHeaders(), ...(options.headers as Record<string, string> || {}) }
   const res = await fetch(url, { ...options, headers })
   if (!res.ok) {
+    if (res.status === 401) logoutUser()
     let detail = res.statusText
     try { const d = await res.json(); detail = d.detail ?? detail } catch { /* ignore */ }
     throw Object.assign(new Error(detail), { status: res.status })

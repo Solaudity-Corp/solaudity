@@ -1,0 +1,1 @@
+{"root":["./tests/app.test.tsx","./tests/login.test.tsx","./tests/menu.test.tsx","./tests/profile.test.tsx","./tests/register.test.tsx","./tests/audits-api.test.ts","./tests/auth.test.ts","./tests/suryaapi.test.ts","./vitest.setup.ts"],"version":"5.9.3"}
