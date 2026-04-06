@@ -20,9 +20,11 @@
   },
   "dependencies": {
     "@ark-ui/react": "^5.31.0",
+    "@dagrejs/dagre": "^3.0.0",
     "@fontsource-variable/roboto-mono": "^5.2.8",
     "@monaco-editor/react": "^4.7.0",
     "@viz-js/viz": "^3.11.0",
+    "@xyflow/react": "^12.10.2",
     "framer-motion": "^12.34.0",
     "lucide-react": "^0.563.0",
     "react": "^19.2.0",
