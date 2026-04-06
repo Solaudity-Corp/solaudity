@@ -50,6 +50,7 @@ export function NavBar({
   const [journeyAnimatingProgress, setJourneyAnimatingProgress] = useState(0)
   const journeyAnimFrameRef = useRef<number | null>(null)
   const journeyIsAnimatingRef = useRef(false)
+  const isJourneyAnimating = journeyAnimatingToIndex !== null
 
   const triggerJourneyJump = useCallback((item: JourneyItem, targetIndex: number, currentIndex: number) => {
     const onJump = item.onClick
@@ -208,7 +209,7 @@ export function NavBar({
                 {journeyItems.map((item, idx) => {
                   const isAnimatingCurrent = journeyAnimatingFromIndex === idx
                   const isAnimatingTarget = journeyAnimatingToIndex === idx
-                  const isClickable = !!item.onClick && !item.disabled && !journeyIsAnimatingRef.current
+                  const isClickable = !!item.onClick && !item.disabled && !isJourneyAnimating
                   const isForward = journeyAnimatingFromIndex !== null && journeyAnimatingToIndex !== null
                     ? journeyAnimatingToIndex > journeyAnimatingFromIndex
                     : true
