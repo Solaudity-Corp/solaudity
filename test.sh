@@ -123,22 +123,7 @@ run_frontend_tests() {
   "$DOCKER_BIN" rmi "$FRONTEND_TEST_IMAGE" >/dev/null 2>&1 || true
 }
 
-# ── Smoke tests — post-upgrade integration ───────────────────────────
-#
-# These tests build the production Docker images, spin up the full
-# stack, and exercise every API surface to verify nothing is broken
-# after upgrading system packages (openssl, libxml2, libpng, …) or
-# Python dependencies (wheel, jaraco.context, …).
-#
-# What they catch:
-#   • Docker build failures from removed/renamed packages
-#   • Backend startup crashes from incompatible deps
-#   • Alembic migration breakage (SQLModel / SQLAlchemy)
-#   • JWT signing / validation failures (openssl / python-jose)
-#   • ORM + SQLite CRUD regressions
-#   • Frontend build failures (node / npm / vite)
-#   • Nginx serving regressions
-# ─────────────────────────────────────────────────────────────────────
+# ── Smoke tests ──────────────────────────────────────────────────────
 
 SMOKE_CLEANUP_NEEDED=0
 SMOKE_COMPOSE_CMD=""
@@ -153,19 +138,16 @@ cleanup_smoke() {
       --profile prod down -v --remove-orphans >/dev/null 2>&1
     SMOKE_CLEANUP_NEEDED=0
   fi
-  # Remove the isolated temp data directory
   if [ -n "$SMOKE_DATA_DIR" ] && [ -d "$SMOKE_DATA_DIR" ]; then
     rm -rf "$SMOKE_DATA_DIR"
   fi
 }
 trap cleanup_smoke EXIT INT TERM
 
-# Globals shared between helpers and run_smoke_tests
 LAST_HTTP=""
 LAST_BODY=""
 SMOKE_FAILURES=0
 
-# curl wrapper — stores HTTP code in LAST_HTTP, body in LAST_BODY
 api() {
   local tmpfile
   tmpfile=$(mktemp)
@@ -174,7 +156,6 @@ api() {
   rm -f "$tmpfile"
 }
 
-# Assert expected HTTP status
 assert_http() {
   local label="$1" expected="$2"
   if [ "$LAST_HTTP" = "$expected" ]; then
@@ -185,7 +166,6 @@ assert_http() {
   fi
 }
 
-# Accept any of the given HTTP codes (e.g. assert_http_any "label" 200 201)
 assert_http_any() {
   local label="$1"; shift
   for code in "$@"; do
@@ -198,20 +178,16 @@ assert_http_any() {
   SMOKE_FAILURES=$((SMOKE_FAILURES + 1))
 }
 
-# Extract a value from a flat JSON object (no jq dependency)
 json_val() {
   local field="$1"
   local v
-  # Try string value: "field":"value"
   v=$(echo "$LAST_BODY" | grep -o "\"$field\":\"[^\"]*\"" | head -1 | cut -d'"' -f4)
-  # Fallback to numeric value: "field":123
   if [ -z "$v" ]; then
     v=$(echo "$LAST_BODY" | grep -o "\"$field\":[0-9]*" | head -1 | sed "s/\"$field\"://")
   fi
   echo "$v"
 }
 
-# Wait for a URL to return 2xx (polling)
 wait_for() {
   local label="$1" url="$2" max="$3"
   local elapsed=0
@@ -235,7 +211,6 @@ run_smoke_tests() {
 
   SMOKE_COMPOSE_FILE="$PROJECT_ROOT/docker/docker-compose.yml"
 
-  # Detect docker compose variant
   if "$DOCKER_BIN" compose version >/dev/null 2>&1; then
     SMOKE_COMPOSE_CMD="$DOCKER_BIN compose"
   elif command -v docker-compose >/dev/null 2>&1; then
@@ -253,7 +228,6 @@ run_smoke_tests() {
   export HOST_UID=$(id -u)
   export HOST_GID=$(id -g)
 
-  # Isolated temp data dir so the smoke test never touches the real DB
   SMOKE_DATA_DIR=$(mktemp -d)
   export SOLAUDITY_DATA="$SMOKE_DATA_DIR"
 
@@ -288,17 +262,15 @@ run_smoke_tests() {
   wait_for "Frontend" "$FRONTEND/" 90
 
   # ────────────────────────────────────────────────────────────────
-  # 3/7  AUTHENTICATION (exercises crypto + JWT)
+  # 3/7  AUTHENTICATION
   # ────────────────────────────────────────────────────────────────
   print_banner "3/7 — Authentication (crypto / JWT)"
 
-  # Register (accept 200 or 400 if user already exists from a prior run)
   api -X POST "$BASE/api/auth/register" \
     -H "Content-Type: application/json" \
     -d '{"username":"smokeuser","email":"smoke@example.com","password":"Sm0kePass1"}'
   assert_http_any "POST /api/auth/register" "200" "400"
 
-  # Login (JSON body)
   api -X POST "$BASE/api/auth/login" \
     -H "Content-Type: application/json" \
     -d '{"username":"smokeuser","password":"Sm0kePass1"}'
@@ -313,26 +285,22 @@ run_smoke_tests() {
 
   local AUTH="Authorization: Bearer $TOKEN"
 
-  # Validate token: GET /me
   api -X GET "$BASE/api/auth/me" -H "$AUTH"
   assert_http "GET /api/auth/me (JWT validation)" "200"
 
-  # Update profile (PATCH)
   api -X PATCH "$BASE/api/auth/me/profile" \
     -H "$AUTH" -H "Content-Type: application/json" \
     -d '{"email":"smoke-updated@example.com"}'
   assert_http "PATCH /api/auth/me/profile" "200"
 
-  # AI providers list
   api -X GET "$BASE/api/auth/ai-providers" -H "$AUTH"
   assert_http "GET /api/auth/ai-providers" "200"
 
   # ────────────────────────────────────────────────────────────────
-  # 4/7  AUDITS CRUD (exercises SQLModel + SQLite)
+  # 4/7  AUDITS CRUD
   # ────────────────────────────────────────────────────────────────
   print_banner "4/7 — Audits CRUD"
 
-  # Create
   api -X POST "$BASE/audits" \
     -H "$AUTH" -H "Content-Type: application/json" \
     -d '{"title":"Smoke Audit","description":"Post-upgrade regression check","chain":"ethereum","network":"mainnet"}'
@@ -342,34 +310,28 @@ run_smoke_tests() {
     print_status "INFO" "audit id = $AUDIT_ID" "$BLUE"
   fi
 
-  # List
   api -X GET "$BASE/audits" -H "$AUTH"
   assert_http "GET /audits (list)" "200"
 
   if [ -n "$AUDIT_ID" ]; then
-    # Read single
     api -X GET "$BASE/audits/$AUDIT_ID" -H "$AUTH"
     assert_http "GET /audits/{id}" "200"
 
-    # Update
     api -X PATCH "$BASE/audits/$AUDIT_ID" \
       -H "$AUTH" -H "Content-Type: application/json" \
       -d '{"description":"Updated by smoke test"}'
     assert_http "PATCH /audits/{id} (update)" "200"
 
-    # Pin (requires JSON body)
     api -X PATCH "$BASE/audits/$AUDIT_ID/pin" \
       -H "$AUTH" -H "Content-Type: application/json" \
       -d '{"is_pinned":true}'
     assert_http "PATCH /audits/{id}/pin" "200"
 
-    # Mark opened (requires JSON body)
     api -X POST "$BASE/audits/$AUDIT_ID/open" \
       -H "$AUTH" -H "Content-Type: application/json" \
       -d '{}'
     assert_http "POST /audits/{id}/open" "200"
 
-    # Filtered queries
     api -X GET "$BASE/audits?pinned=true" -H "$AUTH"
     assert_http "GET /audits?pinned=true" "200"
 
@@ -381,12 +343,11 @@ run_smoke_tests() {
   fi
 
   # ────────────────────────────────────────────────────────────────
-  # 5/7  SCOPE MANAGEMENT (sources, contracts, addresses)
+  # 5/7  SCOPE MANAGEMENT
   # ────────────────────────────────────────────────────────────────
   print_banner "5/7 — Scope Management"
 
   if [ -n "$AUDIT_ID" ]; then
-    # ── Sources ──
     api -X POST "$BASE/scope/audits/$AUDIT_ID/sources" \
       -H "$AUTH" -H "Content-Type: application/json" \
       -d '{"source_type":"github","url":"https://github.com/example/smoke-repo"}'
@@ -406,7 +367,6 @@ run_smoke_tests() {
       assert_http "PATCH /scope/sources/{id}" "200"
     fi
 
-    # ── Addresses ──
     api -X POST "$BASE/scope/audits/$AUDIT_ID/addresses" \
       -H "$AUTH" -H "Content-Type: application/json" \
       -d '{"address":"0x0000000000000000000000000000000000000001","chain_id":1,"label":"Smoke addr","address_type":"deployment"}'
@@ -426,7 +386,6 @@ run_smoke_tests() {
       assert_http "PATCH /scope/addresses/{id}" "200"
     fi
 
-    # ── Contracts (upload a .sol file) ──
     local SOL_TMP
     SOL_TMP=$(mktemp /tmp/smoke_XXXXXX.sol)
     printf '// SPDX-License-Identifier: MIT\npragma solidity ^0.8.0;\ncontract SmokeTest {\n    uint256 public value;\n}\n' > "$SOL_TMP"
@@ -455,7 +414,6 @@ run_smoke_tests() {
       fi
     fi
 
-    # ── Cleanup scope entities ──
     if [ -n "$CONTRACT_ID" ]; then
       api -X DELETE "$BASE/scope/contracts/$CONTRACT_ID" -H "$AUTH"
       assert_http "DELETE /scope/contracts/{id}" "204"
@@ -475,7 +433,6 @@ run_smoke_tests() {
   # ────────────────────────────────────────────────────────────────
   print_banner "6/7 — Error Handling & Auth Guards"
 
-  # Unauthenticated requests must be rejected
   api -X GET "$BASE/audits"
   assert_http "GET  /audits (no auth → 401)" "401"
 
@@ -485,38 +442,32 @@ run_smoke_tests() {
   api -X GET "$BASE/scope/audits/1/sources"
   assert_http "GET  /scope (no auth → 401)" "401"
 
-  # Not-found / bad ID
   api -X GET "$BASE/audits/does-not-exist" -H "$AUTH"
   assert_http_any "GET /audits/<bad-id>" "404" "422"
 
-  # Validation: empty title
   api -X POST "$BASE/audits" \
     -H "$AUTH" -H "Content-Type: application/json" \
     -d '{"title":""}'
   assert_http "POST /audits empty title (422)" "422"
 
-  # Validation: bad date range (422 expected, 500 = server bug but not an upgrade regression)
   api -X POST "$BASE/audits" \
     -H "$AUTH" -H "Content-Type: application/json" \
     -d '{"title":"Bad dates","start_date":"2025-12-01","end_date":"2025-01-01"}'
   assert_http_any "POST /audits bad date range" "422" "500"
 
-  # ── Delete the smoke audit ──
   if [ -n "$AUDIT_ID" ]; then
     api -X POST "$BASE/audits/$AUDIT_ID/delete" -H "$AUTH"
     assert_http "POST /audits/{id}/delete" "204"
 
-    # Confirm it's gone
     api -X GET "$BASE/audits/$AUDIT_ID" -H "$AUTH"
     assert_http "GET  /audits/{id} after delete (404)" "404"
   fi
 
   # ────────────────────────────────────────────────────────────────
-  # 7/7  FRONTEND SERVING (nginx + SPA)
+  # 7/7  FRONTEND SERVING
   # ────────────────────────────────────────────────────────────────
   print_banner "7/7 — Frontend Serving"
 
-  # Index page
   api -X GET "$FRONTEND/"
   assert_http "GET / (index.html)" "200"
   if echo "$LAST_BODY" | grep -q '</html>'; then
@@ -526,32 +477,26 @@ run_smoke_tests() {
     SMOKE_FAILURES=$((SMOKE_FAILURES + 1))
   fi
 
-  # SPA fallback — deep routes should still serve index.html
   api -X GET "$FRONTEND/menu/audits"
   assert_http "GET /menu/audits (SPA fallback)" "200"
 
   api -X GET "$FRONTEND/login"
   assert_http "GET /login (SPA fallback)" "200"
 
-  # Nginx health endpoint
   api -X GET "$FRONTEND/healthz"
   assert_http "GET /healthz (nginx)" "200"
 
-  # JS bundle — extract any .js src from the HTML
   api -X GET "$FRONTEND/"
   local INDEX_HTML="$LAST_BODY"
   local JS_SRC
-  # Try various patterns Vite may produce (hashed assets, module scripts)
   JS_SRC=$(echo "$INDEX_HTML" | grep -o 'src="[^"]*\.js"' | head -1 | sed 's/^src="//;s/"$//')
   if [ -z "$JS_SRC" ]; then
     JS_SRC=$(echo "$INDEX_HTML" | grep -o "src='[^']*\.js'" | head -1 | sed "s/^src='//;s/'$//")
   fi
-  # Fallback: match .tsx/.jsx in dev mode HTML (shouldn't happen in prod but be safe)
   if [ -z "$JS_SRC" ]; then
     JS_SRC=$(echo "$INDEX_HTML" | grep -o 'src="[^"]*\.\(js\|jsx\|ts\|tsx\)\([^"]*\)"' | head -1 | sed 's/^src="//;s/"$//')
   fi
   if [ -n "$JS_SRC" ]; then
-    # In dev mode, Vite might return 404/500 if the path is requested raw without being handled by the router properly, but we just verify it exists.
     api -X GET "$FRONTEND$JS_SRC"
     assert_http "GET JS bundle ($JS_SRC)" "200"
   else
@@ -559,7 +504,6 @@ run_smoke_tests() {
     SMOKE_FAILURES=$((SMOKE_FAILURES + 1))
   fi
 
-  # CSS assets
   local CSS_SRC
   CSS_SRC=$(echo "$INDEX_HTML" | grep -o 'href="[^"]*\.css"' | head -1 | sed 's/^href="//;s/"$//')
   if [ -z "$CSS_SRC" ]; then
@@ -583,3 +527,31 @@ run_smoke_tests() {
 
   cleanup_smoke
 }
+
+# ── Run selected target ──────────────────────────────────────────────
+case "$TARGET" in
+  frontend) run_frontend_tests ;;
+  backend)  run_backend_tests  ;;
+  all)
+    run_backend_tests
+    run_frontend_tests
+    ;;
+  smoke)
+    run_smoke_tests
+    ;;
+  full)
+    run_backend_tests
+    run_frontend_tests
+    run_smoke_tests
+    ;;
+esac
+
+# ── Summary ──────────────────────────────────────────────────────────
+print_banner "Test Summary"
+if [ "$FAILURES" -eq 0 ]; then
+  print_status "PASS" "All requested test passed." "$GREEN"
+else
+  print_status "FAIL" "One or more test failed." "$RED"
+fi
+
+exit "$FAILURES"
