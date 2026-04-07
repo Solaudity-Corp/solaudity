@@ -80,13 +80,12 @@ const SOLIDITY_LANG: Monaco.languages.IMonarchLanguage = {
     whitespace: [
       [/[ \t\r\n]+/, 'white'],
       [/\/\*/, 'comment', '@comment'],
-      [/\/\/.*$/, 'comment'],
+      [/\/\/[^\n]*/, 'comment'],
     ],
     comment: [
-      [/[^/*]+/, 'comment'],
-      [/\/\*/, 'comment', '@push'],
+      [/[^*]+/, 'comment'],
       [/\*\//, 'comment', '@pop'],
-      [/[/*]/, 'comment'],
+      [/\*/, 'comment'],
     ],
     string: [
       [/[^\\"]+/, 'string'],
@@ -299,8 +298,9 @@ export function CodeView({ auditId, jumpTo, onJumpHandled }: CodeViewProps) {
     if (!monaco) return
     if (!monaco.languages.getLanguages().find((l) => l.id === 'solidity')) {
       monaco.languages.register({ id: 'solidity', extensions: ['.sol'], mimetypes: ['text/x-solidity'] })
-      monaco.languages.setMonarchTokensProvider('solidity', SOLIDITY_LANG)
     }
+    // Always re-apply the tokenizer so hot-reloads and build updates take effect
+    monaco.languages.setMonarchTokensProvider('solidity', SOLIDITY_LANG)
     monaco.editor.defineTheme('solaudity-dark', {
       base: 'vs-dark',
       inherit: true,
