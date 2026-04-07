@@ -3,7 +3,7 @@ FROM python:3.13-slim-trixie
 
 WORKDIR /app
 
-# Install Node.js + surya for Solidity analysis
+# Install Node.js for Solidity analysis tooling
 RUN apt-get update \
     && apt-get full-upgrade -y \
     && apt-get install -y --no-install-recommends curl ca-certificates \
@@ -12,12 +12,14 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends nodejs \
     && apt-get autoremove -y \
     && apt-get clean \
-    && rm -rf /var/lib/apt/lists/* \
-    && npm install -g surya \
-    && npm install --prefix /usr/lib/node_modules/surya @solidity-parser/parser@latest --cache /tmp/npm-cache-parser \
-    && (npm audit fix --prefix /usr/lib/node_modules/surya --omit=dev || true) \
-    && (npm update --prefix /usr/lib/node_modules/surya || true) \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install surya CLI with patched transitive dependencies (overrides in package.json)
+COPY surya/ /opt/surya/
+RUN cd /opt/surya \
+    && npm ci --omit=dev \
     && npm cache clean --force
+ENV PATH="/opt/surya/node_modules/.bin:${PATH}"
 
 # Pre-install all major OpenZeppelin versions so surya can resolve any import.
 # Each version is installed in a temp dir, then merged with cp -n (no-clobber)
