@@ -571,6 +571,40 @@ run_smoke_tests() {
   fi
 
   # ────────────────────────────────────────────────────────────────
+  # DOCKER SCOUT — UPGRADE RECOMMENDATIONS (informational only)
+  # ────────────────────────────────────────────────────────────────
+  if "$DOCKER_BIN" scout version >/dev/null 2>&1; then
+    print_banner "Docker Scout — Upgrade Recommendations"
+
+    local IMAGES
+    IMAGES=$($SMOKE_COMPOSE_CMD -f "$SMOKE_COMPOSE_FILE" -p "$SMOKE_PROJECT" \
+      --profile prod images 2>/dev/null | awk 'NR>1 && $2 != "" {print $2":"$3}')
+
+    if [ -n "$IMAGES" ]; then
+      printf '%s\n' "$IMAGES" | while IFS= read -r IMAGE; do
+        [ -z "$IMAGE" ] && continue
+        local OUTPUT
+        OUTPUT=$("$DOCKER_BIN" scout recommendations "$IMAGE" 2>/dev/null) || continue
+
+        local RECS
+        RECS=$(printf '%s\n' "$OUTPUT" \
+          | grep -B1 -iE "(minor|major) runtime version update" \
+          | grep -viE "runtime version update|^--$" \
+          | sed 's/│.*//;s/^[[:space:]]*//;s/[[:space:]]*$//' \
+          | grep -v '^$')
+
+        if [ -n "$RECS" ]; then
+          printf '%s\n' "$RECS" | while IFS= read -r TAG; do
+            print_status "INFO" "$IMAGE → $TAG" "$YELLOW"
+          done
+        else
+          print_status "INFO" "$IMAGE — no minor/major upgrade" "$BLUE"
+        fi
+      done
+    fi
+  fi
+
+  # ────────────────────────────────────────────────────────────────
   # SUMMARY
   # ────────────────────────────────────────────────────────────────
   print_banner "Smoke Test Results"
@@ -583,3 +617,31 @@ run_smoke_tests() {
 
   cleanup_smoke
 }
+
+# ── Run selected target ──────────────────────────────────────────────
+case "$TARGET" in
+  frontend) run_frontend_tests ;;
+  backend)  run_backend_tests  ;;
+  all)
+    run_backend_tests
+    run_frontend_tests
+    ;;
+  smoke)
+    run_smoke_tests
+    ;;
+  full)
+    run_backend_tests
+    run_frontend_tests
+    run_smoke_tests
+    ;;
+esac
+
+# ── Summary ──────────────────────────────────────────────────────────
+print_banner "Test Summary"
+if [ "$FAILURES" -eq 0 ]; then
+  print_status "PASS" "All requested test suites passed." "$GREEN"
+else
+  print_status "FAIL" "One or more test suites failed." "$RED"
+fi
+
+exit "$FAILURES"
