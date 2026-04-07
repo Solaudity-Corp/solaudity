@@ -83,7 +83,7 @@ const SOLIDITY_LANG: Monaco.languages.IMonarchLanguage = {
       [/\/\/[^\n]*/, 'comment'],
     ],
     comment: [
-      [/[^\*]+/, 'comment'],
+      [/[^*]+/, 'comment'],
       [/\*\//, 'comment', '@pop'],
       [/\*/, 'comment'],
     ],
