@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM python:3.13-slim-bookworm
+FROM python:3.13-slim-trixie
 
 WORKDIR /app
 
@@ -10,23 +10,6 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     ALGORITHM=HS256 \
     ACCESS_TOKEN_EXPIRE_MINUTES=30 \
     PYTHONPATH=/app
-
-# Base packages + glibc upgrade on arm64
-# bookworm ships glibc 2.36; the arm64 heimdall binary requires GLIBC_2.39 (trixie).
-RUN apt-get update \
-    && apt-get full-upgrade -y \
-    && apt-get install -y --no-install-recommends curl ca-certificates \
-    && if [ "$(uname -m)" = "aarch64" ]; then \
-         echo "deb http://deb.debian.org/debian trixie main" > /etc/apt/sources.list.d/trixie.list \
-         && printf 'Package: *\nPin: release a=trixie\nPin-Priority: 100\nPackage: libc6\nPin: release a=trixie\nPin-Priority: 600\n' \
-            > /etc/apt/preferences.d/99trixie-libc \
-         && apt-get update \
-         && apt-get install -y -t trixie libc6 \
-         && rm /etc/apt/sources.list.d/trixie.list /etc/apt/preferences.d/99trixie-libc; \
-       fi \
-    && apt-get autoremove -y \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
 
 # Installing heimdall — amd64 from upstream, arm64 from fork (aircag/heimdall-rs)
 RUN ARCH=$(uname -m) \
