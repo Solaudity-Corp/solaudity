@@ -187,16 +187,7 @@ jobs:
             echo "| **Total** | **$FRONTEND_TOTAL** |" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
 
-            if [ "$FRONTEND_TOTAL" -gt 0 ] 2>/dev/null; then
-              echo "<details>" >> $GITHUB_STEP_SUMMARY
-              echo "<summary>View vulnerability details</summary>" >> $GITHUB_STEP_SUMMARY
-              echo "" >> $GITHUB_STEP_SUMMARY
-              echo "\`\`\`json" >> $GITHUB_STEP_SUMMARY
-              jq '[.Results[]?.Vulnerabilities[]? | {VulnerabilityID, PkgName, InstalledVersion, Severity, Title}]' trivy-frontend.json >> $GITHUB_STEP_SUMMARY
-              echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-              echo "</details>" >> $GITHUB_STEP_SUMMARY
-              echo "" >> $GITHUB_STEP_SUMMARY
-            fi
+
           else
             echo "#### Frontend Image" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
@@ -219,16 +210,7 @@ jobs:
             echo "| **Total** | **$BACKEND_TOTAL** |" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
 
-            if [ "$BACKEND_TOTAL" -gt 0 ] 2>/dev/null; then
-              echo "<details>" >> $GITHUB_STEP_SUMMARY
-              echo "<summary>View vulnerability details</summary>" >> $GITHUB_STEP_SUMMARY
-              echo "" >> $GITHUB_STEP_SUMMARY
-              echo "\`\`\`json" >> $GITHUB_STEP_SUMMARY
-              jq '[.Results[]?.Vulnerabilities[]? | {VulnerabilityID, PkgName, InstalledVersion, Severity, Title}]' trivy-backend.json >> $GITHUB_STEP_SUMMARY
-              echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-              echo "</details>" >> $GITHUB_STEP_SUMMARY
-              echo "" >> $GITHUB_STEP_SUMMARY
-            fi
+
           else
             echo "#### Backend Image" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
@@ -263,24 +245,25 @@ jobs:
             echo "TRIVY_VULN_BLOCKED=true" >> "$GITHUB_ENV"
           fi
 
-          echo "### Remediation" >> $GITHUB_STEP_SUMMARY
+          echo "### 🛠️ Remediation Guide" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**1. How to check vulnerabilities locally:**" >> $GITHUB_STEP_SUMMARY
+          echo "First, rebuild your images locally and run Trivy to inspect the exact vulnerabilities:" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
-          echo "# Frontend (nginx-based)" >> $GITHUB_STEP_SUMMARY
-          echo "# Update base image in docker/frontend.Dockerfile:" >> $GITHUB_STEP_SUMMARY
-          echo "#   FROM node:24-alpine AS build" >> $GITHUB_STEP_SUMMARY
-          echo "#   FROM nginx:stable-alpine" >> $GITHUB_STEP_SUMMARY
-          echo "docker pull node:24-alpine && docker pull nginx:stable-alpine" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "# Backend (python-based)" >> $GITHUB_STEP_SUMMARY
-          echo "# Update base image in docker/backend.Dockerfile:" >> $GITHUB_STEP_SUMMARY
-          echo "#   FROM python:3.11-slim" >> $GITHUB_STEP_SUMMARY
-          echo "docker pull python:3.11-slim" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "# For OS-level packages inside containers, add to Dockerfile:" >> $GITHUB_STEP_SUMMARY
-          echo "#   RUN apk upgrade --no-cache   (alpine)" >> $GITHUB_STEP_SUMMARY
-          echo "#   RUN apt-get update && apt-get upgrade -y   (debian)" >> $GITHUB_STEP_SUMMARY
+          echo "docker compose -f docker/docker-compose.yml build" >> $GITHUB_STEP_SUMMARY
+          echo "trivy image docker-frontend:latest" >> $GITHUB_STEP_SUMMARY
+          echo "trivy image docker-backend:latest" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**2. How to fix vulnerabilities:**" >> $GITHUB_STEP_SUMMARY
+          echo "- **Base Image:** If the vulnerability is in the base OS, update the \`FROM\` tag in your Dockerfile to a newer version or run \`docker pull\` to get the latest patches." >> $GITHUB_STEP_SUMMARY
+          echo "- **OS Packages:** Add package upgrades in your Dockerfile:" >> $GITHUB_STEP_SUMMARY
+          echo "  - Alpine: \`RUN apk upgrade --no-cache\`" >> $GITHUB_STEP_SUMMARY
+          echo "  - Debian/Ubuntu: \`RUN apt-get update && apt-get upgrade -y\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Dependencies:** If the vulnerability is in Python/Node packages, update your \`requirements.txt\` or \`package.json\`." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**3. Verify the fix:**" >> $GITHUB_STEP_SUMMARY
+          echo "After modifying your Dockerfiles or dependencies, rebuild and scan again locally before pushing." >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
       # SARIF upload requires GitHub Advanced Security (paid, not available on free plan)
