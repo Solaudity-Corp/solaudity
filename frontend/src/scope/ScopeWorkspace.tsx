@@ -4,7 +4,7 @@ import { Box, Flex, Grid } from 'styled-system/jsx'
 import { NavBar } from '../components/NavBar'
 import { getAudit } from '../audits/api'
 import type { AuditRecord } from '../audits/types'
-import { ChevronDown, ChevronRight, Copy, File, Folder, FolderOpen, Github, Link2, Trash2, UploadCloud } from 'lucide-react'
+import { ChevronDown, ChevronRight, Copy, File, Folder, FolderOpen, Github, Link2, Trash2, UploadCloud, MinusSquare } from 'lucide-react'
 import * as scopeApi from './api'
 import type { ScopeAddress, ScopeContract } from './api'
 import { getMessageFromError } from './api'
@@ -265,6 +265,14 @@ function FileTree({ contracts, onClearAll, onToggleScope }: {
         }
     }
 
+    const handleDeselectAll = async () => {
+        const allIds = contracts.map(c => c.id)
+        setCheckedIds(new Set())
+        if (onToggleScope) {
+            await onToggleScope(allIds, false)
+        }
+    }
+
     const totalFiles = contracts.length
     const selectedFiles = checkedIds.size
 
@@ -286,6 +294,13 @@ function FileTree({ contracts, onClearAll, onToggleScope }: {
                     <Box className={css({ color: ui.textMuted, fontSize: 'xs', fontFamily: "'Roboto Mono', ui-monospace, monospace" })}>
                         {selectedFiles} / {totalFiles} in scope
                     </Box>
+                    <button
+                        onClick={handleDeselectAll}
+                        title="Deselect all"
+                        className={css({ color: ui.textMuted, cursor: 'pointer', bg: 'transparent', display: 'flex', alignItems: 'center', _hover: { color: 'rgba(255,130,130,0.9)' } })}
+                    >
+                        <MinusSquare size={14} />
+                    </button>
                     {onClearAll && (
                         confirmClear ? (
                             <Flex align="center" gap="2">
@@ -1400,7 +1415,7 @@ export default function ScopeWorkspace({ auditId, onNavigate, onOpenProfile }: S
 
                             {/* CONFIRMATION SECTION */}
                             {contracts.length > 0 && (
-                                <ConfirmationSection contracts={contracts} onSave={() => {}} />
+                                <ConfirmationSection contracts={contracts} onSave={() => { }} />
                             )}
                         </Flex>
 
