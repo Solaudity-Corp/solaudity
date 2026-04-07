@@ -517,7 +517,7 @@ function AbiPanel({ abi }: { abi: object[] }) {
 // ---------------------------------------------------------------------------
 interface DecompileTabProps {
   address: scopeApi.ScopeAddress | null
-  onDecompile: () => void
+  onDecompile: () => Promise<void>
   loading: boolean
   error: string | null
   result: heimdall.DecompileResult | null
@@ -729,9 +729,6 @@ function CfgTab({ address }: CfgTabProps) {
   const [error, setError]     = useState<string | null>(null)
   const [dot, setDot]         = useState<string | null>(null)
   const [nodeCount, setNodeCount] = useState<number | null>(null)
-
-  // Reset when address changes
-  useEffect(() => { setDot(null); setError(null); setNodeCount(null) }, [address?.id])
 
   const run = useCallback(async () => {
     if (!address) return
@@ -1002,26 +999,25 @@ export function ReverseView({ auditId }: { auditId: string }) {
   const [activeTab, setActiveTab]         = useState<TabId>('decompile')
 
   // Decompile state
-  const [decompiling, setDecompiling]     = useState(false)
+  const [decompiling, setDecompiling]         = useState(false)
   const [decompileResult, setDecompileResult] = useState<heimdall.DecompileResult | null>(null)
   const [decompileError, setDecompileError]   = useState<string | null>(null)
-
-  // Reset results when address changes
-  useEffect(() => {
-    setDecompileResult(null)
-    setDecompileError(null)
-  }, [selected?.id])
 
   // Load on-chain addresses
   useEffect(() => {
     let active = true
-    setLoadingList(true)
     scopeApi.listAddresses(auditId)
       .then(res => { if (active) setAddresses(res.items) })
       .catch(() => { if (active) setAddresses([]) })
       .finally(() => { if (active) setLoadingList(false) })
     return () => { active = false }
   }, [auditId])
+
+  const handleSelectAddress = useCallback((a: scopeApi.ScopeAddress) => {
+    setSelected(a)
+    setDecompileResult(null)
+    setDecompileError(null)
+  }, [])
 
   const handleDecompile = useCallback(async () => {
     if (!selected) return
@@ -1077,7 +1073,7 @@ export function ReverseView({ auditId }: { auditId: string }) {
             <AddressPanel
               addresses={addresses}
               selectedId={selected?.id ?? null}
-              onSelect={setSelected}
+              onSelect={handleSelectAddress}
             />
           </Box>
 
@@ -1122,10 +1118,10 @@ export function ReverseView({ auditId }: { auditId: string }) {
                 />
               )}
               {activeTab === 'cfg' && (
-                <CfgTab address={selected} />
+                <CfgTab key={selected?.id ?? 'none'} address={selected} />
               )}
               {activeTab === 'disassemble' && (
-                <DisassembleTab address={selected} />
+                <DisassembleTab key={selected?.id ?? 'none'} address={selected} />
               )}
             </Box>
           </Box>
