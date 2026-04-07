@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { css } from 'styled-system/css'
 import { Box, Flex } from 'styled-system/jsx'
-import { X, Download, Check, AlertCircle, ChevronRight, ChevronLeft, User, LayoutGrid } from 'lucide-react'
+import { X, Download, Check, AlertCircle, ChevronRight, ChevronLeft, LayoutGrid } from 'lucide-react'
 import { listLibraries, installLibrary } from '../libraries/librariesApi'
 import type { Library, LibraryStatus } from '../libraries/librariesApi'
 
@@ -178,12 +178,11 @@ function MenuItem({
 interface SideNavProps {
   open: boolean
   onClose: () => void
-  onOpenProfile?: () => void
 }
 
 type SubPanel = 'libraries' | 'useful'
 
-export function SideNav({ open, onClose, onOpenProfile }: SideNavProps) {
+export function SideNav({ open, onClose }: SideNavProps) {
   const [subPanel, setSubPanel] = useState<SubPanel | null>(null)
   const [libraries, setLibraries] = useState<Library[]>([])
   const [loading, setLoading] = useState(true)
@@ -283,12 +282,6 @@ export function SideNav({ open, onClose, onOpenProfile }: SideNavProps) {
 
             {/* Menu items */}
             <Box style={{ padding: '8px 8px', display: 'flex', flexDirection: 'column', gap: 2 }}>
-              <MenuItem
-                icon={<User size={15} strokeWidth={2} />}
-                label="Profile"
-                sublabel="View your account"
-                onClick={() => { onClose(); onOpenProfile?.() }}
-              />
               <MenuItem
                 icon={<LayoutGrid size={15} strokeWidth={2} />}
                 label="Useful"
