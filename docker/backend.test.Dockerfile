@@ -11,14 +11,25 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     ACCESS_TOKEN_EXPIRE_MINUTES=30 \
     PYTHONPATH=/app
 
-# Installing heimdall — amd64 from upstream, arm64 from fork (aircag/heimdall-rs)
+# Base packages + glibc upgrade on arm64
+# bookworm ships glibc 2.36; the arm64 heimdall binary requires GLIBC_2.39 (trixie).
 RUN apt-get update \
     && apt-get full-upgrade -y \
     && apt-get install -y --no-install-recommends curl ca-certificates \
+    && if [ "$(uname -m)" = "aarch64" ]; then \
+         echo "deb http://deb.debian.org/debian trixie main" > /etc/apt/sources.list.d/trixie.list \
+         && printf 'Package: *\nPin: release a=trixie\nPin-Priority: 100\nPackage: libc6\nPin: release a=trixie\nPin-Priority: 600\n' \
+            > /etc/apt/preferences.d/99trixie-libc \
+         && apt-get update \
+         && apt-get install -y -t trixie libc6 \
+         && rm /etc/apt/sources.list.d/trixie.list /etc/apt/preferences.d/99trixie-libc; \
+       fi \
     && apt-get autoremove -y \
     && apt-get clean \
-    && rm -rf /var/lib/apt/lists/* \
-    && ARCH=$(uname -m) \
+    && rm -rf /var/lib/apt/lists/*
+
+# Installing heimdall — amd64 from upstream, arm64 from fork (aircag/heimdall-rs)
+RUN ARCH=$(uname -m) \
     && if [ "$ARCH" = "aarch64" ]; then \
          curl -L "https://github.com/aircag/heimdall-rs/releases/download/v0.9.2-test/heimdall-linux-arm64" --output /usr/local/bin/heimdall; \
        else \
