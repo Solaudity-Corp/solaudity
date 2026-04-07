@@ -12,7 +12,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONPATH=/app
 
 # Installing heimdall — amd64 from upstream, arm64 from fork (aircag/heimdall-rs)
-RUN ARCH=$(uname -m) \
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl ca-certificates \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* \
+    && ARCH=$(uname -m) \
     && if [ "$ARCH" = "aarch64" ]; then \
          curl -L "https://github.com/aircag/heimdall-rs/releases/download/v0.9.2-test/heimdall-linux-arm64" --output /usr/local/bin/heimdall; \
        else \
