@@ -257,6 +257,11 @@ export function DashboardWorkspace({ onNavigate }: DashboardWorkspaceProps) {
                                         key={audit.id}
                                         justify="space-between"
                                         align="center"
+                                        onClick={(e) => {
+                                            e.preventDefault()
+                                            window.history.pushState(null, '', `/scope/${audit.id}`)
+                                            window.dispatchEvent(new PopStateEvent('popstate'))
+                                        }}
                                         className={css({
                                             p: '4',
                                             borderBottom: idx !== recentItems.length - 1 ? '1px solid rgba(255,255,255,0.03)' : 'none',
@@ -334,6 +339,11 @@ export function DashboardWorkspace({ onNavigate }: DashboardWorkspaceProps) {
                                         key={audit.id}
                                         justify="space-between"
                                         align="center"
+                                        onClick={(e) => {
+                                            e.preventDefault()
+                                            window.history.pushState(null, '', `/scope/${audit.id}`)
+                                            window.dispatchEvent(new PopStateEvent('popstate'))
+                                        }}
                                         className={css({
                                             p: '4',
                                             borderBottom: idx !== pinnedItems.length - 1 ? '1px solid rgba(255,255,255,0.03)' : 'none',
