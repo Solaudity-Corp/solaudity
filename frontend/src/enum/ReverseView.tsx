@@ -1015,8 +1015,13 @@ export function ReverseView({ auditId }: { auditId: string }) {
 
   const handleSelectAddress = useCallback((a: scopeApi.ScopeAddress) => {
     setSelected(a)
-    setDecompileResult(null)
     setDecompileError(null)
+    // If already decompiled, show the stored result immediately
+    if (a.decompiled_sol) {
+      setDecompileResult({ pseudo_code: a.decompiled_sol, abi: a.abi_json ?? null })
+    } else {
+      setDecompileResult(null)
+    }
   }, [])
 
   const handleDecompile = useCallback(async () => {
@@ -1028,6 +1033,11 @@ export function ReverseView({ auditId }: { auditId: string }) {
     try {
       const [result] = await Promise.all([heimdall.decompile(selected.id), minDelay])
       setDecompileResult(result)
+      // Persist decompiled content into the in-memory address list and selected
+      // so coming back to this address shows the result without re-running heimdall
+      const patch = { decompiled_sol: result.pseudo_code, abi_json: result.abi }
+      setAddresses(prev => prev.map(a => a.id === selected.id ? { ...a, ...patch } : a))
+      setSelected(prev => prev ? { ...prev, ...patch } : prev)
     } catch (e) {
       setDecompileError((e as Error).message)
     }

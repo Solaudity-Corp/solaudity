@@ -108,6 +108,9 @@ export interface ScopeAddress {
     is_verified: boolean
     is_contract: boolean
     bytecode?: string
+    decompiled_sol?: string | null
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    abi_json?: any[] | null
     created_at: string
 }
 

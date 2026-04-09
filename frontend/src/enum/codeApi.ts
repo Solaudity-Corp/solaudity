@@ -1,5 +1,7 @@
 import { API_BASE_URL, getAccessToken, logoutUser } from '../auth'
 
+const AI = `${API_BASE_URL}/ai`
+
 function authHeaders(extra: Record<string, string> = {}): Record<string, string> {
   const token = getAccessToken()
   return token ? { Authorization: `Bearer ${token}`, ...extra } : extra
@@ -57,4 +59,56 @@ export async function saveContractContent(contractId: string, content: string): 
     headers: { 'Content-Type': 'text/plain; charset=utf-8' },
     body: content,
   })
+}
+
+// ---------------------------------------------------------------------------
+// AI Doc
+// ---------------------------------------------------------------------------
+
+export interface AiDocRecord {
+  id: string
+  audit_id: string
+  contract_id: string | null
+  address_id: string | null
+  content: string
+  provider: string
+  model: string
+  created_at: string
+}
+
+export interface GenerateDocResponse {
+  provider: string
+  model: string
+  doc: AiDocRecord
+}
+
+export async function generateDoc(params: {
+  audit_id: string
+  code_text: string
+  contract_id?: string | null
+  address_id?: string | null
+  model?: string | null
+  timeout_seconds?: number
+}): Promise<GenerateDocResponse> {
+  const res = await apiFetch(`${AI}/generate-doc`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  })
+  return res.json()
+}
+
+export interface AiDocListResponse {
+  items: AiDocRecord[]
+  total: number
+}
+
+export async function listDocsForContract(contractId: string): Promise<AiDocListResponse> {
+  const res = await apiFetch(`${AI}/docs/contract/${contractId}`)
+  return res.json()
+}
+
+export async function listDocsForAddress(addressId: string): Promise<AiDocListResponse> {
+  const res = await apiFetch(`${AI}/docs/address/${addressId}`)
+  return res.json()
 }

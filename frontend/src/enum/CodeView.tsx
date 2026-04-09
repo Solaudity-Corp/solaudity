@@ -3,7 +3,7 @@ import Editor, { useMonaco } from '@monaco-editor/react'
 import type * as Monaco from 'monaco-editor'
 import { css } from 'styled-system/css'
 import { Box, Flex } from 'styled-system/jsx'
-import { ChevronRight, ChevronDown, Check, Loader, File, Folder, FolderOpen } from 'lucide-react'
+import { ChevronRight, ChevronDown, ChevronLeft, Check, Loader, File, Folder, FolderOpen } from 'lucide-react'
 import { listContracts, getContractContent, saveContractContent } from './codeApi'
 import type { ScopeContractRead } from './codeApi'
 
@@ -246,6 +246,7 @@ export function CodeView({ auditId, jumpTo, onJumpHandled }: CodeViewProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [loadingContent, setLoadingContent] = useState(false)
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle')
+  const [sidebarOpen, setSidebarOpen] = useState(true)
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastSavedContent = useRef('')
@@ -463,43 +464,60 @@ export function CodeView({ auditId, jumpTo, onJumpHandled }: CodeViewProps) {
       <Flex
         direction="column"
         style={{
-          width: 220,
+          width: sidebarOpen ? 220 : 32,
           flexShrink: 0,
           borderRight: `1px solid ${c.border}`,
           background: c.sidebar,
+          transition: 'width 0.2s ease',
+          overflow: 'hidden',
         }}
       >
-        <Box
+        <Flex
+          align="center"
+          justify={sidebarOpen ? 'space-between' : 'center'}
           style={{
-            padding: '10px 8px 6px',
-            fontSize: 10,
-            fontFamily: c.mono,
-            color: c.muted,
-            textTransform: 'uppercase',
-            letterSpacing: '0.08em',
+            padding: sidebarOpen ? '10px 8px 6px' : '10px 0 6px',
             borderBottom: `1px solid ${c.border}`,
             flexShrink: 0,
           }}
         >
-          Files
-        </Box>
-        <Box style={{ flex: 1, overflowY: 'auto', padding: '4px 0' }}>
-          {loadingList ? (
-            <Box style={{ padding: '12px', color: c.muted, fontSize: 12 }}>Loading…</Box>
-          ) : tree.length === 0 ? (
-            <Box style={{ padding: '12px', color: c.muted, fontSize: 12 }}>No contracts found</Box>
-          ) : (
-            tree.map((node) => (
-              <TreeItem
-                key={node.path}
-                node={node}
-                depth={0}
-                selectedId={selectedId}
-                onSelect={handleSelect}
-              />
-            ))
+          {sidebarOpen && (
+            <span style={{ fontSize: 10, fontFamily: c.mono, color: c.muted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+              Files
+            </span>
           )}
-        </Box>
+          <button
+            onClick={() => setSidebarOpen((o) => !o)}
+            title={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              width: 20, height: 20, borderRadius: 4, border: 'none',
+              background: 'transparent', cursor: 'pointer', color: c.muted,
+              flexShrink: 0,
+            }}
+          >
+            {sidebarOpen ? <ChevronLeft size={13} /> : <ChevronRight size={13} />}
+          </button>
+        </Flex>
+        {sidebarOpen && (
+          <Box style={{ flex: 1, overflowY: 'auto', padding: '4px 0' }}>
+            {loadingList ? (
+              <Box style={{ padding: '12px', color: c.muted, fontSize: 12 }}>Loading…</Box>
+            ) : tree.length === 0 ? (
+              <Box style={{ padding: '12px', color: c.muted, fontSize: 12 }}>No contracts found</Box>
+            ) : (
+              tree.map((node) => (
+                <TreeItem
+                  key={node.path}
+                  node={node}
+                  depth={0}
+                  selectedId={selectedId}
+                  onSelect={handleSelect}
+                />
+              ))
+            )}
+          </Box>
+        )}
       </Flex>
 
       {/* Editor panel */}
