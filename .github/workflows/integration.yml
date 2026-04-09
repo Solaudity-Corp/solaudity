@@ -187,6 +187,37 @@ jobs:
             echo "| **Total** | **$FRONTEND_TOTAL** |" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
 
+            if [ "$FRONTEND_TOTAL" -gt 0 ] 2>/dev/null; then
+              echo "<details>" >> $GITHUB_STEP_SUMMARY
+              echo "<summary>Top vulnerability descriptions</summary>" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "| Severity | Description | Package |" >> $GITHUB_STEP_SUMMARY
+              echo "|----------|-------------|---------|" >> $GITHUB_STEP_SUMMARY
+              jq -r '
+                [.Results[]?.Vulnerabilities[]?]
+                | .[:20]
+                | .[]
+                | [
+                    (.Severity // "UNKNOWN"),
+                    ((.Title // "No description")
+                      | gsub("CVE-[0-9]{4}-[0-9]+"; "")
+                      | gsub("\\|"; "/")
+                      | gsub("[\\r\\n]+"; " ")
+                      | gsub("[[:space:]]+"; " ")
+                      | gsub("^[[:space:]]+|[[:space:]]+$"; "")
+                      | .[0:180]),
+                    (.PkgName // "n/a")
+                  ]
+                | @tsv
+              ' trivy-frontend.json | while IFS=$'\t' read -r severity description package; do
+                echo "| $severity | $description | $package |" >> $GITHUB_STEP_SUMMARY
+              done
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "_Showing first 20 findings._" >> $GITHUB_STEP_SUMMARY
+              echo "</details>" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+            fi
+
 
           else
             echo "#### Frontend Image" >> $GITHUB_STEP_SUMMARY
@@ -209,6 +240,37 @@ jobs:
             echo "| High | $BACKEND_HIGH |" >> $GITHUB_STEP_SUMMARY
             echo "| **Total** | **$BACKEND_TOTAL** |" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
+
+            if [ "$BACKEND_TOTAL" -gt 0 ] 2>/dev/null; then
+              echo "<details>" >> $GITHUB_STEP_SUMMARY
+              echo "<summary>Top vulnerability descriptions</summary>" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "| Severity | Description | Package |" >> $GITHUB_STEP_SUMMARY
+              echo "|----------|-------------|---------|" >> $GITHUB_STEP_SUMMARY
+              jq -r '
+                [.Results[]?.Vulnerabilities[]?]
+                | .[:20]
+                | .[]
+                | [
+                    (.Severity // "UNKNOWN"),
+                    ((.Title // "No description")
+                      | gsub("CVE-[0-9]{4}-[0-9]+"; "")
+                      | gsub("\\|"; "/")
+                      | gsub("[\\r\\n]+"; " ")
+                      | gsub("[[:space:]]+"; " ")
+                      | gsub("^[[:space:]]+|[[:space:]]+$"; "")
+                      | .[0:180]),
+                    (.PkgName // "n/a")
+                  ]
+                | @tsv
+              ' trivy-backend.json | while IFS=$'\t' read -r severity description package; do
+                echo "| $severity | $description | $package |" >> $GITHUB_STEP_SUMMARY
+              done
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "_Showing first 20 findings._" >> $GITHUB_STEP_SUMMARY
+              echo "</details>" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+            fi
 
 
           else
@@ -235,12 +297,12 @@ jobs:
           fi
 
           if [ "$TRIVY_CRITICAL" -gt 0 ] 2>/dev/null; then
-            echo "> **PR blocked:** $TRIVY_CRITICAL critical image vulnerabilities found (threshold: 0)" >> $GITHUB_STEP_SUMMARY
+            echo "> **PR blocked:** $TRIVY_CRITICAL fixable critical image vulnerabilities found" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "TRIVY_VULN_BLOCKED=true" >> "$GITHUB_ENV"
           fi
           if [ "$TRIVY_HIGH" -gt 5 ] 2>/dev/null; then
-            echo "> **PR blocked:** $TRIVY_HIGH high image vulnerabilities found (threshold: 5)" >> $GITHUB_STEP_SUMMARY
+            echo "> **PR blocked:** $TRIVY_HIGH fixable high image vulnerabilities found (threshold: 5)" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "TRIVY_VULN_BLOCKED=true" >> "$GITHUB_ENV"
           fi
@@ -311,7 +373,7 @@ jobs:
           fi
 
           if [ "$TRIVY_VULN_BLOCKED" == "true" ]; then
-            echo "Image vulnerability thresholds exceeded (critical >0 / high >5)"
+            echo "Fixable image vulnerabilities exceed threshold (critical >0 / high >5)"
             FAILED=1
           fi
 
@@ -325,6 +387,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           if [ -s "$GITHUB_STEP_SUMMARY" ]; then
+            gh pr comment ${{ github.event.pull_request.number }} --body-file "$GITHUB_STEP_SUMMARY" --edit-last || \
             gh pr comment ${{ github.event.pull_request.number }} --body-file "$GITHUB_STEP_SUMMARY"
           else
             echo "::warning::PR comment skipped — summary file is empty"
