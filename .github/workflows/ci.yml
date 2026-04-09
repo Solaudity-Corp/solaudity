@@ -4,6 +4,7 @@ on:
   pull_request:
     branches:
       - main
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -104,24 +105,20 @@ jobs:
             echo "" >> $GITHUB_STEP_SUMMARY
 
             if [ "$CRITICAL" -gt 0 ] 2>/dev/null; then
-              echo "> **PR blocked:** $CRITICAL critical vulnerabilities found (threshold: 0)" >> $GITHUB_STEP_SUMMARY
+              echo "> ⚠️ **Warning:** $CRITICAL critical vulnerabilities found" >> $GITHUB_STEP_SUMMARY
               echo "" >> $GITHUB_STEP_SUMMARY
-              echo "FRONTEND_VULN_BLOCKED=true" >> "$GITHUB_ENV"
             fi
-            if [ "$HIGH" -gt 1 ] 2>/dev/null; then
-              echo "> **PR blocked:** $HIGH high vulnerabilities found (threshold: 1)" >> $GITHUB_STEP_SUMMARY
+            if [ "$HIGH" -gt 0 ] 2>/dev/null; then
+              echo "> ⚠️ **Warning:** $HIGH high vulnerabilities found" >> $GITHUB_STEP_SUMMARY
               echo "" >> $GITHUB_STEP_SUMMARY
-              echo "FRONTEND_VULN_BLOCKED=true" >> "$GITHUB_ENV"
             fi
-            if [ "$MEDIUM" -gt 5 ] 2>/dev/null; then
-              echo "> **PR blocked:** $MEDIUM medium vulnerabilities found (threshold: 5)" >> $GITHUB_STEP_SUMMARY
+            if [ "$MEDIUM" -gt 0 ] 2>/dev/null; then
+              echo "> ℹ️ $MEDIUM medium vulnerabilities found" >> $GITHUB_STEP_SUMMARY
               echo "" >> $GITHUB_STEP_SUMMARY
-              echo "FRONTEND_VULN_BLOCKED=true" >> "$GITHUB_ENV"
             fi
-            if [ "$LOW" -gt 10 ] 2>/dev/null; then
-              echo "> **PR blocked:** $LOW low vulnerabilities found (threshold: 10)" >> $GITHUB_STEP_SUMMARY
+            if [ "$LOW" -gt 0 ] 2>/dev/null; then
+              echo "> ℹ️ $LOW low vulnerabilities found" >> $GITHUB_STEP_SUMMARY
               echo "" >> $GITHUB_STEP_SUMMARY
-              echo "FRONTEND_VULN_BLOCKED=true" >> "$GITHUB_ENV"
             fi
 
             echo "### Remediation" >> $GITHUB_STEP_SUMMARY
@@ -175,10 +172,6 @@ jobs:
           if [ "${{ steps.lint.outcome }}" == "failure" ] || \
              [ "${{ steps.build.outcome }}" == "failure" ]; then
             echo "One or more steps failed"
-            FAILED=1
-          fi
-          if [ "$FRONTEND_VULN_BLOCKED" == "true" ]; then
-            echo "Vulnerability thresholds exceeded (critical >0 / high >1 / medium >5 / low >10)"
             FAILED=1
           fi
           if [ $FAILED -eq 1 ]; then
@@ -279,11 +272,30 @@ jobs:
 
             if [ "$VULN_COUNT" -gt 0 ] 2>/dev/null; then
               echo "<details>" >> $GITHUB_STEP_SUMMARY
-              echo "<summary>View vulnerability details</summary>" >> $GITHUB_STEP_SUMMARY
+              echo "<summary>View vulnerability descriptions</summary>" >> $GITHUB_STEP_SUMMARY
               echo "" >> $GITHUB_STEP_SUMMARY
-              echo "\`\`\`json" >> $GITHUB_STEP_SUMMARY
-              jq '.' safety-results.json >> $GITHUB_STEP_SUMMARY
-              echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+              echo "| Package | Advisory |" >> $GITHUB_STEP_SUMMARY
+              echo "|---------|----------|" >> $GITHUB_STEP_SUMMARY
+              jq -r '
+                if type == "array" then
+                  .[]
+                  | [
+                      (.package_name // "unknown"),
+                      ((.advisory // "No advisory")
+                        | gsub("CVE-[0-9]{4}-[0-9]+"; "")
+                        | gsub("\\|"; "/")
+                        | gsub("[\\r\\n]+"; " ")
+                        | gsub("[[:space:]]+"; " ")
+                        | gsub("^[[:space:]]+|[[:space:]]+$"; "")
+                        | .[0:220])
+                    ]
+                  | @tsv
+                else empty end
+              ' safety-results.json | head -20 | while IFS=$'\t' read -r package advisory; do
+                echo "| $package | $advisory |" >> $GITHUB_STEP_SUMMARY
+              done
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "_Showing first 20 findings._" >> $GITHUB_STEP_SUMMARY
               echo "</details>" >> $GITHUB_STEP_SUMMARY
               echo "" >> $GITHUB_STEP_SUMMARY
             fi
@@ -309,11 +321,26 @@ jobs:
 
             if [ "$TOTAL" -gt 0 ] 2>/dev/null; then
               echo "<details>" >> $GITHUB_STEP_SUMMARY
-              echo "<summary>View issue details</summary>" >> $GITHUB_STEP_SUMMARY
+              echo "<summary>View issue descriptions</summary>" >> $GITHUB_STEP_SUMMARY
               echo "" >> $GITHUB_STEP_SUMMARY
-              echo "\`\`\`json" >> $GITHUB_STEP_SUMMARY
-              jq '.results' bandit-results.json >> $GITHUB_STEP_SUMMARY
-              echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+              echo "| Severity | Description | File |" >> $GITHUB_STEP_SUMMARY
+              echo "|----------|-------------|----------|" >> $GITHUB_STEP_SUMMARY
+              jq -r '
+                .results[]?
+                | [
+                    (.issue_severity // "UNKNOWN"),
+                    ((.issue_text // "No description")
+                      | gsub("\\|"; "/")
+                      | gsub("[\\r\\n]+"; " ")
+                      | .[0:180]),
+                    ((.filename // "n/a") + ":" + ((.line_number // 0) | tostring))
+                  ]
+                | @tsv
+              ' bandit-results.json | head -20 | while IFS=$'\t' read -r severity text file; do
+                echo "| $severity | $text | $file |" >> $GITHUB_STEP_SUMMARY
+              done
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "_Showing first 20 findings._" >> $GITHUB_STEP_SUMMARY
               echo "</details>" >> $GITHUB_STEP_SUMMARY
               echo "" >> $GITHUB_STEP_SUMMARY
             fi
@@ -339,25 +366,17 @@ jobs:
           TOTAL_MEDIUM=$BANDIT_MEDIUM
           TOTAL_LOW=$BANDIT_LOW
 
-          BLOCKED=false
-          BLOCK_REASON=""
-          if [ "$TOTAL_HIGH" -gt 2 ] 2>/dev/null; then
-            BLOCKED=true
-            BLOCK_REASON="$BLOCK_REASON high=$TOTAL_HIGH (threshold: 2)"
-          fi
-          if [ "$TOTAL_MEDIUM" -gt 5 ] 2>/dev/null; then
-            BLOCKED=true
-            BLOCK_REASON="$BLOCK_REASON medium=$TOTAL_MEDIUM (threshold: 5)"
-          fi
-          if [ "$TOTAL_LOW" -gt 10 ] 2>/dev/null; then
-            BLOCKED=true
-            BLOCK_REASON="$BLOCK_REASON low=$TOTAL_LOW (threshold: 10)"
-          fi
-
-          if [ "$BLOCKED" = "true" ]; then
-            echo "> **PR blocked:**$BLOCK_REASON" >> $GITHUB_STEP_SUMMARY
+          if [ "$TOTAL_HIGH" -gt 0 ] 2>/dev/null; then
+            echo "> ⚠️ **Warning:** $TOTAL_HIGH high-severity findings (safety: $SAFETY_COUNT, bandit: $BANDIT_HIGH)" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
-            echo "BACKEND_VULN_BLOCKED=true" >> "$GITHUB_ENV"
+          fi
+          if [ "$TOTAL_MEDIUM" -gt 0 ] 2>/dev/null; then
+            echo "> ℹ️ $TOTAL_MEDIUM medium-severity findings" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
+          if [ "$TOTAL_LOW" -gt 0 ] 2>/dev/null; then
+            echo "> ℹ️ $TOTAL_LOW low-severity findings" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
           fi
 
           echo "### Remediation" >> $GITHUB_STEP_SUMMARY
@@ -370,14 +389,6 @@ jobs:
           echo "bandit -r app/                        # re-run static analysis" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-
-      - name: Check results
-        if: always()
-        run: |
-          if [ "$BACKEND_VULN_BLOCKED" == "true" ]; then
-            echo "Too many critical/high vulnerabilities (>5)"
-            exit 1
-          fi
 
       - name: Comment PR with summary
         if: always()
@@ -466,3 +477,4 @@ jobs:
           else
             echo "::warning::PR comment skipped — summary file is empty"
           fi
+

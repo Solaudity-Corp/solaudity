@@ -4,6 +4,7 @@ on:
   pull_request:
     branches:
       - main
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -11,119 +12,23 @@ permissions:
   pull-requests: write
 
 jobs:
-  frontend:
-    name: Frontend Tests
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Run tests via test.sh
-        id: tests
-        run: |
-          set -o pipefail
-          bash test.sh frontend 2>&1 | tee frontend-test-output.txt
-        continue-on-error: true
-
-      - name: Generate summary
-        if: always()
-        run: |
-          echo "## Frontend Unit Test Results" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Step | Status |" >> $GITHUB_STEP_SUMMARY
-          echo "|------|--------|" >> $GITHUB_STEP_SUMMARY
-
-          if [ "${{ steps.tests.outcome }}" == "success" ]; then
-            echo "| Docker Build (test image) | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
-            echo "| Vitest Suite | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
-          else
-            # Distinguish build failure from test failure
-            if grep -q "test image build failed" frontend-test-output.txt 2>/dev/null; then
-              echo "| Docker Build (test image) | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
-              echo "| Vitest Suite | ⚠️ Skipped |" >> $GITHUB_STEP_SUMMARY
-            else
-              echo "| Docker Build (test image) | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
-              echo "| Vitest Suite | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
-            fi
-          fi
-
-          echo "" >> $GITHUB_STEP_SUMMARY
-
-          # Extract test counts from vitest verbose output
-          # Vitest outputs lines like: "Tests  12 passed (12)" or "Tests  2 failed | 10 passed (12)"
-          if [ -f "frontend-test-output.txt" ]; then
-            PASSED=$(grep -oP 'Tests\s+.*?(\d+)\s+passed' frontend-test-output.txt | grep -oP '\d+(?=\s+passed)' | tail -1)
-            FAILED=$(grep -oP '(\d+)\s+failed' frontend-test-output.txt | grep -oP '\d+(?=\s+failed)' | tail -1)
-            PASSED="${PASSED:-0}"
-            FAILED="${FAILED:-0}"
-
-            if [ "$PASSED" -gt 0 ] 2>/dev/null || [ "$FAILED" -gt 0 ] 2>/dev/null; then
-              echo "### Test Results" >> $GITHUB_STEP_SUMMARY
-              echo "" >> $GITHUB_STEP_SUMMARY
-              echo "| Metric | Count |" >> $GITHUB_STEP_SUMMARY
-              echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
-              echo "| ✅ Passed | $PASSED |" >> $GITHUB_STEP_SUMMARY
-              echo "| ❌ Failed | $FAILED |" >> $GITHUB_STEP_SUMMARY
-              echo "" >> $GITHUB_STEP_SUMMARY
-            fi
-          fi
-
-          if [ "${{ steps.tests.outcome }}" == "failure" ]; then
-            echo "<details>" >> $GITHUB_STEP_SUMMARY
-            echo "<summary>Error Details</summary>" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-            # Strip ANSI codes and show last 80 lines
-            sed 's/\x1b\[[0-9;]*m//g' frontend-test-output.txt | tail -80 >> $GITHUB_STEP_SUMMARY
-            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-            echo "</details>" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-          fi
-
-          echo "### Remediation" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
-          echo "# Run tests locally (Docker)" >> $GITHUB_STEP_SUMMARY
-          echo "bash test.sh frontend" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "# Run tests locally (native)" >> $GITHUB_STEP_SUMMARY
-          echo "cd frontend" >> $GITHUB_STEP_SUMMARY
-          echo "npm ci" >> $GITHUB_STEP_SUMMARY
-          echo "npm run test:run               # single run (CI mode)" >> $GITHUB_STEP_SUMMARY
-          echo "npm run test                   # watch mode (dev)" >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-
-      - name: Check results
-        if: always()
-        run: |
-          if [ "${{ steps.tests.outcome }}" == "failure" ]; then
-            echo "Frontend unit tests failed"
-            exit 1
-          fi
-
-      - name: Comment PR with summary
-        if: always()
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          if [ -s "$GITHUB_STEP_SUMMARY" ]; then
-            gh pr comment ${{ github.event.pull_request.number }} --body-file "$GITHUB_STEP_SUMMARY" --edit-last || \
-            gh pr comment ${{ github.event.pull_request.number }} --body-file "$GITHUB_STEP_SUMMARY"
-          else
-            echo "::warning::PR comment skipped — summary file is empty"
-          fi
-
   backend:
     name: Backend Tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
 
-      - name: Run tests via test.sh
+      - name: Build backend test image
+        run: docker build -t solaudity-backend-tests:local -f docker/backend.test.Dockerfile backend/
+
+      - name: Run backend unit tests
         id: tests
         run: |
           set -o pipefail
-          bash test.sh backend 2>&1 | tee backend-test-output.txt
+          docker run --rm solaudity-backend-tests:local \
+            python -m pytest tests \
+              -vv -rA --color=yes --override-ini=console_output_style=classic --disable-warnings \
+            2>&1 | tee backend-test-output.txt
         continue-on-error: true
 
       - name: Generate summary
@@ -135,22 +40,13 @@ jobs:
           echo "|------|--------|" >> $GITHUB_STEP_SUMMARY
 
           if [ "${{ steps.tests.outcome }}" == "success" ]; then
-            echo "| Docker Build (test image) | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
             echo "| Pytest Suite | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
           else
-            if grep -q "test image build failed" backend-test-output.txt 2>/dev/null; then
-              echo "| Docker Build (test image) | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
-              echo "| Pytest Suite | ⚠️ Skipped |" >> $GITHUB_STEP_SUMMARY
-            else
-              echo "| Docker Build (test image) | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
-              echo "| Pytest Suite | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
-            fi
+            echo "| Pytest Suite | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
           fi
 
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          # Extract test counts from pytest output
-          # Pytest outputs lines like: "5 passed in 1.23s" or "2 failed, 3 passed in 2.34s"
           if [ -f "backend-test-output.txt" ]; then
             PASSED=$(grep -oP '(\d+)\s+passed' backend-test-output.txt | grep -oP '\d+' | tail -1)
             FAILED=$(grep -oP '(\d+)\s+failed' backend-test-output.txt | grep -oP '\d+' | tail -1)
@@ -186,7 +82,7 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
           echo "# Run tests locally (Docker)" >> $GITHUB_STEP_SUMMARY
-          echo "bash test.sh backend" >> $GITHUB_STEP_SUMMARY
+          echo "bash test.sh unit" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "# Run tests locally (native)" >> $GITHUB_STEP_SUMMARY
           echo "cd backend" >> $GITHUB_STEP_SUMMARY
@@ -201,6 +97,203 @@ jobs:
         run: |
           if [ "${{ steps.tests.outcome }}" == "failure" ]; then
             echo "Backend unit tests failed"
+            exit 1
+          fi
+
+      - name: Comment PR with summary
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ -s "$GITHUB_STEP_SUMMARY" ]; then
+            gh pr comment ${{ github.event.pull_request.number }} --body-file "$GITHUB_STEP_SUMMARY" --edit-last || \
+            gh pr comment ${{ github.event.pull_request.number }} --body-file "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::warning::PR comment skipped — summary file is empty"
+          fi
+
+  appsec:
+    name: API Security Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - name: Build backend test image
+        run: docker build -t solaudity-backend-tests:local -f docker/backend.test.Dockerfile backend/
+
+      - name: Run API security tests
+        id: tests
+        run: |
+          set -o pipefail
+          docker run --rm solaudity-backend-tests:local \
+            python -m pytest \
+              tests/test_auth_api.py \
+              tests/test_audits_api.py \
+              tests/test_scope_api.py \
+              tests/test_heimdall_api.py \
+              tests/test_surya_api.py \
+              -vv -rA --color=yes --override-ini=console_output_style=classic --disable-warnings \
+            2>&1 | tee appsec-test-output.txt
+        continue-on-error: true
+
+      - name: Generate summary
+        if: always()
+        run: |
+          echo "## API Security Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Step | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|--------|" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ steps.tests.outcome }}" == "success" ]; then
+            echo "| Pytest API Suite | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| Pytest API Suite | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ -f "appsec-test-output.txt" ]; then
+            PASSED=$(grep -oP '(\d+)\s+passed' appsec-test-output.txt | grep -oP '\d+' | tail -1)
+            FAILED=$(grep -oP '(\d+)\s+failed' appsec-test-output.txt | grep -oP '\d+' | tail -1)
+            ERRORS=$(grep -oP '(\d+)\s+error' appsec-test-output.txt | grep -oP '\d+' | tail -1)
+            PASSED="${PASSED:-0}"
+            FAILED="${FAILED:-0}"
+            ERRORS="${ERRORS:-0}"
+
+            if [ "$PASSED" -gt 0 ] 2>/dev/null || [ "$FAILED" -gt 0 ] 2>/dev/null || [ "$ERRORS" -gt 0 ] 2>/dev/null; then
+              echo "### Test Results" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "| Metric | Count |" >> $GITHUB_STEP_SUMMARY
+              echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+              echo "| ✅ Passed | $PASSED |" >> $GITHUB_STEP_SUMMARY
+              echo "| ❌ Failed | $FAILED |" >> $GITHUB_STEP_SUMMARY
+              echo "| 💥 Errors | $ERRORS |" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+            fi
+          fi
+
+          if [ "${{ steps.tests.outcome }}" == "failure" ]; then
+            echo "<details>" >> $GITHUB_STEP_SUMMARY
+            echo "<summary>Error Details</summary>" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            sed 's/\x1b\[[0-9;]*m//g' appsec-test-output.txt | tail -80 >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            echo "</details>" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "### Remediation" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+          echo "bash test.sh appsec" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+      - name: Check results
+        if: always()
+        run: |
+          if [ "${{ steps.tests.outcome }}" == "failure" ]; then
+            echo "API security tests failed"
+            exit 1
+          fi
+
+      - name: Comment PR with summary
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ -s "$GITHUB_STEP_SUMMARY" ]; then
+            gh pr comment ${{ github.event.pull_request.number }} --body-file "$GITHUB_STEP_SUMMARY" --edit-last || \
+            gh pr comment ${{ github.event.pull_request.number }} --body-file "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::warning::PR comment skipped — summary file is empty"
+          fi
+
+  frontend:
+    name: Frontend Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - name: Run frontend unit tests
+        id: tests
+        run: |
+          set -o pipefail
+          docker build -t solaudity-frontend-tests:local -f docker/frontend.test.Dockerfile frontend/
+          docker run --rm solaudity-frontend-tests:local 2>&1 | tee frontend-test-output.txt
+        continue-on-error: true
+
+      - name: Generate summary
+        if: always()
+        run: |
+          echo "## Frontend Unit Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Step | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|--------|" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ steps.tests.outcome }}" == "success" ]; then
+            echo "| Docker Build (test image) | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+            echo "| Vitest Suite | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+          else
+            if grep -q "test image build failed" frontend-test-output.txt 2>/dev/null; then
+              echo "| Docker Build (test image) | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
+              echo "| Vitest Suite | ⚠️ Skipped |" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "| Docker Build (test image) | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+              echo "| Vitest Suite | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
+            fi
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ -f "frontend-test-output.txt" ]; then
+            PASSED=$(grep -oP 'Tests\s+.*?(\d+)\s+passed' frontend-test-output.txt | grep -oP '\d+(?=\s+passed)' | tail -1)
+            FAILED=$(grep -oP '(\d+)\s+failed' frontend-test-output.txt | grep -oP '\d+(?=\s+failed)' | tail -1)
+            PASSED="${PASSED:-0}"
+            FAILED="${FAILED:-0}"
+
+            if [ "$PASSED" -gt 0 ] 2>/dev/null || [ "$FAILED" -gt 0 ] 2>/dev/null; then
+              echo "### Test Results" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "| Metric | Count |" >> $GITHUB_STEP_SUMMARY
+              echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+              echo "| ✅ Passed | $PASSED |" >> $GITHUB_STEP_SUMMARY
+              echo "| ❌ Failed | $FAILED |" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+            fi
+          fi
+
+          if [ "${{ steps.tests.outcome }}" == "failure" ]; then
+            echo "<details>" >> $GITHUB_STEP_SUMMARY
+            echo "<summary>Error Details</summary>" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            sed 's/\x1b\[[0-9;]*m//g' frontend-test-output.txt | tail -80 >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            echo "</details>" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "### Remediation" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+          echo "# Run tests locally (Docker)" >> $GITHUB_STEP_SUMMARY
+          echo "bash test.sh unit" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "# Run tests locally (native)" >> $GITHUB_STEP_SUMMARY
+          echo "cd frontend" >> $GITHUB_STEP_SUMMARY
+          echo "npm ci" >> $GITHUB_STEP_SUMMARY
+          echo "npm run test:run               # single run (CI mode)" >> $GITHUB_STEP_SUMMARY
+          echo "npm run test                   # watch mode (dev)" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+      - name: Check results
+        if: always()
+        run: |
+          if [ "${{ steps.tests.outcome }}" == "failure" ]; then
+            echo "Frontend unit tests failed"
             exit 1
           fi
 

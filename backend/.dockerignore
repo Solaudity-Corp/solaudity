@@ -9,3 +9,4 @@ __pycache__
 venv
 ENV
 env
+surya/node_modules
