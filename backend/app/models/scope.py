@@ -181,12 +181,54 @@ class ScopeAddress(SQLModel, table=True):
     abi_json : list | None = Field(default=None, sa_column=sa.Column(sa.JSON(), nullable=True))
     # notes about the address
     notes: str | None = Field(sa_column=sa.Column(sa.Text()),default=None)
-    
+
     created_at: datetime = Field(
         default_factory=utcnow,
         sa_column=sa.Column(
             sa.DateTime(timezone=True),
             nullable=False,
             server_default=sa.text("CURRENT_TIMESTAMP"),
+        ),
+    )
+
+
+# The AiDoc table stores AI-generated markdown documentation for smart contracts.
+# Each record links to a contract (and optionally an address) and stores the
+# generated doc, the input snippet used, and which provider/model produced it.
+class AiDoc(SQLModel, table=True):
+    __tablename__ = "ai_docs"
+
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    audit_id: UUID = Field(foreign_key="audits.id", nullable=False, index=True)
+    contract_id: UUID | None = Field(
+        foreign_key="scope_contracts.id", default=None, nullable=True, index=True
+    )
+    address_id: UUID | None = Field(
+        foreign_key="scope_addresses.id", default=None, nullable=True, index=True
+    )
+
+    # The raw text/snippet that was sent to the AI (e.g. a selected function body)
+    input_text: str = Field(sa_column=sa.Column(sa.Text(), nullable=False))
+    # The AI-generated markdown document
+    content: str = Field(sa_column=sa.Column(sa.Text(), nullable=False))
+
+    provider: str = Field(sa_column=sa.Column(sa.String(40), nullable=False))
+    model: str = Field(sa_column=sa.Column(sa.String(120), nullable=False))
+
+    created_at: datetime = Field(
+        default_factory=utcnow,
+        sa_column=sa.Column(
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("CURRENT_TIMESTAMP"),
+        ),
+    )
+    updated_at: datetime = Field(
+        default_factory=utcnow,
+        sa_column=sa.Column(
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("CURRENT_TIMESTAMP"),
+            onupdate=utcnow,
         ),
     )

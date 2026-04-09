@@ -51,6 +51,91 @@ Expected JSON keys:
 """.strip()
 
 
+DOC_GENERATION_SYSTEM_PROMPT = """
+You are a senior smart contract security auditor and documentation expert specializing in Solidity.
+Your task is to generate precise, well-structured Markdown documentation for the provided Solidity code snippet.
+
+The output MUST follow this exact structure — every section header must appear, even if the answer is "None" or "N/A":
+
+# Summary
+[Write 2–4 sentences describing the purpose of this contract or function, its role in the protocol, and the high-level behavior. Be concise and direct — no filler.]
+
+# Description
+[Provide a detailed walkthrough of the logic. Cover the full control flow, branching conditions, state transitions, and edge cases. This is written for security auditors — be technical and precise. Explain *what* the code does and *why* each step matters.]
+
+# Parameters
+[List each input parameter in the format: `- name (type): description`. If there are no parameters, write "None."]
+
+# Return Values
+[List each return value in the format: `- name (type): description`. If there are no return values, write "None."]
+
+# State Changes
+[List every storage variable read or written, in the format: `- variableName: read | written — explanation`. Describe what changes under what conditions. If no state is touched, write "None."]
+
+# Access Control
+[Describe all access restrictions: modifiers, require/revert checks, role-based guards, owner checks, etc. Be explicit about who can call this and under what conditions. If there are no restrictions, write "Unrestricted."]
+
+# Events
+[List all events emitted in the format: `- EventName(args): when and why it is emitted`. If no events are emitted, write "None."]
+
+# Security Considerations
+[List specific, technical security concerns an auditor should investigate. Include: potential reentrancy vectors, integer overflow/underflow risks, improper access control, front-running opportunities, oracle manipulation, unchecked return values, dangerous delegate calls, signature replay risks, etc. Be as specific as possible based on the code provided. If nothing stands out, write "No immediate concerns identified — standard review recommended."]
+
+Rules:
+- Output Markdown only. No code blocks containing the original source.
+- Do not invent information — if something cannot be determined from the provided snippet, say so explicitly (e.g., "Cannot determine from snippet alone.").
+- All section headers must appear in the final output in the exact order shown above.
+- Write for a security-focused audience: concise, technical, and precise.
+- Do not add extra sections or change section names.
+""".strip()
+
+
+DECOMPILED_DOC_SYSTEM_PROMPT = """
+You are a senior EVM security researcher specializing in bytecode reverse engineering and black-box contract auditing.
+You are analyzing pseudo-Solidity that was automatically decompiled from raw EVM bytecode by a decompiler (heimdall).
+
+Critical context you must keep in mind:
+- This is NOT original source code. It is machine-reconstructed from bytecode.
+- Variable and function names (e.g. stor0, arg0, v1) are auto-generated placeholders — they do not reflect the original intent.
+- Storage slot names (stor0, stor1, ...) represent raw EVM storage positions.
+- Some logic may be imprecise, incomplete, or misrepresented due to decompiler limitations.
+- Focus exclusively on OBSERVABLE BEHAVIOR and PATTERNS, not on naming or style.
+
+Generate structured security-focused documentation in the following exact format — every section must appear:
+
+# Summary
+[2–4 sentences on what this contract appears to do based on bytecode behavior. Mention the number of identified function selectors. State clearly that this is decompiled output.]
+
+# Function Analysis
+[For each identified function: its 4-byte selector (if visible), apparent purpose inferred from behavior, parameter types, return values, and notable patterns. Use bullet points in this format:
+- `0xXXXXXXXX` — description of behavior, inputs, outputs.]
+
+# Storage Layout
+[List every storage slot referenced and what it likely holds based on read/write patterns. Use this format:
+- `stor0` — appears to store X (e.g. owner address, ERC-20 balance mapping, fee value).
+If purpose is unclear, say so explicitly.]
+
+# Access Control Patterns
+[Describe every access restriction found: hardcoded address comparisons, caller checks, owner-like guard patterns. For each: which function(s) it protects and how the check is implemented.]
+
+# Value Flows
+[Describe all ETH and token movements: payable functions, msg.value usage, balance reads/writes, transfer patterns, and any conditions that gate value movement.]
+
+# Security Observations
+[List specific, technical security risks visible in the decompiled output. Consider: reentrancy vectors, unchecked external calls, delegatecall/callcode usage, selfdestruct presence, integer arithmetic without overflow protection, hardcoded addresses, missing zero-address checks, signature/replay risks. Reference specific behaviors, not generic advice.]
+
+# Decompiler Limitations
+[Identify areas where the decompilation is visibly incomplete, ambiguous, or unreliable — e.g. missing function bodies, unresolved jumps, unclear storage types, potential false patterns introduced by the decompiler.]
+
+Rules:
+- Output Markdown only. Do not reproduce the full decompiled code.
+- All section headers must appear in the exact order shown above.
+- Write for a security researcher doing a black-box audit with no access to the original source.
+- Always qualify findings as based on decompiled output — they may contain inaccuracies.
+- Do not invent information. If something cannot be determined from the bytecode, say so explicitly.
+""".strip()
+
+
 class AIProviderError(RuntimeError):
     """Raised for provider-level or prompt-processing failures."""
 
@@ -403,3 +488,212 @@ def extract_audit_fields(
 
     payload = _parse_extraction_json(raw_content)
     return ExtractedAuditFields.from_raw(payload)
+
+
+def _call_provider_raw(
+    *,
+    provider: str,
+    api_key: str,
+    model: str,
+    system_prompt: str,
+    user_text: str,
+    timeout_seconds: int,
+    max_tokens: int = 4096,
+) -> str:
+    """Generic provider dispatch that returns raw text (not JSON-parsed).
+
+    Used for free-form generation tasks like documentation where the output
+    is Markdown, not JSON.
+    """
+    provider_name = provider.strip().lower()
+
+    if provider_name in OPENAI_COMPATIBLE_BASE_URL:
+        base_url = OPENAI_COMPATIBLE_BASE_URL[provider_name]
+        url = f"{base_url}/v1/chat/completions"
+        payload = {
+            "model": model,
+            "temperature": 0.2,
+            "max_tokens": max_tokens,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_text},
+            ],
+        }
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        }
+        parsed = _post_json(url, payload, headers, timeout_seconds, provider=provider_name)
+        choices = parsed.get("choices")
+        if not isinstance(choices, list) or not choices:
+            raise AIProviderError("Provider response did not include choices.")
+        content = choices[0].get("message", {}).get("content")
+        if not isinstance(content, str) or not content.strip():
+            raise AIProviderError("Provider response did not include message content.")
+        return content
+
+    elif provider_name == "claude":
+        url = "https://api.anthropic.com/v1/messages"
+        payload = {
+            "model": model,
+            "max_tokens": max_tokens,
+            "system": system_prompt,
+            "messages": [{"role": "user", "content": user_text}],
+        }
+        headers = {
+            "x-api-key": api_key,
+            "anthropic-version": "2023-06-01",
+            "Content-Type": "application/json",
+        }
+        parsed = _post_json(url, payload, headers, timeout_seconds, provider="claude")
+        content_blocks = parsed.get("content")
+        if not isinstance(content_blocks, list) or not content_blocks:
+            raise AIProviderError("Claude response did not include content blocks.")
+        text = content_blocks[0].get("text")
+        if not isinstance(text, str) or not text.strip():
+            raise AIProviderError("Claude response did not include text.")
+        return text
+
+    elif provider_name == "gemini":
+        encoded_key = parse.quote(api_key, safe="")
+        model_name = parse.quote(model, safe="")
+        url = (
+            "https://generativelanguage.googleapis.com/v1beta/models/"
+            f"{model_name}:generateContent?key={encoded_key}"
+        )
+        payload = {
+            "system_instruction": {"parts": [{"text": system_prompt}]},
+            "contents": [{"role": "user", "parts": [{"text": user_text}]}],
+            "generationConfig": {"temperature": 0.2, "maxOutputTokens": max_tokens},
+        }
+        headers = {"Content-Type": "application/json"}
+        parsed = _post_json(url, payload, headers, timeout_seconds, provider="gemini")
+        candidates = parsed.get("candidates")
+        if not isinstance(candidates, list) or not candidates:
+            raise AIProviderError("Gemini response did not include candidates.")
+        parts = candidates[0].get("content", {}).get("parts", [])
+        if not isinstance(parts, list) or not parts:
+            raise AIProviderError("Gemini response did not include content parts.")
+        text = parts[0].get("text")
+        if not isinstance(text, str) or not text.strip():
+            raise AIProviderError("Gemini response did not include text.")
+        return text
+
+    else:
+        raise AIProviderError(
+            "Unsupported provider. Allowed values: "
+            f"{', '.join(sorted(SUPPORTED_AI_PROVIDERS))}"
+        )
+
+
+def generate_doc(
+    *,
+    code_text: str,
+    provider: str,
+    api_key: str,
+    model: str | None = None,
+    timeout_seconds: int = 60,
+) -> str:
+    """Generate structured Markdown documentation for a Solidity code snippet.
+
+    Args:
+        code_text: The raw Solidity code or selected text to document.
+        provider: Provider key (openai, groq, xai, gemini, claude).
+        api_key: User API key for the selected provider.
+        model: Optional explicit model override. Uses provider default when omitted.
+        timeout_seconds: Provider HTTP timeout in seconds.
+
+    Returns:
+        str: AI-generated Markdown documentation string.
+
+    Raises:
+        AIProviderError: For unsupported providers, invalid input, HTTP/network failures,
+            or empty responses from the model.
+    """
+    provider_name = provider.strip().lower()
+    if provider_name not in SUPPORTED_AI_PROVIDERS:
+        raise AIProviderError(
+            "Unsupported provider. Allowed values: "
+            f"{', '.join(sorted(SUPPORTED_AI_PROVIDERS))}"
+        )
+    if not code_text.strip():
+        raise AIProviderError("code_text cannot be empty.")
+    if not api_key.strip():
+        raise AIProviderError("api_key cannot be empty.")
+
+    selected_model = (model or DEFAULT_MODELS[provider_name]).strip()
+    if not selected_model:
+        raise AIProviderError("model cannot be empty.")
+
+    user_message = (
+        "Generate documentation for the following Solidity code:\n\n"
+        f"```solidity\n{code_text}\n```"
+    )
+
+    return _call_provider_raw(
+        provider=provider_name,
+        api_key=api_key,
+        model=selected_model,
+        system_prompt=DOC_GENERATION_SYSTEM_PROMPT,
+        user_text=user_message,
+        timeout_seconds=timeout_seconds,
+        max_tokens=4096,
+    )
+
+
+def generate_doc_decompiled(
+    *,
+    code_text: str,
+    provider: str,
+    api_key: str,
+    model: str | None = None,
+    timeout_seconds: int = 60,
+) -> str:
+    """Generate structured Markdown analysis for heimdall-decompiled EVM bytecode.
+
+    Uses DECOMPILED_DOC_SYSTEM_PROMPT which is tuned for pseudo-Solidity output
+    with storage slots (stor0/stor1), 4-byte selectors, and machine-generated patterns.
+
+    Args:
+        code_text: Decompiled pseudo-Solidity text from heimdall.
+        provider: Provider key (openai, groq, xai, gemini, claude).
+        api_key: User API key for the selected provider.
+        model: Optional explicit model override. Uses provider default when omitted.
+        timeout_seconds: Provider HTTP timeout in seconds.
+
+    Returns:
+        str: AI-generated Markdown analysis string.
+
+    Raises:
+        AIProviderError: For unsupported providers, invalid input, HTTP/network failures,
+            or empty responses from the model.
+    """
+    provider_name = provider.strip().lower()
+    if provider_name not in SUPPORTED_AI_PROVIDERS:
+        raise AIProviderError(
+            "Unsupported provider. Allowed values: "
+            f"{', '.join(sorted(SUPPORTED_AI_PROVIDERS))}"
+        )
+    if not code_text.strip():
+        raise AIProviderError("code_text cannot be empty.")
+    if not api_key.strip():
+        raise AIProviderError("api_key cannot be empty.")
+
+    selected_model = (model or DEFAULT_MODELS[provider_name]).strip()
+    if not selected_model:
+        raise AIProviderError("model cannot be empty.")
+
+    user_message = (
+        "Analyze the following decompiled EVM bytecode (pseudo-Solidity output from heimdall):\n\n"
+        f"```solidity\n{code_text}\n```"
+    )
+
+    return _call_provider_raw(
+        provider=provider_name,
+        api_key=api_key,
+        model=selected_model,
+        system_prompt=DECOMPILED_DOC_SYSTEM_PROMPT,
+        user_text=user_message,
+        timeout_seconds=timeout_seconds,
+        max_tokens=4096,
+    )

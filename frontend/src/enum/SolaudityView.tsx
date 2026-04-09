@@ -20,7 +20,7 @@ import Dagre from '@dagrejs/dagre'
 import { Box, Flex } from 'styled-system/jsx'
 import { css } from 'styled-system/css'
 import {
-  ChevronRight, ChevronDown, File, Folder, FolderOpen,
+  ChevronRight, ChevronDown, ChevronLeft, File, Folder, FolderOpen,
   Loader, AlertTriangle, GitBranch, Play,
 } from 'lucide-react'
 import { listContracts, getContractContent } from './codeApi'
@@ -780,6 +780,7 @@ export function SolaudityView({ auditId }: SolaudityViewProps) {
   const [graphData, setGraphData]   = useState<GraphData | null>(null)
   const [errorMsg, setErrorMsg]     = useState('')
   const [parsing, setParsing]       = useState(false)
+  const [sidebarOpen, setSidebarOpen] = useState(true)
 
   useEffect(() => {
     let active = true
@@ -828,23 +829,43 @@ export function SolaudityView({ auditId }: SolaudityViewProps) {
       border: `1px solid ${c.border}`, borderRadius: 14, overflow: 'hidden', background: c.bg,
     }}>
       {/* Sidebar */}
-      <Flex direction="column" style={{ width: 220, flexShrink: 0, borderRight: `1px solid ${c.border}`, background: c.sidebar }}>
-        <Box style={{
-          padding: '10px 8px 6px', fontSize: 10, fontFamily: c.mono, color: c.muted,
-          textTransform: 'uppercase', letterSpacing: '0.08em',
+      <Flex direction="column" style={{
+        width: sidebarOpen ? 220 : 32, flexShrink: 0,
+        borderRight: `1px solid ${c.border}`, background: c.sidebar,
+        transition: 'width 0.2s ease', overflow: 'hidden',
+      }}>
+        <Flex align="center" justify={sidebarOpen ? 'space-between' : 'center'} style={{
+          padding: sidebarOpen ? '10px 8px 6px' : '10px 0 6px',
           borderBottom: `1px solid ${c.border}`, flexShrink: 0,
         }}>
-          Files
-        </Box>
-        <Box style={{ flex: 1, overflowY: 'auto', padding: '4px 0' }}>
-          {loadingList
-            ? <Box style={{ padding: '12px', color: c.muted, fontSize: 12 }}>Loading…</Box>
-            : tree.length === 0
-              ? <Box style={{ padding: '12px', color: c.muted, fontSize: 12 }}>No contracts found</Box>
-              : tree.map((node) => (
-                <TreeItem key={node.path} node={node} depth={0} selectedId={selectedId} onSelect={handleSelect} />
-              ))}
-        </Box>
+          {sidebarOpen && (
+            <span style={{ fontSize: 10, fontFamily: c.mono, color: c.muted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+              Files
+            </span>
+          )}
+          <button
+            onClick={() => setSidebarOpen((o) => !o)}
+            title={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              width: 20, height: 20, borderRadius: 4, border: 'none',
+              background: 'transparent', cursor: 'pointer', color: c.muted, flexShrink: 0,
+            }}
+          >
+            {sidebarOpen ? <ChevronLeft size={13} /> : <ChevronRight size={13} />}
+          </button>
+        </Flex>
+        {sidebarOpen && (
+          <Box style={{ flex: 1, overflowY: 'auto', padding: '4px 0' }}>
+            {loadingList
+              ? <Box style={{ padding: '12px', color: c.muted, fontSize: 12 }}>Loading…</Box>
+              : tree.length === 0
+                ? <Box style={{ padding: '12px', color: c.muted, fontSize: 12 }}>No contracts found</Box>
+                : tree.map((node) => (
+                  <TreeItem key={node.path} node={node} depth={0} selectedId={selectedId} onSelect={handleSelect} />
+                ))}
+          </Box>
+        )}
       </Flex>
 
       {/* Graph panel */}

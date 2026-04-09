@@ -114,6 +114,8 @@ class ScopeAddressRead(ScopeAddressCreate):
     id: UUID
     audit_id: UUID
     is_verified: bool
+    decompiled_sol: str | None = None
+    abi_json: list | None = None
     created_at: datetime
 
 
