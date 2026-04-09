@@ -8,6 +8,7 @@ export const darkMenuContentClass = css({
   bg: 'rgba(17, 17, 22, 0.98)',
   backdropFilter: 'blur(8px)',
   boxShadow: '0 10px 24px rgba(0, 0, 0, 0.45)',
+  zIndex: 100,
 })
 
 export const darkMenuItemClass = css({
