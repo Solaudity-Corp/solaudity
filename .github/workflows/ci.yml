@@ -4,6 +4,7 @@ on:
   pull_request:
     branches:
       - main
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -476,3 +477,4 @@ jobs:
           else
             echo "::warning::PR comment skipped — summary file is empty"
           fi
+

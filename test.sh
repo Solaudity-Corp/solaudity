@@ -5,6 +5,7 @@ PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DOCKER_BIN="${DOCKER_BIN:-docker}"
 BACKEND_TEST_IMAGE="solaudity-backend-tests:local"
 FRONTEND_TEST_IMAGE="solaudity-frontend-tests:local"
+BACKEND_IMAGE_BUILT=0
 FAILURES=0
 
 if [ -t 1 ]; then
@@ -37,24 +38,24 @@ else
   echo ""
   echo "  What do you want to test?"
   echo ""
-  echo "    1) Frontend (unit)"
-  echo "    2) Backend  (unit)"
-  echo "    3) All      (unit)"
-  echo "    4) Smoke    (post-upgrade integration)"
-  echo "    5) Full     (unit + smoke)"
+  echo "    1) Frontend + Backend (unit)"
+  echo "    2) API security"
+  echo "    3) App test (API security + unit tests)"
+  echo "    4) Smoke"
+  echo "    5) Full"
   echo ""
-  printf "  Choose [1/2/3/4/5]: "
+  printf "  Choose [1-5]: "
   read -r CHOICE
 fi
 
 case "$CHOICE" in
-  1|frontend) TARGET="frontend" ;;
-  2|backend)  TARGET="backend"  ;;
-  3|all)      TARGET="all"      ;;
-  4|smoke)    TARGET="smoke"    ;;
-  5|full)     TARGET="full"     ;;
+  1|unit) TARGET="unit" ;;
+  2|api|api-security) TARGET="api_security" ;;
+  3|app|appsec) TARGET="appsec" ;;
+  4|smoke) TARGET="smoke" ;;
+  5|full) TARGET="full" ;;
   *)
-    print_status "FAIL" "Invalid choice: $CHOICE (expected 1-5, frontend, backend, all, smoke, or full)" "$RED"
+    print_status "FAIL" "Invalid choice: $CHOICE (expected 1-5)" "$RED"
     exit 1
     ;;
 esac
@@ -69,9 +70,13 @@ if ! require_docker; then
   exit 1
 fi
 
-# ── Backend tests ────────────────────────────────────────────────────
-run_backend_tests() {
-  print_banner "Backend Unit Tests (Docker)"
+# ── Shared backend image build ────────────────────────────────────────
+#
+# Called once regardless of how many backend jobs run.
+# Subsequent calls are no-ops (BACKEND_IMAGE_BUILT=1).
+# ─────────────────────────────────────────────────────────────────────
+ensure_backend_test_image() {
+  [ "$BACKEND_IMAGE_BUILT" -eq 1 ] && return 0
 
   print_status "RUN" "Building backend test image" "$BLUE"
   if ! "$DOCKER_BIN" build \
@@ -80,25 +85,64 @@ run_backend_tests() {
     "$PROJECT_ROOT/backend"; then
     print_status "FAIL" "Backend test image build failed." "$RED"
     FAILURES=1
+    return 1
+  fi
+
+  BACKEND_IMAGE_BUILT=1
+  return 0
+}
+
+# ── test:unit-backend ────────────────────────────────────────────────
+run_unit_backend() {
+  print_banner "test:unit-backend — Backend Unit Tests (Docker)"
+
+  if ! ensure_backend_test_image; then
     return
   fi
 
-  print_status "RUN" "Running backend tests in Docker" "$BLUE"
-  local BACKEND_CONTAINER="solaudity-backend-test-$$"
-  if "$DOCKER_BIN" run --rm --name "$BACKEND_CONTAINER" "$BACKEND_TEST_IMAGE"; then
-    print_status "PASS" "Backend tests passed." "$GREEN"
+  print_status "RUN" "Running backend unit tests" "$BLUE"
+  local CONTAINER="solaudity-backend-unit-$$"
+  if "$DOCKER_BIN" run --rm --name "$CONTAINER" "$BACKEND_TEST_IMAGE" \
+    python -m pytest tests -vv -rA --color=yes --override-ini=console_output_style=classic --disable-warnings; then
+    print_status "PASS" "Backend unit tests passed." "$GREEN"
   else
-    print_status "FAIL" "Backend tests failed." "$RED"
+    print_status "FAIL" "Backend unit tests failed." "$RED"
     FAILURES=1
   fi
 
-  "$DOCKER_BIN" rm -f "$BACKEND_CONTAINER" >/dev/null 2>&1 || true
-  "$DOCKER_BIN" rmi "$BACKEND_TEST_IMAGE" >/dev/null 2>&1 || true
+  "$DOCKER_BIN" rm -f "$CONTAINER" >/dev/null 2>&1 || true
 }
 
-# ── Frontend tests ───────────────────────────────────────────────────
-run_frontend_tests() {
-  print_banner "Frontend Unit Tests (Docker)"
+# ── test:api-security ────────────────────────────────────────────────
+run_api_security() {
+  print_banner "test:api-security — API Surface Tests (Docker)"
+
+  if ! ensure_backend_test_image; then
+    return
+  fi
+
+  print_status "RUN" "Running API security tests" "$BLUE"
+  local CONTAINER="solaudity-api-security-$$"
+  if "$DOCKER_BIN" run --rm --name "$CONTAINER" "$BACKEND_TEST_IMAGE" \
+    python -m pytest \
+      tests/test_auth_api.py \
+      tests/test_audits_api.py \
+      tests/test_scope_api.py \
+      tests/test_heimdall_api.py \
+      tests/test_surya_api.py \
+      -vv -rA --color=yes --override-ini=console_output_style=classic --disable-warnings; then
+    print_status "PASS" "API security tests passed." "$GREEN"
+  else
+    print_status "FAIL" "API security tests failed." "$RED"
+    FAILURES=1
+  fi
+
+  "$DOCKER_BIN" rm -f "$CONTAINER" >/dev/null 2>&1 || true
+}
+
+# ── test:unit-frontend ───────────────────────────────────────────────
+run_unit_frontend() {
+  print_banner "test:unit-frontend — Frontend Unit Tests (Docker)"
 
   print_status "RUN" "Building frontend test image" "$BLUE"
   if ! "$DOCKER_BIN" build \
@@ -110,31 +154,28 @@ run_frontend_tests() {
     return
   fi
 
-  print_status "RUN" "Running frontend tests in Docker" "$BLUE"
-  local FRONTEND_CONTAINER="solaudity-frontend-test-$$"
-  if "$DOCKER_BIN" run --rm --name "$FRONTEND_CONTAINER" "$FRONTEND_TEST_IMAGE"; then
-    print_status "PASS" "Frontend tests passed." "$GREEN"
+  print_status "RUN" "Running frontend unit tests" "$BLUE"
+  local CONTAINER="solaudity-frontend-unit-$$"
+  if "$DOCKER_BIN" run --rm --name "$CONTAINER" "$FRONTEND_TEST_IMAGE"; then
+    print_status "PASS" "Frontend unit tests passed." "$GREEN"
   else
-    print_status "FAIL" "Frontend tests failed." "$RED"
+    print_status "FAIL" "Frontend unit tests failed." "$RED"
     FAILURES=1
   fi
 
-  "$DOCKER_BIN" rm -f "$FRONTEND_CONTAINER" >/dev/null 2>&1 || true
+  "$DOCKER_BIN" rm -f "$CONTAINER" >/dev/null 2>&1 || true
   "$DOCKER_BIN" rmi "$FRONTEND_TEST_IMAGE" >/dev/null 2>&1 || true
 }
 
-# ── Smoke tests — post-upgrade integration ───────────────────────────
+# ── test:smoke — post-upgrade integration ────────────────────────────
 #
-# These tests build the production Docker images, spin up the full
-# stack, and exercise every API surface to verify nothing is broken
-# after upgrading system packages (openssl, libxml2, libpng, …) or
-# Python dependencies (wheel, jaraco.context, …).
+# Builds production images, spins up the full stack, and exercises
+# core API + frontend flows. Also runs Docker Scout recommendations.
 #
-# What they catch:
+# What it catches:
 #   • Docker build failures from removed/renamed packages
 #   • Backend startup crashes from incompatible deps
 #   • Alembic migration breakage (SQLModel / SQLAlchemy)
-#   • JWT signing / validation failures (openssl / python-jose)
 #   • ORM + SQLite CRUD regressions
 #   • Frontend build failures (node / npm / vite)
 #   • Nginx serving regressions
@@ -153,14 +194,13 @@ cleanup_smoke() {
       --profile prod down -v --remove-orphans >/dev/null 2>&1
     SMOKE_CLEANUP_NEEDED=0
   fi
-  # Remove the isolated temp data directory
   if [ -n "$SMOKE_DATA_DIR" ] && [ -d "$SMOKE_DATA_DIR" ]; then
     rm -rf "$SMOKE_DATA_DIR"
   fi
 }
 trap cleanup_smoke EXIT INT TERM
 
-# Globals shared between helpers and run_smoke_tests
+# Globals shared between helpers and run_smoke
 LAST_HTTP=""
 LAST_BODY=""
 SMOKE_FAILURES=0
@@ -229,8 +269,8 @@ wait_for() {
   return 1
 }
 
-run_smoke_tests() {
-  print_banner "Smoke Tests — Post-Upgrade Integration"
+run_smoke() {
+  print_banner "test:smoke — Post-Upgrade Integration"
   SMOKE_FAILURES=0
 
   SMOKE_COMPOSE_FILE="$PROJECT_ROOT/docker/docker-compose.yml"
@@ -261,9 +301,7 @@ run_smoke_tests() {
   local FRONTEND="http://localhost:5173"
   local TOKEN="" AUDIT_ID="" SOURCE_ID="" ADDR_ID="" CONTRACT_ID=""
 
-  # ────────────────────────────────────────────────────────────────
-  # 1/7  BUILD IMAGES
-  # ────────────────────────────────────────────────────────────────
+  # ── 1/7  BUILD IMAGES ────────────────────────────────────────────
   print_banner "1/7 — Docker Image Build"
   print_status "RUN" "Building production images (backend + frontend)" "$BLUE"
   if ! $SMOKE_COMPOSE_CMD -f "$SMOKE_COMPOSE_FILE" -p "$SMOKE_PROJECT" \
@@ -273,9 +311,7 @@ run_smoke_tests() {
   fi
   print_status "PASS" "Docker images built successfully" "$GREEN"
 
-  # ────────────────────────────────────────────────────────────────
-  # 2/7  START SERVICES + HEALTH CHECKS
-  # ────────────────────────────────────────────────────────────────
+  # ── 2/7  START SERVICES + HEALTH CHECKS ──────────────────────────
   print_banner "2/7 — Start Services & Health Checks"
   $SMOKE_COMPOSE_CMD -f "$SMOKE_COMPOSE_FILE" -p "$SMOKE_PROJECT" \
     --profile prod up -d
@@ -287,10 +323,8 @@ run_smoke_tests() {
   fi
   wait_for "Frontend" "$FRONTEND/" 90
 
-  # ────────────────────────────────────────────────────────────────
-  # 3/7  AUTHENTICATION (exercises crypto + JWT)
-  # ────────────────────────────────────────────────────────────────
-  print_banner "3/7 — Authentication (crypto / JWT)"
+  # ── 3/7  AUTH BOOTSTRAP ───────────────────────────────────────────
+  print_banner "3/7 — Auth Bootstrap"
 
   # Register (accept 200 or 400 if user already exists from a prior run)
   api -X POST "$BASE/api/auth/register" \
@@ -305,31 +339,15 @@ run_smoke_tests() {
   assert_http "POST /api/auth/login" "200"
   TOKEN=$(json_val "access_token")
   if [ -z "$TOKEN" ]; then
-    print_status "FAIL" "No JWT received — crypto libs may be broken" "$RED"
+    print_status "FAIL" "No access token received" "$RED"
     SMOKE_FAILURES=$((SMOKE_FAILURES + 1))
     FAILURES=1; return
   fi
-  print_status "PASS" "JWT token obtained (crypto OK)" "$GREEN"
+  print_status "PASS" "Access token obtained" "$GREEN"
 
   local AUTH="Authorization: Bearer $TOKEN"
 
-  # Validate token: GET /me
-  api -X GET "$BASE/api/auth/me" -H "$AUTH"
-  assert_http "GET /api/auth/me (JWT validation)" "200"
-
-  # Update profile (PATCH)
-  api -X PATCH "$BASE/api/auth/me/profile" \
-    -H "$AUTH" -H "Content-Type: application/json" \
-    -d '{"email":"smoke-updated@example.com"}'
-  assert_http "PATCH /api/auth/me/profile" "200"
-
-  # AI providers list
-  api -X GET "$BASE/api/auth/ai-providers" -H "$AUTH"
-  assert_http "GET /api/auth/ai-providers" "200"
-
-  # ────────────────────────────────────────────────────────────────
-  # 4/7  AUDITS CRUD (exercises SQLModel + SQLite)
-  # ────────────────────────────────────────────────────────────────
+  # ── 4/7  AUDITS CRUD ─────────────────────────────────────────────
   print_banner "4/7 — Audits CRUD"
 
   # Create
@@ -338,9 +356,7 @@ run_smoke_tests() {
     -d '{"title":"Smoke Audit","description":"Post-upgrade regression check","chain":"ethereum","network":"mainnet"}'
   assert_http "POST /audits (create)" "201"
   AUDIT_ID=$(json_val "id")
-  if [ -n "$AUDIT_ID" ]; then
-    print_status "INFO" "audit id = $AUDIT_ID" "$BLUE"
-  fi
+  [ -n "$AUDIT_ID" ] && print_status "INFO" "audit id = $AUDIT_ID" "$BLUE"
 
   # List
   api -X GET "$BASE/audits" -H "$AUTH"
@@ -380,13 +396,11 @@ run_smoke_tests() {
     assert_http "GET /audits?status=in_progress" "200"
   fi
 
-  # ────────────────────────────────────────────────────────────────
-  # 5/7  SCOPE MANAGEMENT (sources, contracts, addresses)
-  # ────────────────────────────────────────────────────────────────
+  # ── 5/7  SCOPE MANAGEMENT ────────────────────────────────────────
   print_banner "5/7 — Scope Management"
 
   if [ -n "$AUDIT_ID" ]; then
-    # ── Sources ──
+    # Sources
     api -X POST "$BASE/scope/audits/$AUDIT_ID/sources" \
       -H "$AUTH" -H "Content-Type: application/json" \
       -d '{"source_type":"github","url":"https://github.com/example/smoke-repo"}'
@@ -406,7 +420,7 @@ run_smoke_tests() {
       assert_http "PATCH /scope/sources/{id}" "200"
     fi
 
-    # ── Addresses ──
+    # Addresses
     api -X POST "$BASE/scope/audits/$AUDIT_ID/addresses" \
       -H "$AUTH" -H "Content-Type: application/json" \
       -d '{"address":"0x0000000000000000000000000000000000000001","chain_id":1,"label":"Smoke addr","address_type":"deployment"}'
@@ -426,7 +440,7 @@ run_smoke_tests() {
       assert_http "PATCH /scope/addresses/{id}" "200"
     fi
 
-    # ── Contracts (upload a .sol file) ──
+    # Contracts
     local SOL_TMP
     SOL_TMP=$(mktemp /tmp/smoke_XXXXXX.sol)
     printf '// SPDX-License-Identifier: MIT\npragma solidity ^0.8.0;\ncontract SmokeTest {\n    uint256 public value;\n}\n' > "$SOL_TMP"
@@ -455,35 +469,14 @@ run_smoke_tests() {
       fi
     fi
 
-    # ── Cleanup scope entities ──
-    if [ -n "$CONTRACT_ID" ]; then
-      api -X DELETE "$BASE/scope/contracts/$CONTRACT_ID" -H "$AUTH"
-      assert_http "DELETE /scope/contracts/{id}" "204"
-    fi
-    if [ -n "$ADDR_ID" ]; then
-      api -X DELETE "$BASE/scope/addresses/$ADDR_ID" -H "$AUTH"
-      assert_http "DELETE /scope/addresses/{id}" "204"
-    fi
-    if [ -n "$SOURCE_ID" ]; then
-      api -X DELETE "$BASE/scope/sources/$SOURCE_ID" -H "$AUTH"
-      assert_http "DELETE /scope/sources/{id}" "204"
-    fi
+    # Cleanup scope entities
+    [ -n "$CONTRACT_ID" ] && { api -X DELETE "$BASE/scope/contracts/$CONTRACT_ID" -H "$AUTH"; assert_http "DELETE /scope/contracts/{id}" "204"; }
+    [ -n "$ADDR_ID" ]     && { api -X DELETE "$BASE/scope/addresses/$ADDR_ID"    -H "$AUTH"; assert_http "DELETE /scope/addresses/{id}" "204"; }
+    [ -n "$SOURCE_ID" ]   && { api -X DELETE "$BASE/scope/sources/$SOURCE_ID"    -H "$AUTH"; assert_http "DELETE /scope/sources/{id}" "204"; }
   fi
 
-  # ────────────────────────────────────────────────────────────────
-  # 6/7  ERROR HANDLING & AUTH GUARDS
-  # ────────────────────────────────────────────────────────────────
-  print_banner "6/7 — Error Handling & Auth Guards"
-
-  # Unauthenticated requests must be rejected
-  api -X GET "$BASE/audits"
-  assert_http "GET  /audits (no auth → 401)" "401"
-
-  api -X GET "$BASE/api/auth/me"
-  assert_http "GET  /api/auth/me (no auth → 401)" "401"
-
-  api -X GET "$BASE/scope/audits/1/sources"
-  assert_http "GET  /scope (no auth → 401)" "401"
+  # ── 6/7  BASIC API ERROR HANDLING ────────────────────────────────
+  print_banner "6/7 — Basic API Error Handling"
 
   # Not-found / bad ID
   api -X GET "$BASE/audits/does-not-exist" -H "$AUTH"
@@ -501,8 +494,8 @@ run_smoke_tests() {
     -d '{"title":"Bad dates","start_date":"2025-12-01","end_date":"2025-01-01"}'
   assert_http_any "POST /audits bad date range" "422" "500"
 
-  # ── Delete the smoke audit ──
   if [ -n "$AUDIT_ID" ]; then
+    # Delete the smoke audit
     api -X POST "$BASE/audits/$AUDIT_ID/delete" -H "$AUTH"
     assert_http "POST /audits/{id}/delete" "204"
 
@@ -511,9 +504,7 @@ run_smoke_tests() {
     assert_http "GET  /audits/{id} after delete (404)" "404"
   fi
 
-  # ────────────────────────────────────────────────────────────────
-  # 7/7  FRONTEND SERVING (nginx + SPA)
-  # ────────────────────────────────────────────────────────────────
+  # ── 7/7  FRONTEND SERVING ─────────────────────────────────────────
   print_banner "7/7 — Frontend Serving"
 
   # Index page
@@ -541,17 +532,10 @@ run_smoke_tests() {
   api -X GET "$FRONTEND/"
   local INDEX_HTML="$LAST_BODY"
   local JS_SRC
-  # Try various patterns Vite may produce (hashed assets, module scripts)
   JS_SRC=$(echo "$INDEX_HTML" | grep -o 'src="[^"]*\.js"' | head -1 | sed 's/^src="//;s/"$//')
-  if [ -z "$JS_SRC" ]; then
-    JS_SRC=$(echo "$INDEX_HTML" | grep -o "src='[^']*\.js'" | head -1 | sed "s/^src='//;s/'$//")
-  fi
-  # Fallback: match .tsx/.jsx in dev mode HTML (shouldn't happen in prod but be safe)
-  if [ -z "$JS_SRC" ]; then
-    JS_SRC=$(echo "$INDEX_HTML" | grep -o 'src="[^"]*\.\(js\|jsx\|ts\|tsx\)\([^"]*\)"' | head -1 | sed 's/^src="//;s/"$//')
-  fi
+  [ -z "$JS_SRC" ] && JS_SRC=$(echo "$INDEX_HTML" | grep -o "src='[^']*\.js'" | head -1 | sed "s/^src='//;s/'$//")
+  [ -z "$JS_SRC" ] && JS_SRC=$(echo "$INDEX_HTML" | grep -o 'src="[^"]*\.\(js\|jsx\|ts\|tsx\)\([^"]*\)"' | head -1 | sed 's/^src="//;s/"$//')
   if [ -n "$JS_SRC" ]; then
-    # In dev mode, Vite might return 404/500 if the path is requested raw without being handled by the router properly, but we just verify it exists.
     api -X GET "$FRONTEND$JS_SRC"
     assert_http "GET JS bundle ($JS_SRC)" "200"
   else
@@ -562,29 +546,42 @@ run_smoke_tests() {
   # CSS assets
   local CSS_SRC
   CSS_SRC=$(echo "$INDEX_HTML" | grep -o 'href="[^"]*\.css"' | head -1 | sed 's/^href="//;s/"$//')
-  if [ -z "$CSS_SRC" ]; then
-    CSS_SRC=$(echo "$INDEX_HTML" | grep -o "href='[^']*\.css'" | head -1 | sed "s/^href='//;s/'$//")
-  fi
+  [ -z "$CSS_SRC" ] && CSS_SRC=$(echo "$INDEX_HTML" | grep -o "href='[^']*\.css'" | head -1 | sed "s/^href='//;s/'$//")
   if [ -n "$CSS_SRC" ]; then
     api -X GET "$FRONTEND$CSS_SRC"
     assert_http "GET CSS bundle ($CSS_SRC)" "200"
   fi
 
-  # ────────────────────────────────────────────────────────────────
-  # DOCKER SCOUT — UPGRADE RECOMMENDATIONS (informational only)
-  # ────────────────────────────────────────────────────────────────
+  # ── DOCKER SCOUT — UPGRADE RECOMMENDATIONS (informatif) ───────────
   if "$DOCKER_BIN" scout version >/dev/null 2>&1; then
-    print_banner "Docker Scout — Upgrade Recommendations"
+    print_banner "Docker Scout — Base Images from Dockerfiles"
 
-    local IMAGES
-    IMAGES=$($SMOKE_COMPOSE_CMD -f "$SMOKE_COMPOSE_FILE" -p "$SMOKE_PROJECT" \
-      --profile prod images 2>/dev/null | awk 'NR>1 && $2 != "" {print $2":"$3}')
+    local DOCKERFILES
+    DOCKERFILES="$PROJECT_ROOT/docker/backend.Dockerfile
+$PROJECT_ROOT/docker/frontend.Dockerfile"
 
-    if [ -n "$IMAGES" ]; then
-      printf '%s\n' "$IMAGES" | while IFS= read -r IMAGE; do
-        [ -z "$IMAGE" ] && continue
+    printf '%s\n' "$DOCKERFILES" | while IFS= read -r DOCKERFILE; do
+      [ -z "$DOCKERFILE" ] && continue
+      [ ! -f "$DOCKERFILE" ] && continue
+
+      awk '
+        toupper($1) == "FROM" {
+          image = $2
+          stage = (toupper($3) == "AS" ? $4 : "")
+          printf "%s\t%s\n", image, stage
+        }
+      ' "$DOCKERFILE" | while IFS=$'\t' read -r BASE_IMAGE STAGE_NAME; do
+        [ -z "$BASE_IMAGE" ] && continue
+        [ "$BASE_IMAGE" = "scratch" ] && continue
+
         local OUTPUT
-        OUTPUT=$("$DOCKER_BIN" scout recommendations "$IMAGE" 2>/dev/null) || continue
+        OUTPUT=$("$DOCKER_BIN" scout recommendations "$BASE_IMAGE" 2>/dev/null) || {
+          print_status "INFO" "$DOCKERFILE" "$BLUE"
+          print_status "INFO" "  Base image      : $BASE_IMAGE" "$BLUE"
+          print_status "INFO" "  Recommendations : unavailable" "$BLUE"
+          echo ""
+          continue
+        }
 
         local RECS
         RECS=$(printf '%s\n' "$OUTPUT" \
@@ -593,23 +590,53 @@ run_smoke_tests() {
           | sed 's/│.*//;s/^[[:space:]]*//;s/[[:space:]]*$//' \
           | grep -v '^$')
 
+        print_status "INFO" "$DOCKERFILE${STAGE_NAME:+ ($STAGE_NAME)}" "$YELLOW"
+        print_status "INFO" "  Base image      : $BASE_IMAGE" "$YELLOW"
+
         if [ -n "$RECS" ]; then
           printf '%s\n' "$RECS" | while IFS= read -r TAG; do
-            print_status "INFO" "$IMAGE → $TAG" "$YELLOW"
+            [ -z "$TAG" ] && continue
+
+            local IMPACT_LINE
+            IMPACT_LINE=$(printf '%s\n' "$OUTPUT" | awk -v tag="$TAG" '
+              BEGIN { IGNORECASE=1; seen=0 }
+              index(tolower($0), tolower(tag)) { seen=1; next }
+              seen && /vulnerab/ { print; exit }
+            ')
+
+            local REDUCED
+            REDUCED=$(printf '%s' "$IMPACT_LINE" | grep -oiE '[0-9]+[[:space:]]+fewer vulnerabilities|[0-9]+[[:space:]]+less vulnerabilities|reduces?[[:space:]]+vulnerabilities[[:space:]]+by[[:space:]]+[0-9]+' | head -1)
+
+            local IMPACT_CLEAN
+            IMPACT_CLEAN=$(printf '%s' "$IMPACT_LINE" \
+              | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' \
+              | sed 's/.*│[[:space:]]*•[[:space:]]*//' \
+              | sed 's/[[:space:]]*│.*$//' \
+              | sed 's/^[[:space:]•-]*//;s/[[:space:]]*$//')
+
+            print_status "INFO" "  Recommended     : $TAG" "$YELLOW"
+            if [ -n "$REDUCED" ]; then
+              print_status "INFO" "  Fix impact      : $REDUCED" "$YELLOW"
+            elif printf '%s' "$IMPACT_CLEAN" | grep -qi 'same number of vulnerabilities'; then
+              print_status "INFO" "  Fix impact      : no vulnerability reduction" "$BLUE"
+            elif [ -n "$IMPACT_CLEAN" ]; then
+              print_status "INFO" "  Fix impact      : $IMPACT_CLEAN" "$YELLOW"
+            else
+              print_status "INFO" "  Fix impact      : vulnerability reduction details not provided by Docker Scout" "$BLUE"
+            fi
           done
         else
-          print_status "INFO" "$IMAGE — no minor/major upgrade" "$BLUE"
+          print_status "INFO" "  Recommended     : no minor/major upgrade" "$BLUE"
         fi
+        echo ""
       done
-    fi
+    done
   fi
 
-  # ────────────────────────────────────────────────────────────────
-  # SUMMARY
-  # ────────────────────────────────────────────────────────────────
-  print_banner "Smoke Test Results"
+  # ── RÉSUMÉ SMOKE ─────────────────────────────────────────────────
+  print_banner "test:smoke Results"
   if [ "$SMOKE_FAILURES" -eq 0 ]; then
-    print_status "PASS" "All smoke tests passed — upgrade looks safe" "$GREEN"
+    print_status "PASS" "All smoke tests passed — upgrade is safe" "$GREEN"
   else
     print_status "FAIL" "$SMOKE_FAILURES smoke test(s) failed — review above" "$RED"
     FAILURES=1
@@ -618,25 +645,43 @@ run_smoke_tests() {
   cleanup_smoke
 }
 
+# ── Cleanup image après usage ─────────────────────────────────────────
+cleanup_backend_image() {
+  "$DOCKER_BIN" rmi "$BACKEND_TEST_IMAGE" >/dev/null 2>&1 || true
+  BACKEND_IMAGE_BUILT=0
+}
+
 # ── Run selected target ──────────────────────────────────────────────
 case "$TARGET" in
-  frontend) run_frontend_tests ;;
-  backend)  run_backend_tests  ;;
-  all)
-    run_backend_tests
-    run_frontend_tests
+  api_security)
+    run_api_security
+    cleanup_backend_image
+    ;;
+  unit)
+    # Backend image buildé une seule fois, réutilisé
+    run_unit_backend
+    cleanup_backend_image
+    run_unit_frontend
+    ;;
+  appsec)
+    run_unit_backend
+    run_api_security
+    cleanup_backend_image
+    run_unit_frontend
     ;;
   smoke)
-    run_smoke_tests
+    run_smoke
     ;;
   full)
-    run_backend_tests
-    run_frontend_tests
-    run_smoke_tests
+    run_unit_backend
+    run_api_security
+    cleanup_backend_image
+    run_unit_frontend
+    run_smoke
     ;;
 esac
 
-# ── Summary ──────────────────────────────────────────────────────────
+# ---- Global summary -------------------------------------------------
 print_banner "Test Summary"
 if [ "$FAILURES" -eq 0 ]; then
   print_status "PASS" "All requested test suites passed." "$GREEN"
