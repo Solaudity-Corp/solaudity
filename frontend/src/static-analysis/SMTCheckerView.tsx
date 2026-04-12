@@ -1,3 +1,4 @@
+import type { FC } from 'react'
 import { css } from 'styled-system/css'
 import { Box, Flex } from 'styled-system/jsx'
 
@@ -5,7 +6,7 @@ interface SMTCheckerViewProps {
   auditId: string
 }
 
-export function SMTCheckerView(_props: SMTCheckerViewProps) {
+export const SMTCheckerView: FC<SMTCheckerViewProps> = () => {
   return (
     <Box
       className={css({

@@ -1,3 +1,4 @@
+import type { FC } from 'react'
 import { css } from 'styled-system/css'
 import { Box, Flex } from 'styled-system/jsx'
 
@@ -5,7 +6,7 @@ interface AderynViewProps {
   auditId: string
 }
 
-export function AderynView(_props: AderynViewProps) {
+export const AderynView: FC<AderynViewProps> = () => {
   return (
     <Box
       className={css({

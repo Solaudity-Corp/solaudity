@@ -1,3 +1,4 @@
+import type { FC } from 'react'
 import { css } from 'styled-system/css'
 import { Box, Flex } from 'styled-system/jsx'
 
@@ -5,7 +6,7 @@ interface SecurifyViewProps {
   auditId: string
 }
 
-export function SecurifyView(_props: SecurifyViewProps) {
+export const SecurifyView: FC<SecurifyViewProps> = () => {
   return (
     <Box
       className={css({

@@ -1,3 +1,4 @@
+import type { FC } from 'react'
 import { css } from 'styled-system/css'
 import { Box, Flex } from 'styled-system/jsx'
 
@@ -5,7 +6,7 @@ interface SlitherViewProps {
   auditId: string
 }
 
-export function SlitherView(_props: SlitherViewProps) {
+export const SlitherView: FC<SlitherViewProps> = () => {
   return (
     <Box
       className={css({

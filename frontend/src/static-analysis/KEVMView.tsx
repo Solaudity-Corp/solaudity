@@ -1,3 +1,4 @@
+import type { FC } from 'react'
 import { css } from 'styled-system/css'
 import { Box, Flex } from 'styled-system/jsx'
 
@@ -5,7 +6,7 @@ interface KEVMViewProps {
   auditId: string
 }
 
-export function KEVMView(_props: KEVMViewProps) {
+export const KEVMView: FC<KEVMViewProps> = () => {
   return (
     <Box
       className={css({

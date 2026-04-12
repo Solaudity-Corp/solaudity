@@ -1,3 +1,4 @@
+import type { FC } from 'react'
 import { css } from 'styled-system/css'
 import { Box, Flex } from 'styled-system/jsx'
 
@@ -5,7 +6,7 @@ interface CertoraViewProps {
   auditId: string
 }
 
-export function CertoraView(_props: CertoraViewProps) {
+export const CertoraView: FC<CertoraViewProps> = () => {
   return (
     <Box
       className={css({

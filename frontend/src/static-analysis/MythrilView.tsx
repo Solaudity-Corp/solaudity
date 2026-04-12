@@ -1,3 +1,4 @@
+import type { FC } from 'react'
 import { css } from 'styled-system/css'
 import { Box, Flex } from 'styled-system/jsx'
 
@@ -5,7 +6,7 @@ interface MythrilViewProps {
   auditId: string
 }
 
-export function MythrilView(_props: MythrilViewProps) {
+export const MythrilView: FC<MythrilViewProps> = () => {
   return (
     <Box
       className={css({

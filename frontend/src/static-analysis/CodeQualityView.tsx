@@ -1,3 +1,4 @@
+import type { FC } from 'react'
 import { css } from 'styled-system/css'
 import { Box, Flex } from 'styled-system/jsx'
 
@@ -5,7 +6,7 @@ interface CodeQualityViewProps {
   auditId: string
 }
 
-export function CodeQualityView(_props: CodeQualityViewProps) {
+export const CodeQualityView: FC<CodeQualityViewProps> = () => {
   return (
     <Box
       className={css({

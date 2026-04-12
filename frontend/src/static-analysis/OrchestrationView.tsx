@@ -1,3 +1,4 @@
+import type { FC } from 'react'
 import { css } from 'styled-system/css'
 import { Box, Flex } from 'styled-system/jsx'
 
@@ -17,7 +18,7 @@ const tools = [
   { name: 'Ethlint', color: 'rgba(180, 140, 255, 0.85)', bg: 'rgba(180, 140, 255, 0.06)', border: 'rgba(180, 140, 255, 0.16)' },
 ]
 
-export function OrchestrationView(_props: OrchestrationViewProps) {
+export const OrchestrationView: FC<OrchestrationViewProps> = () => {
   return (
     <Box
       className={css({
