@@ -1,44 +1,51 @@
-import { useCallback, useState } from 'react'
+import { useState } from 'react'
 import { css } from 'styled-system/css'
 import { Box, Flex } from 'styled-system/jsx'
 import { ChevronUp, ChevronDown } from 'lucide-react'
 import { NavBar } from '../components/NavBar'
-import { SuryaView } from './SuryaView'
-import { ParseView } from './ParseView'
-import { CodeView } from './CodeView'
-import { SolaudityView } from './SolaudityView'
-import { ReverseView } from './ReverseView'
-import { AiDocView } from './AiDocView'
 import SlideButton from '../components/SlideButton'
+import { SlitherView } from './SlitherView'
+import { MythrilView } from './MythrilView'
+import { SecurifyView } from './SecurifyView'
+import { AderynView } from './AderynView'
+import { CertoraView } from './CertoraView'
+import { SMTCheckerView } from './SMTCheckerView'
+import { KEVMView } from './KEVMView'
+import { CodeQualityView } from './CodeQualityView'
+import { OrchestrationView } from './OrchestrationView'
 
-type EnumView = 'code' | 'parse' | 'tree' | 'aidoc' | 'solaudity' | 'reverse'
+type StaticView =
+  | 'slither'
+  | 'mythril'
+  | 'securify'
+  | 'aderyn'
+  | 'certora'
+  | 'smtchecker'
+  | 'kevm'
+  | 'codequality'
+  | 'orchestration'
 
-const views: Array<{ id: EnumView; label: string }> = [
-  { id: 'code', label: 'CodeView' },
-  { id: 'tree', label: 'SuryaView' },
-  { id: 'parse', label: 'ParseView' },
-  { id: 'solaudity', label: 'SolaudityView' },
-  { id: 'reverse', label: 'ReverseView' },
-  { id: 'aidoc', label: 'AI Doc' },
+const views: Array<{ id: StaticView; label: string }> = [
+  { id: 'slither', label: 'Slither' },
+  { id: 'mythril', label: 'Mythril' },
+  { id: 'securify', label: 'Securify' },
+  { id: 'aderyn', label: 'Aderyn' },
+  { id: 'certora', label: 'Certora Prover' },
+  { id: 'smtchecker', label: 'SMTChecker' },
+  { id: 'kevm', label: 'KEVM' },
+  { id: 'codequality', label: 'Qualité de code' },
+  { id: 'orchestration', label: 'Orchestration' },
 ]
 
-interface EnumWorkspaceProps {
+interface StaticAnalysisWorkspaceProps {
   auditId: string
   onNavigate: (path: string) => void
   onOpenProfile: () => void
 }
 
-type JumpTarget = { contractId: string; line: number } | null
-
-export function EnumWorkspace({ auditId, onNavigate, onOpenProfile }: EnumWorkspaceProps) {
-  const [activeView, setActiveView] = useState<EnumView>('tree')
+export function StaticAnalysisWorkspace({ auditId, onNavigate, onOpenProfile }: StaticAnalysisWorkspaceProps) {
+  const [activeView, setActiveView] = useState<StaticView>('slither')
   const [subNavOpen, setSubNavOpen] = useState(true)
-  const [jumpTo, setJumpTo] = useState<JumpTarget>(null)
-
-  const handleGoToCode = useCallback((contractId: string, line: number) => {
-    setJumpTo({ contractId, line })
-    setActiveView('code')
-  }, [])
 
   return (
     <Flex direction="column" minH="100vh" className={css({ background: '#101014' })}>
@@ -51,8 +58,8 @@ export function EnumWorkspace({ auditId, onNavigate, onOpenProfile }: EnumWorksp
         showSearch={false}
         journeyItems={[
           { label: 'Scope', onClick: () => onNavigate(`/scope/${auditId}`) },
-          { label: 'Enum', isCurrent: true},
-          { label: 'Static Analysis', onClick: () => onNavigate(`/static-analysis/${auditId}`) }
+          { label: 'Enum', onClick: () => onNavigate(`/enum/${auditId}`) },
+          { label: 'Static Analysis', isCurrent: true },
         ]}
       />
 
@@ -74,7 +81,7 @@ export function EnumWorkspace({ auditId, onNavigate, onOpenProfile }: EnumWorksp
             opacity: subNavOpen ? 1 : 0,
           })}
         >
-          <Flex align="center" gap="1" px={{ base: '4', md: '8' }} h="52px">
+          <Flex align="center" gap="1" px={{ base: '4', md: '8' }} h="52px" overflowX="auto">
             {views.map((view) => {
               const isActive = activeView === view.id
               return (
@@ -88,7 +95,7 @@ export function EnumWorkspace({ auditId, onNavigate, onOpenProfile }: EnumWorksp
                     color: isActive ? 'rgba(88, 214, 171, 1)' : 'rgba(185, 185, 193, 0.72)',
                     background: isActive ? 'rgba(88, 214, 171, 0.08)' : 'transparent',
                     border: isActive ? '1px solid rgba(88, 214, 171, 0.22)' : '1px solid transparent',
-                    cursor: 'pointer', transition: 'all 0.15s ease', whiteSpace: 'nowrap',
+                    cursor: 'pointer', transition: 'all 0.15s ease', whiteSpace: 'nowrap', flexShrink: 0,
                     _hover: {
                       color: isActive ? 'rgba(88, 214, 171, 1)' : 'rgba(231, 228, 239, 0.88)',
                       background: isActive ? 'rgba(88, 214, 171, 0.08)' : 'rgba(255, 255, 255, 0.04)',
@@ -136,49 +143,27 @@ export function EnumWorkspace({ auditId, onNavigate, onOpenProfile }: EnumWorksp
           paddingTop: subNavOpen ? undefined : 'calc(20px + 1.25rem)',
         })}
       >
-        {activeView === 'code' ? (
-          <Box width="100%">
-            <CodeView auditId={auditId} jumpTo={jumpTo} onJumpHandled={() => setJumpTo(null)} />
-          </Box>
-        ) : activeView === 'parse' ? (
-          <Box width="100%">
-            <ParseView auditId={auditId} onGoToCode={handleGoToCode} />
-          </Box>
-        ) : activeView === 'tree' ? (
-          <Box width="100%">
-            <SuryaView auditId={auditId} />
-          </Box>
-        ) : activeView === 'solaudity' ? (
-          <Box width="100%">
-            <SolaudityView auditId={auditId} />
-          </Box>
-        ) : activeView === 'reverse' ? (
-          <Box width="100%">
-            <ReverseView auditId={auditId} />
-          </Box>
-        ) : activeView === 'aidoc' ? (
-          <Box width="100%">
-            <AiDocView auditId={auditId} onNavigateView={(view) => setActiveView(view as typeof activeView)} />
-          </Box>
-        ) : (
-          <Box
-            className={css({
-              width: '100%', borderRadius: '18px',
-              border: '1px solid rgba(185, 185, 189, 0.14)',
-              bg: 'rgba(24, 24, 29, 0.82)',
-              boxShadow: '0 12px 28px rgba(0, 0, 0, 0.3)',
-              minH: '320px', p: '6',
-              color: 'rgba(185, 185, 193, 0.66)', fontSize: 'sm',
-            })}
-          >
-            <Box className={css({ color: 'rgba(231, 228, 239, 0.91)', fontSize: 'lg', fontWeight: '700', mb: '2' })}>
-              {views.find((v) => v.id === activeView)?.label}
-            </Box>
-            <Box className={css({ lineHeight: '1.65' })}>
-              UI scaffold ready — wire this view to its data source when available.
-            </Box>
-          </Box>
-        )}
+        <Box width="100%">
+          {activeView === 'slither' ? (
+            <SlitherView auditId={auditId} />
+          ) : activeView === 'mythril' ? (
+            <MythrilView auditId={auditId} />
+          ) : activeView === 'securify' ? (
+            <SecurifyView auditId={auditId} />
+          ) : activeView === 'aderyn' ? (
+            <AderynView auditId={auditId} />
+          ) : activeView === 'certora' ? (
+            <CertoraView auditId={auditId} />
+          ) : activeView === 'smtchecker' ? (
+            <SMTCheckerView auditId={auditId} />
+          ) : activeView === 'kevm' ? (
+            <KEVMView auditId={auditId} />
+          ) : activeView === 'codequality' ? (
+            <CodeQualityView auditId={auditId} />
+          ) : (
+            <OrchestrationView auditId={auditId} />
+          )}
+        </Box>
       </Flex>
 
       {/* Bottom navigation */}
@@ -194,12 +179,12 @@ export function EnumWorkspace({ auditId, onNavigate, onOpenProfile }: EnumWorksp
       >
         <SlideButton
           reversed
-          text="Goto Scope"
-          onComplete={() => onNavigate(`/scope/${auditId}`)}
+          text="Goto Enum"
+          onComplete={() => onNavigate(`/enum/${auditId}`)}
         />
         <SlideButton
-          text="Goto Static Analysis"
-          onComplete={() => onNavigate(`/static-analysis/${auditId}`)}
+          text="Goto Reports"
+          onComplete={() => {}}
         />
       </Flex>
     </Flex>
