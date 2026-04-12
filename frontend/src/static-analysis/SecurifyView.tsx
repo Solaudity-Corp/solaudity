@@ -5,7 +5,7 @@ interface SecurifyViewProps {
   auditId: string
 }
 
-export function SecurifyView({ auditId: _auditId }: SecurifyViewProps) {
+export function SecurifyView(_props: SecurifyViewProps) {
   return (
     <Box
       className={css({

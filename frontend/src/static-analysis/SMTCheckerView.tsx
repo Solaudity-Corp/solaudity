@@ -5,7 +5,7 @@ interface SMTCheckerViewProps {
   auditId: string
 }
 
-export function SMTCheckerView({ auditId: _auditId }: SMTCheckerViewProps) {
+export function SMTCheckerView(_props: SMTCheckerViewProps) {
   return (
     <Box
       className={css({

@@ -5,7 +5,7 @@ interface SlitherViewProps {
   auditId: string
 }
 
-export function SlitherView({ auditId: _auditId }: SlitherViewProps) {
+export function SlitherView(_props: SlitherViewProps) {
   return (
     <Box
       className={css({

@@ -17,7 +17,7 @@ const tools = [
   { name: 'Ethlint', color: 'rgba(180, 140, 255, 0.85)', bg: 'rgba(180, 140, 255, 0.06)', border: 'rgba(180, 140, 255, 0.16)' },
 ]
 
-export function OrchestrationView({ auditId: _auditId }: OrchestrationViewProps) {
+export function OrchestrationView(_props: OrchestrationViewProps) {
   return (
     <Box
       className={css({

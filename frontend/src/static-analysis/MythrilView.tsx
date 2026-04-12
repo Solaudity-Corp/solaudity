@@ -5,7 +5,7 @@ interface MythrilViewProps {
   auditId: string
 }
 
-export function MythrilView({ auditId: _auditId }: MythrilViewProps) {
+export function MythrilView(_props: MythrilViewProps) {
   return (
     <Box
       className={css({

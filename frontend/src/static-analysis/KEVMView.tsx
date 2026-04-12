@@ -5,7 +5,7 @@ interface KEVMViewProps {
   auditId: string
 }
 
-export function KEVMView({ auditId: _auditId }: KEVMViewProps) {
+export function KEVMView(_props: KEVMViewProps) {
   return (
     <Box
       className={css({

@@ -5,7 +5,7 @@ interface AderynViewProps {
   auditId: string
 }
 
-export function AderynView({ auditId: _auditId }: AderynViewProps) {
+export function AderynView(_props: AderynViewProps) {
   return (
     <Box
       className={css({

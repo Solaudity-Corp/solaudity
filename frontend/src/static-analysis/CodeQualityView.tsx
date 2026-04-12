@@ -5,7 +5,7 @@ interface CodeQualityViewProps {
   auditId: string
 }
 
-export function CodeQualityView({ auditId: _auditId }: CodeQualityViewProps) {
+export function CodeQualityView(_props: CodeQualityViewProps) {
   return (
     <Box
       className={css({

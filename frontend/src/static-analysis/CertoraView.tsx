@@ -5,7 +5,7 @@ interface CertoraViewProps {
   auditId: string
 }
 
-export function CertoraView({ auditId: _auditId }: CertoraViewProps) {
+export function CertoraView(_props: CertoraViewProps) {
   return (
     <Box
       className={css({
