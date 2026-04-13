@@ -12,6 +12,7 @@ from app.api.enum.solparsing.router import router as solparsing_router
 from app.api.enum.surya.router import router as surya_router
 from app.api.libraries.router import router as libraries_router
 from app.api.enum.heimdall.router import router as heimdall_router
+from app.api.static_analysis.slither.router import router as slither_router
 
 app = FastAPI()
 
@@ -47,6 +48,7 @@ app.include_router(solparsing_router)
 app.include_router(surya_router)
 app.include_router(libraries_router)
 app.include_router(heimdall_router)
+app.include_router(slither_router)
 
 
 @app.get("/health")
