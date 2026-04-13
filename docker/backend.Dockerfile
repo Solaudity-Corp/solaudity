@@ -61,6 +61,11 @@ COPY requirements.txt .
 RUN pip install --upgrade pip setuptools wheel "jaraco.context>=6.1.1" \
     && pip install -r requirements.txt
 
+# Pre-install common solc versions so Slither can compile without network access at runtime.
+# solc-select is pulled in as a slither-analyzer dependency.
+RUN solc-select install 0.8.28 0.8.20 0.8.17 0.8.0 0.7.6 0.6.12 \
+    && solc-select use 0.8.28
+
 COPY app ./app
 COPY entrypoint.sh .
 RUN chmod +x entrypoint.sh
