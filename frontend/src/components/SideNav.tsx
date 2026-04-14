@@ -5,7 +5,7 @@ import { X, Download, Check, AlertCircle, ChevronRight, ChevronLeft, LayoutGrid,
 import { listLibraries, installLibrary } from '../libraries/librariesApi'
 import type { Library, LibraryStatus } from '../libraries/librariesApi'
 import { listSolcVersions, installSolcVersion } from '../solcVersions/solcVersionsApi'
-import type { SolcVersion, SolcVersionStatus } from '../solcVersions/solcVersionsApi'
+import type { SolcVersion } from '../solcVersions/solcVersionsApi'
 
 const cl = {
   bg: '#111116',
