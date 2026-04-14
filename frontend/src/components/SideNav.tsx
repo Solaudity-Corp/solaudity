@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { css } from 'styled-system/css'
 import { Box, Flex } from 'styled-system/jsx'
-import { X, Download, Check, AlertCircle, ChevronRight, ChevronLeft, LayoutGrid } from 'lucide-react'
+import { X, Download, Check, AlertCircle, ChevronRight, ChevronLeft, LayoutGrid, Cpu } from 'lucide-react'
 import { listLibraries, installLibrary } from '../libraries/librariesApi'
 import type { Library, LibraryStatus } from '../libraries/librariesApi'
+import { listSolcVersions, installSolcVersion } from '../solcVersions/solcVersionsApi'
+import type { SolcVersion, SolcVersionStatus } from '../solcVersions/solcVersionsApi'
 
 const cl = {
   bg: '#111116',
@@ -131,6 +133,50 @@ function LibCard({ lib, onInstall }: { lib: Library; onInstall: (id: string) => 
 }
 
 // ---------------------------------------------------------------------------
+// Solc version row
+// ---------------------------------------------------------------------------
+function SolcVersionRow({ ver, onInstall }: { ver: SolcVersion; onInstall: (v: string) => void }) {
+  const installed = ver.status === 'installed'
+  const installing = ver.status === 'installing'
+  const err = ver.status === 'error'
+
+  return (
+    <Flex align="center" justify="space-between" style={{
+      padding: '7px 10px', borderRadius: 7,
+      background: installed ? 'rgba(88,214,171,0.04)' : 'rgba(255,255,255,0.02)',
+      border: `1px solid ${installed ? cl.accentBorder : cl.cardBorder}`,
+    }}>
+      <span style={{ fontSize: 12, fontFamily: cl.mono, color: installed ? cl.accent : cl.text }}>
+        {ver.version}
+      </span>
+      {installed && <Check size={11} color={cl.accent} strokeWidth={2.5} />}
+      {installing && (
+        <span style={{ display: 'inline-block', animation: 'spin 1s linear infinite', color: cl.muted }}>
+          <Download size={11} strokeWidth={2} />
+        </span>
+      )}
+      {err && <AlertCircle size={11} color="#f85149" strokeWidth={2} />}
+      {!installed && !installing && (
+        <button
+          type="button"
+          onClick={() => onInstall(ver.version)}
+          style={{
+            background: 'transparent', border: 'none', cursor: 'pointer',
+            color: err ? '#f85149' : cl.muted, padding: '2px 4px', borderRadius: 4,
+            fontSize: 10, fontFamily: cl.mono,
+            transition: 'color 0.15s',
+          }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = cl.accent }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = err ? '#f85149' : cl.muted }}
+        >
+          {err ? 'Retry' : 'Install'}
+        </button>
+      )}
+    </Flex>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Main menu item row
 // ---------------------------------------------------------------------------
 function MenuItem({
@@ -180,44 +226,57 @@ interface SideNavProps {
   onClose: () => void
 }
 
-type SubPanel = 'libraries' | 'useful'
+type SubPanel = 'libraries' | 'solcVersions' | 'useful'
 
 export function SideNav({ open, onClose }: SideNavProps) {
   const [subPanel, setSubPanel] = useState<SubPanel | null>(null)
+
+  // Libraries state
   const [libraries, setLibraries] = useState<Library[]>([])
-  const [loading, setLoading] = useState(true)
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const [libLoading, setLibLoading] = useState(true)
+  const [libError, setLibError] = useState<string | null>(null)
+  const libPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  // Solc versions state
+  const [solcVersions, setSolcVersions] = useState<SolcVersion[]>([])
+  const [solcLoading, setSolcLoading] = useState(true)
+  const [solcError, setSolcError] = useState<string | null>(null)
+  const solcPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // Reset to main panel when drawer closes
   useEffect(() => {
     if (!open) setSubPanel(null)
   }, [open])
 
+  // ── Libraries polling ──
   const loadLibs = useCallback(async () => {
     try {
       const libs = await listLibraries()
       setLibraries(libs)
-    } catch { /* ignore */ }
-    finally { setLoading(false) }
+      setLibError(null)
+    } catch (err) {
+      setLibError(err instanceof Error ? err.message : 'Failed to load libraries')
+    } finally {
+      setLibLoading(false)
+    }
   }, [])
 
-  // Poll when libraries sub-panel is open
   useEffect(() => {
     if (!open || subPanel !== 'libraries') {
-      if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
+      if (libPollRef.current) { clearInterval(libPollRef.current); libPollRef.current = null }
       return
     }
-    setLoading(true)
+    setLibLoading(true)
     loadLibs()
-    pollRef.current = setInterval(loadLibs, POLL_MS)
-    return () => { if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null } }
+    libPollRef.current = setInterval(loadLibs, POLL_MS)
+    return () => { if (libPollRef.current) { clearInterval(libPollRef.current); libPollRef.current = null } }
   }, [open, subPanel, loadLibs])
 
   useEffect(() => {
     const any = libraries.some((l) => l.status === 'downloading')
-    if (!any && pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
-    else if (any && !pollRef.current && open && subPanel === 'libraries') {
-      pollRef.current = setInterval(loadLibs, POLL_MS)
+    if (!any && libPollRef.current) { clearInterval(libPollRef.current); libPollRef.current = null }
+    else if (any && !libPollRef.current && open && subPanel === 'libraries') {
+      libPollRef.current = setInterval(loadLibs, POLL_MS)
     }
   }, [libraries, open, subPanel, loadLibs])
 
@@ -227,11 +286,57 @@ export function SideNav({ open, onClose }: SideNavProps) {
       setLibraries((prev) => prev.map((l) => l.id === id ? { ...l, status: 'error' } : l))
       return
     }
-    if (!pollRef.current && open) pollRef.current = setInterval(loadLibs, POLL_MS)
+    if (!libPollRef.current && open) libPollRef.current = setInterval(loadLibs, POLL_MS)
   }, [open, loadLibs])
 
+  // ── Solc versions polling ──
+  const loadSolcVersions = useCallback(async () => {
+    try {
+      const versions = await listSolcVersions()
+      setSolcVersions(versions)
+      setSolcError(null)
+    } catch (err) {
+      setSolcError(err instanceof Error ? err.message : 'Failed to load versions')
+    } finally {
+      setSolcLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!open || subPanel !== 'solcVersions') {
+      if (solcPollRef.current) { clearInterval(solcPollRef.current); solcPollRef.current = null }
+      return
+    }
+    setSolcLoading(true)
+    loadSolcVersions()
+    solcPollRef.current = setInterval(loadSolcVersions, POLL_MS)
+    return () => { if (solcPollRef.current) { clearInterval(solcPollRef.current); solcPollRef.current = null } }
+  }, [open, subPanel, loadSolcVersions])
+
+  useEffect(() => {
+    const any = solcVersions.some((v) => v.status === 'installing')
+    if (!any && solcPollRef.current) { clearInterval(solcPollRef.current); solcPollRef.current = null }
+    else if (any && !solcPollRef.current && open && subPanel === 'solcVersions') {
+      solcPollRef.current = setInterval(loadSolcVersions, POLL_MS)
+    }
+  }, [solcVersions, open, subPanel, loadSolcVersions])
+
+  const handleSolcInstall = useCallback(async (version: string) => {
+    setSolcVersions((prev) => prev.map((v) => v.version === version ? { ...v, status: 'installing' } : v))
+    try { await installSolcVersion(version) } catch {
+      setSolcVersions((prev) => prev.map((v) => v.version === version ? { ...v, status: 'error' } : v))
+      return
+    }
+    if (!solcPollRef.current && open) solcPollRef.current = setInterval(loadSolcVersions, POLL_MS)
+  }, [open, loadSolcVersions])
+
   const downloaded = libraries.filter((l) => l.status === 'downloaded').length
+  const installedSolc = solcVersions.filter((v) => v.status === 'installed').length
   const inSub = subPanel !== null
+
+  const subPanelTitle = subPanel === 'libraries' ? 'Libraries'
+    : subPanel === 'solcVersions' ? 'Sol Versions'
+    : 'Useful'
 
   return (
     <>
@@ -294,12 +399,18 @@ export function SideNav({ open, onClose }: SideNavProps) {
                 sublabel="Manage Solidity libraries"
                 onClick={() => setSubPanel('libraries')}
               />
+              <MenuItem
+                icon={<Cpu size={15} strokeWidth={2} />}
+                label="Sol Versions"
+                sublabel="Install Solidity compiler versions"
+                onClick={() => setSubPanel('solcVersions')}
+              />
             </Box>
           </Box>
 
           {/* ── SUB PANEL ── */}
           <Box style={{ width: 300, flexShrink: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-            {/* Sub-panel header with back button */}
+            {/* Sub-panel header */}
             <Flex align="center" justify="space-between" style={{
               padding: '18px 16px 14px', borderBottom: `1px solid ${cl.border}`, flexShrink: 0,
             }}>
@@ -316,14 +427,17 @@ export function SideNav({ open, onClose }: SideNavProps) {
                 >
                   <ChevronLeft size={13} strokeWidth={2.5} />
                 </button>
-                <span style={{ fontSize: 14, fontWeight: 700, color: cl.text }}>
-                  {subPanel === 'libraries' ? 'Libraries' : 'Useful'}
-                </span>
+                <span style={{ fontSize: 14, fontWeight: 700, color: cl.text }}>{subPanelTitle}</span>
               </Flex>
               <Flex align="center" gap="2">
                 {subPanel === 'libraries' && libraries.length > 0 && (
                   <span style={{ fontSize: 10.5, fontFamily: cl.mono, color: cl.muted }}>
                     {downloaded}/{libraries.length} installed
+                  </span>
+                )}
+                {subPanel === 'solcVersions' && solcVersions.length > 0 && (
+                  <span style={{ fontSize: 10.5, fontFamily: cl.mono, color: cl.muted }}>
+                    {installedSolc}/{solcVersions.length} installed
                   </span>
                 )}
                 <button
@@ -341,6 +455,8 @@ export function SideNav({ open, onClose }: SideNavProps) {
 
             {/* Sub-panel content */}
             <Box style={{ flex: 1, overflowY: 'auto' }}>
+
+              {/* ── Libraries ── */}
               {subPanel === 'libraries' && (
                 <Box style={{ padding: '8px 12px 20px', display: 'flex', flexDirection: 'column', gap: 7 }}>
                   <Box style={{ padding: '6px 4px 2px' }}>
@@ -348,9 +464,18 @@ export function SideNav({ open, onClose }: SideNavProps) {
                       Download Solidity libraries on-demand for import resolution.
                     </span>
                   </Box>
-                  {loading ? (
+                  {libLoading ? (
                     <Flex align="center" justify="center" style={{ height: 100, color: cl.muted, fontSize: 12 }}>
                       Loading…
+                    </Flex>
+                  ) : libError ? (
+                    <Flex align="center" gap="2" style={{
+                      padding: '10px 12px', borderRadius: 8,
+                      background: 'rgba(248,81,73,0.08)', border: '1px solid rgba(248,81,73,0.2)',
+                      color: '#f85149', fontSize: 11.5,
+                    }}>
+                      <AlertCircle size={13} strokeWidth={2} />
+                      <span>{libError}</span>
                     </Flex>
                   ) : libraries.map((lib) => (
                     <LibCard key={lib.id} lib={lib} onInstall={handleInstall} />
@@ -358,9 +483,40 @@ export function SideNav({ open, onClose }: SideNavProps) {
                 </Box>
               )}
 
+              {/* ── Sol Versions ── */}
+              {subPanel === 'solcVersions' && (
+                <Box style={{ padding: '8px 12px 20px', display: 'flex', flexDirection: 'column', gap: 5 }}>
+                  <Box style={{ padding: '6px 4px 2px' }}>
+                    <span style={{ fontSize: 11.5, color: cl.muted, lineHeight: 1.55 }}>
+                      Install solc compiler versions for Slither analysis.
+                    </span>
+                  </Box>
+                  {solcLoading ? (
+                    <Flex align="center" justify="center" style={{ height: 100, color: cl.muted, fontSize: 12 }}>
+                      Loading…
+                    </Flex>
+                  ) : solcError ? (
+                    <Flex align="center" gap="2" style={{
+                      padding: '10px 12px', borderRadius: 8,
+                      background: 'rgba(248,81,73,0.08)', border: '1px solid rgba(248,81,73,0.2)',
+                      color: '#f85149', fontSize: 11.5,
+                    }}>
+                      <AlertCircle size={13} strokeWidth={2} />
+                      <span>{solcError}</span>
+                    </Flex>
+                  ) : (
+                    <Box style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                      {solcVersions.slice().reverse().map((ver) => (
+                        <SolcVersionRow key={ver.version} ver={ver} onInstall={handleSolcInstall} />
+                      ))}
+                    </Box>
+                  )}
+                </Box>
+              )}
+
+              {/* ── Useful ── */}
               {subPanel === 'useful' && (
                 <Box style={{ padding: '12px 12px 24px' }}>
-                  {/* DeFi Protocols */}
                   <Box style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'rgba(88,214,171,0.7)', padding: '0 4px 8px' }}>
                     DeFi Protocols
                   </Box>
@@ -374,20 +530,13 @@ export function SideNav({ open, onClose }: SideNavProps) {
                         <span style={{ fontSize: 13, fontWeight: 500, color: cl.text }}>{item.name}</span>
                         <span style={{
                           fontSize: 10, fontWeight: 600,
-                          color: item.color,
-                          background: `${item.color}1a`,
+                          color: item.color, background: `${item.color}1a`,
                           borderRadius: 4, padding: '2px 6px',
-                        }}>
-                          {item.tag}
-                        </span>
+                        }}>{item.tag}</span>
                       </Flex>
                     ))}
                   </Box>
-
-                  {/* Divider */}
                   <Box style={{ height: 1, background: 'rgba(185,185,189,0.1)', margin: '16px 0' }} />
-
-                  {/* Security Tools */}
                   <Box style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'rgba(255,140,80,0.7)', padding: '0 4px 8px' }}>
                     Security & Pentest
                   </Box>
@@ -401,12 +550,9 @@ export function SideNav({ open, onClose }: SideNavProps) {
                         <span style={{ fontSize: 13, fontWeight: 500, color: cl.text }}>{item.name}</span>
                         <span style={{
                           fontSize: 10, fontWeight: 600,
-                          color: item.color,
-                          background: `${item.color}1a`,
+                          color: item.color, background: `${item.color}1a`,
                           borderRadius: 4, padding: '2px 6px',
-                        }}>
-                          {item.tag}
-                        </span>
+                        }}>{item.tag}</span>
                       </Flex>
                     ))}
                   </Box>

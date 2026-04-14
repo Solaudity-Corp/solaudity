@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useSidebarResize } from '../components/useSidebarResize'
 import {
   ReactFlow,
   Background,
@@ -780,7 +781,7 @@ export function SolaudityView({ auditId }: SolaudityViewProps) {
   const [graphData, setGraphData]   = useState<GraphData | null>(null)
   const [errorMsg, setErrorMsg]     = useState('')
   const [parsing, setParsing]       = useState(false)
-  const [sidebarOpen, setSidebarOpen] = useState(true)
+  const { effectiveWidth, sidebarOpen, setSidebarOpen, isResizing, handleResizerMouseDown } = useSidebarResize()
 
   useEffect(() => {
     let active = true
@@ -827,12 +828,15 @@ export function SolaudityView({ auditId }: SolaudityViewProps) {
     <Flex style={{
       width: '100%', height: 'calc(100vh - 180px)', minHeight: 480,
       border: `1px solid ${c.border}`, borderRadius: 14, overflow: 'hidden', background: c.bg,
+      cursor: isResizing ? 'col-resize' : undefined,
+      userSelect: isResizing ? 'none' : undefined,
     }}>
       {/* Sidebar */}
       <Flex direction="column" style={{
-        width: sidebarOpen ? 220 : 32, flexShrink: 0,
+        width: effectiveWidth, flexShrink: 0,
         borderRight: `1px solid ${c.border}`, background: c.sidebar,
-        transition: 'width 0.2s ease', overflow: 'hidden',
+        transition: isResizing ? 'none' : 'width 0.2s ease', overflow: 'hidden',
+        position: 'relative',
       }}>
         <Flex align="center" justify={sidebarOpen ? 'space-between' : 'center'} style={{
           padding: sidebarOpen ? '10px 8px 6px' : '10px 0 6px',
@@ -865,6 +869,21 @@ export function SolaudityView({ auditId }: SolaudityViewProps) {
                   <TreeItem key={node.path} node={node} depth={0} selectedId={selectedId} onSelect={handleSelect} />
                 ))}
           </Box>
+        )}
+
+        {/* Resize handle */}
+        {sidebarOpen && (
+          <Box
+            onMouseDown={handleResizerMouseDown}
+            title="Drag to resize"
+            style={{
+              position: 'absolute', top: 0, right: -3, width: 6, bottom: 0,
+              cursor: 'col-resize', zIndex: 20,
+              background: isResizing ? 'rgba(88,214,171,0.45)' : 'transparent',
+              transition: 'background 0.15s ease',
+            }}
+            className={css({ _hover: { background: 'rgba(88,214,171,0.35) !important' } })}
+          />
         )}
       </Flex>
 

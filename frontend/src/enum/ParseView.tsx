@@ -1,8 +1,9 @@
 import { createContext, useCallback, useContext, useEffect, useState } from 'react'
 import { css } from 'styled-system/css'
 import { Box, Flex } from 'styled-system/jsx'
+import { useSidebarResize } from '../components/useSidebarResize'
 import {
-  ChevronDown, ChevronRight, File,
+  ChevronDown, ChevronRight, ChevronLeft, File,
   Zap, Database, Radio, Shield,
   AlertTriangle, Cpu, Play,
 } from 'lucide-react'
@@ -481,6 +482,7 @@ export function ParseView({ auditId, onGoToCode }: { auditId: string; onGoToCode
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [reparsing, setReparsing] = useState<Set<string>>(new Set())
+  const { effectiveWidth, sidebarOpen, setSidebarOpen, isResizing, handleResizerMouseDown } = useSidebarResize({ defaultWidth: 280 })
 
   // Group parsed contracts by scope_contract_id
   const defsByFile = new Map<string, ParsedContractRead[]>()
@@ -658,37 +660,87 @@ export function ParseView({ auditId, onGoToCode }: { auditId: string; onGoToCode
       )}
 
       {!loading && scopeContracts.length > 0 && (
-        <Flex gap="0" style={{ height: 'calc(100vh - 280px)', minHeight: 400 }}>
+        <Flex gap="0" style={{
+          height: 'calc(100vh - 280px)', minHeight: 400,
+          cursor: isResizing ? 'col-resize' : undefined,
+          userSelect: isResizing ? 'none' : undefined,
+        }}>
 
-          {/* Left panel — 30% — contract/call tree */}
+          {/* Left panel — resizable — contract/call tree */}
           <Box style={{
-            width: '30%',
+            width: sidebarOpen ? effectiveWidth : 32,
             borderRight: `1px solid ${c.borderSoft}`,
-            paddingRight: 10,
-            overflowY: 'auto',
             flexShrink: 0,
+            overflow: 'hidden',
+            transition: isResizing ? 'none' : 'width 0.2s ease',
+            position: 'relative',
+            display: 'flex',
+            flexDirection: 'column',
           }}>
-            {filteredContracts.length === 0 && (
-              <Box style={{ color: c.textMuted, fontSize: 11, padding: '8px 4px' }}>
-                No contracts match "{search}"
+            {/* Collapse header */}
+            <Flex align="center" justify={sidebarOpen ? 'space-between' : 'center'} style={{
+              padding: sidebarOpen ? '6px 8px 4px' : '6px 0 4px',
+              borderBottom: `1px solid ${c.border}`,
+              flexShrink: 0,
+            }}>
+              {sidebarOpen && (
+                <span style={{ fontSize: 10, fontFamily: c.mono, color: c.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                  Contracts
+                </span>
+              )}
+              <button
+                onClick={() => setSidebarOpen(o => !o)}
+                title={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  width: 20, height: 20, borderRadius: 4, border: 'none',
+                  background: 'transparent', cursor: 'pointer', color: c.textMuted, flexShrink: 0,
+                }}
+              >
+                {sidebarOpen ? <ChevronLeft size={13} /> : <ChevronRight size={13} />}
+              </button>
+            </Flex>
+
+            {sidebarOpen && (
+              <Box style={{ flex: 1, overflowY: 'auto', paddingRight: 10, paddingTop: 4 }}>
+                {filteredContracts.length === 0 && (
+                  <Box style={{ color: c.textMuted, fontSize: 11, padding: '8px 4px' }}>
+                    No contracts match "{search}"
+                  </Box>
+                )}
+                {filteredContracts.map(sc => (
+                  <LeftFileRow
+                    key={sc.id}
+                    sc={sc}
+                    definitions={defsByFile.get(sc.id) ?? []}
+                    expandedFiles={expandedFiles}
+                    selectedPcId={selectedPcId}
+                    reparsing={reparsing.has(sc.id)}
+                    onToggleFile={handleToggleFile}
+                    onSelectContract={handleSelectContract}
+                    onParse={handleParse}
+                  />
+                ))}
               </Box>
             )}
-            {filteredContracts.map(sc => (
-              <LeftFileRow
-                key={sc.id}
-                sc={sc}
-                definitions={defsByFile.get(sc.id) ?? []}
-                expandedFiles={expandedFiles}
-                selectedPcId={selectedPcId}
-                reparsing={reparsing.has(sc.id)}
-                onToggleFile={handleToggleFile}
-                onSelectContract={handleSelectContract}
-                onParse={handleParse}
+
+            {/* Resize handle */}
+            {sidebarOpen && (
+              <Box
+                onMouseDown={handleResizerMouseDown}
+                title="Drag to resize"
+                style={{
+                  position: 'absolute', top: 0, right: -3, width: 6, bottom: 0,
+                  cursor: 'col-resize', zIndex: 20,
+                  background: isResizing ? 'rgba(88,214,171,0.45)' : 'transparent',
+                  transition: 'background 0.15s ease',
+                }}
+                className={css({ _hover: { background: 'rgba(88,214,171,0.35) !important' } })}
               />
-            ))}
+            )}
           </Box>
 
-          {/* Right panel — 70% — parsed details */}
+          {/* Right panel — parsed details */}
           <Box style={{
             flex: 1,
             paddingLeft: 16,

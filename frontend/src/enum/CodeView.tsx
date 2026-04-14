@@ -224,6 +224,10 @@ function TreeItem({ node, depth, selectedId, onSelect }: TreeItemProps) {
 // ---------------------------------------------------------------------------
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error'
 const AUTOSAVE_DELAY = 800
+const SIDEBAR_MIN_W = 140
+const SIDEBAR_MAX_W = 500
+const SIDEBAR_DEFAULT_W = 220
+const SIDEBAR_COLLAPSED_W = 32
 
 export type JumpTarget = { contractId: string; line: number } | null
 
@@ -247,6 +251,11 @@ export function CodeView({ auditId, jumpTo, onJumpHandled }: CodeViewProps) {
   const [loadingContent, setLoadingContent] = useState(false)
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle')
   const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_DEFAULT_W)
+  const isDragging = useRef(false)
+  const dragStartX = useRef(0)
+  const dragStartWidth = useRef(0)
+  const [isResizing, setIsResizing] = useState(false)
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastSavedContent = useRef('')
@@ -408,6 +417,31 @@ export function CodeView({ auditId, jumpTo, onJumpHandled }: CodeViewProps) {
     }, AUTOSAVE_DELAY)
   }, [])
 
+  const handleResizerMouseDown = useCallback((e: React.MouseEvent) => {
+    if (!sidebarOpen) return
+    e.preventDefault()
+    isDragging.current = true
+    dragStartX.current = e.clientX
+    dragStartWidth.current = sidebarWidth
+    setIsResizing(true)
+
+    const onMouseMove = (ev: MouseEvent) => {
+      if (!isDragging.current) return
+      const delta = ev.clientX - dragStartX.current
+      setSidebarWidth(Math.max(SIDEBAR_MIN_W, Math.min(SIDEBAR_MAX_W, dragStartWidth.current + delta)))
+    }
+
+    const onMouseUp = () => {
+      isDragging.current = false
+      setIsResizing(false)
+      document.removeEventListener('mousemove', onMouseMove)
+      document.removeEventListener('mouseup', onMouseUp)
+    }
+
+    document.addEventListener('mousemove', onMouseMove)
+    document.addEventListener('mouseup', onMouseUp)
+  }, [sidebarOpen, sidebarWidth])
+
   const handleMount = useCallback((editor: Monaco.editor.IStandaloneCodeEditor) => {
     editorRef.current = editor
   }, [])
@@ -458,18 +492,21 @@ export function CodeView({ auditId, jumpTo, onJumpHandled }: CodeViewProps) {
         borderRadius: 14,
         overflow: 'hidden',
         background: c.bg,
+        cursor: isResizing ? 'col-resize' : undefined,
+        userSelect: isResizing ? 'none' : undefined,
       }}
     >
       {/* Sidebar */}
       <Flex
         direction="column"
         style={{
-          width: sidebarOpen ? 220 : 32,
+          width: sidebarOpen ? sidebarWidth : SIDEBAR_COLLAPSED_W,
           flexShrink: 0,
           borderRight: `1px solid ${c.border}`,
           background: c.sidebar,
-          transition: 'width 0.2s ease',
+          transition: isResizing ? 'none' : 'width 0.2s ease',
           overflow: 'hidden',
+          position: 'relative',
         }}
       >
         <Flex
@@ -517,6 +554,26 @@ export function CodeView({ auditId, jumpTo, onJumpHandled }: CodeViewProps) {
               ))
             )}
           </Box>
+        )}
+
+        {/* Resize handle */}
+        {sidebarOpen && (
+          <Box
+            onMouseDown={handleResizerMouseDown}
+            title="Drag to resize"
+            style={{
+              position: 'absolute',
+              top: 0,
+              right: -3,
+              width: 6,
+              bottom: 0,
+              cursor: 'col-resize',
+              zIndex: 20,
+              background: isResizing ? 'rgba(88,214,171,0.45)' : 'transparent',
+              transition: 'background 0.15s ease',
+            }}
+            className={css({ _hover: { background: 'rgba(88,214,171,0.35) !important' } })}
+          />
         )}
       </Flex>
 

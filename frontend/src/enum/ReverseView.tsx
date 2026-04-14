@@ -3,9 +3,10 @@ import Editor, { useMonaco } from '@monaco-editor/react'
 import type * as Monaco from 'monaco-editor'
 import { css } from 'styled-system/css'
 import { Box, Flex } from 'styled-system/jsx'
+import { useSidebarResize } from '../components/useSidebarResize'
 import {
   Cpu, Code2, FileCode, List, RefreshCw,
-  ChevronDown, ChevronRight, AlertCircle, GitBranch,
+  ChevronDown, ChevronRight, ChevronLeft, AlertCircle, GitBranch,
 } from 'lucide-react'
 import { ProcessingOverlay } from '../components/ProcessingOverlay'
 import * as scopeApi from '../scope/api'
@@ -1002,6 +1003,7 @@ export function ReverseView({ auditId }: { auditId: string }) {
   const [decompiling, setDecompiling]         = useState(false)
   const [decompileResult, setDecompileResult] = useState<heimdall.DecompileResult | null>(null)
   const [decompileError, setDecompileError]   = useState<string | null>(null)
+  const { effectiveWidth, sidebarOpen, setSidebarOpen, isResizing, handleResizerMouseDown } = useSidebarResize({ defaultWidth: 240 })
 
   // Load on-chain addresses
   useEffect(() => {
@@ -1076,15 +1078,71 @@ export function ReverseView({ auditId }: { auditId: string }) {
       )}
 
       {!loadingList && addresses.length > 0 && (
-        <Flex gap="0" style={{ height: 'calc(100vh - 280px)', minHeight: 500 }}>
+        <Flex gap="0" style={{
+          height: 'calc(100vh - 280px)', minHeight: 500,
+          cursor: isResizing ? 'col-resize' : undefined,
+          userSelect: isResizing ? 'none' : undefined,
+        }}>
 
           {/* ── Left panel ── */}
-          <Box style={{ width: '22%', borderRight: `1px solid ${c.borderSoft}`, paddingRight: 10, flexShrink: 0 }}>
-            <AddressPanel
-              addresses={addresses}
-              selectedId={selected?.id ?? null}
-              onSelect={handleSelectAddress}
-            />
+          <Box style={{
+            width: sidebarOpen ? effectiveWidth : 32,
+            borderRight: `1px solid ${c.borderSoft}`,
+            flexShrink: 0,
+            overflow: 'hidden',
+            transition: isResizing ? 'none' : 'width 0.2s ease',
+            position: 'relative',
+            display: 'flex',
+            flexDirection: 'column',
+          }}>
+            {/* Collapse header */}
+            <Flex align="center" justify={sidebarOpen ? 'space-between' : 'center'} style={{
+              padding: sidebarOpen ? '6px 8px 4px' : '6px 0 4px',
+              borderBottom: `1px solid ${c.borderSoft}`,
+              flexShrink: 0,
+            }}>
+              {sidebarOpen && (
+                <span style={{ fontSize: 10, fontFamily: c.mono, color: c.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                  Addresses
+                </span>
+              )}
+              <button
+                onClick={() => setSidebarOpen(o => !o)}
+                title={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  width: 20, height: 20, borderRadius: 4, border: 'none',
+                  background: 'transparent', cursor: 'pointer', color: c.textMuted, flexShrink: 0,
+                }}
+              >
+                {sidebarOpen ? <ChevronLeft size={13} /> : <ChevronRight size={13} />}
+              </button>
+            </Flex>
+
+            {sidebarOpen && (
+              <Box style={{ flex: 1, overflowY: 'auto', paddingRight: 10, paddingTop: 4 }}>
+                <AddressPanel
+                  addresses={addresses}
+                  selectedId={selected?.id ?? null}
+                  onSelect={handleSelectAddress}
+                />
+              </Box>
+            )}
+
+            {/* Resize handle */}
+            {sidebarOpen && (
+              <Box
+                onMouseDown={handleResizerMouseDown}
+                title="Drag to resize"
+                style={{
+                  position: 'absolute', top: 0, right: -3, width: 6, bottom: 0,
+                  cursor: 'col-resize', zIndex: 20,
+                  background: isResizing ? 'rgba(88,214,171,0.45)' : 'transparent',
+                  transition: 'background 0.15s ease',
+                }}
+                className={css({ _hover: { background: 'rgba(88,214,171,0.35) !important' } })}
+              />
+            )}
           </Box>
 
           {/* ── Right panel ── */}

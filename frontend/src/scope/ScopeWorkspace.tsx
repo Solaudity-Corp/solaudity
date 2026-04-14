@@ -1163,7 +1163,7 @@ export default function ScopeWorkspace({ auditId, onNavigate, onOpenProfile }: S
                 journeyItems={[
                     { label: 'Scope', isCurrent: true },
                     { label: 'Enum', onClick: () => onNavigate(`/enum/${auditId}`) },
-                    { label: 'Static Analysis' },
+                    { label: 'Static Analysis', onClick: () => onNavigate(`/static-analysis/${auditId}`) },
                 ]}
             />
 
