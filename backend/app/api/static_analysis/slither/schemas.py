@@ -5,7 +5,7 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
-from app.models.slither import SlitherConfidence, SlitherImpact, SlitherStatus
+from app.models.slither import SlitherConfidence, SlitherImpact, SlitherPreset, SlitherStatus
 
 
 # ---------------------------------------------------------------------------
@@ -37,6 +37,7 @@ class SlitherRunRead(BaseModel):
     id: UUID
     audit_id: UUID
     scope_contract_id: UUID
+    preset: SlitherPreset
     status: SlitherStatus
     slither_version: str | None
     exit_code: int | None

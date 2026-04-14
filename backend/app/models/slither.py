@@ -16,6 +16,14 @@ def utcnow() -> datetime:
 # Enums
 # ---------------------------------------------------------------------------
 
+class SlitherPreset(str, Enum):
+    all            = "all"             # all detectors (default)
+    high_medium    = "high_medium"     # --exclude-optimization --exclude-informational --exclude-low
+    reentrancy     = "reentrancy"      # reentrancy family only
+    access_control = "access_control"  # tx-origin, suicidal, unprotected-upgrade, arbitrary-send-eth
+    code_quality   = "code_quality"    # naming-convention, dead-code, unused-state, unused-return
+
+
 class SlitherStatus(str, Enum):
     pending = "pending"   # created, not yet dispatched
     running = "running"   # subprocess in progress
@@ -55,6 +63,15 @@ class SlitherRun(SQLModel, table=True):
     # The single .sol file that was analysed
     scope_contract_id: UUID = Field(
         foreign_key="scope_contracts.id", nullable=False, index=True
+    )
+
+    preset: SlitherPreset = Field(
+        default=SlitherPreset.all,
+        sa_column=sa.Column(
+            sa.Enum(SlitherPreset, name="slither_preset", native_enum=False),
+            nullable=False,
+            server_default=sa.text("'all'"),
+        ),
     )
 
     status: SlitherStatus = Field(
