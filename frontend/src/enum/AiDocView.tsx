@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useSidebarResize } from '../components/useSidebarResize'
 import Editor, { useMonaco } from '@monaco-editor/react'
 import type * as Monaco from 'monaco-editor'
 import { css } from 'styled-system/css'
@@ -299,7 +300,7 @@ export function AiDocView({ auditId, onNavigateView }: AiDocViewProps) {
   const [loadingList, setLoadingList] = useState(true)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [loadingContent, setLoadingContent] = useState(false)
-  const [sidebarOpen, setSidebarOpen] = useState(true)
+  const { effectiveWidth, sidebarOpen, setSidebarOpen, isResizing, handleResizerMouseDown } = useSidebarResize()
 
   // Addresses
   const [addresses, setAddresses] = useState<ScopeAddress[]>([])
@@ -541,6 +542,8 @@ export function AiDocView({ auditId, onNavigateView }: AiDocViewProps) {
       borderRadius: 14,
       overflow: 'hidden',
       background: c.bg,
+      cursor: isResizing ? 'col-resize' : undefined,
+      userSelect: isResizing ? 'none' : undefined,
     }}>
 
       {/* ── LEFT HALF: sidebar + code ─────────────────────────────────────── */}
@@ -548,12 +551,13 @@ export function AiDocView({ auditId, onNavigateView }: AiDocViewProps) {
 
         {/* Sidebar */}
         <Flex direction="column" style={{
-          width: sidebarOpen ? 220 : 32,
+          width: effectiveWidth,
           flexShrink: 0,
           borderRight: `1px solid ${c.border}`,
           background: c.sidebar,
-          transition: 'width 0.2s ease',
+          transition: isResizing ? 'none' : 'width 0.2s ease',
           overflow: 'hidden',
+          position: 'relative',
         }}>
           <Flex align="center" justify={sidebarOpen ? 'space-between' : 'center'} style={{
             padding: sidebarOpen ? '10px 8px 6px' : '10px 0 6px',
@@ -645,6 +649,21 @@ export function AiDocView({ auditId, onNavigateView }: AiDocViewProps) {
                 </Box>
               )}
             </>
+          )}
+
+          {/* Resize handle */}
+          {sidebarOpen && (
+            <Box
+              onMouseDown={handleResizerMouseDown}
+              title="Drag to resize"
+              style={{
+                position: 'absolute', top: 0, right: -3, width: 6, bottom: 0,
+                cursor: 'col-resize', zIndex: 20,
+                background: isResizing ? 'rgba(88,214,171,0.45)' : 'transparent',
+                transition: 'background 0.15s ease',
+              }}
+              className={css({ _hover: { background: 'rgba(88,214,171,0.35) !important' } })}
+            />
           )}
         </Flex>
 

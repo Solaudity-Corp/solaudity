@@ -60,9 +60,27 @@ export default function App() {
       setIsAuthenticated(hasAccessToken())
     }
 
+    // Catch token removal from other tabs or manual localStorage edits
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === 'solaudity_access_token') {
+        setIsAuthenticated(hasAccessToken())
+      }
+    }
+
+    // Re-check auth when the user returns to the tab
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        setIsAuthenticated(hasAccessToken())
+      }
+    }
+
     window.addEventListener('popstate', onPopState)
+    window.addEventListener('storage', onStorage)
+    document.addEventListener('visibilitychange', onVisibilityChange)
     return () => {
       window.removeEventListener('popstate', onPopState)
+      window.removeEventListener('storage', onStorage)
+      document.removeEventListener('visibilitychange', onVisibilityChange)
     }
   }, [navigate])
 
