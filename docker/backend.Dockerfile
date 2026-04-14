@@ -3,10 +3,12 @@ FROM python:3.13-slim-trixie
 
 WORKDIR /app
 
-# Install Node.js for Solidity analysis tooling
-RUN apt-get update \
+# Install Node.js for Solidity analysis tooling.
+# Also enable amd64 multi-arch so solc-select's x86_64 binaries run via QEMU on ARM64 hosts.
+RUN dpkg --add-architecture amd64 \
+    && apt-get update \
     && apt-get full-upgrade -y \
-    && apt-get install -y --no-install-recommends curl ca-certificates \
+    && apt-get install -y --no-install-recommends curl ca-certificates libc6:amd64 \
     && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get update \
     && apt-get install -y --no-install-recommends nodejs \
@@ -43,8 +45,8 @@ RUN mkdir -p /usr/local/sol-libs/node_modules \
     && rm -rf /tmp/ds-test-master \
     && curl -sL https://github.com/Vectorized/solady/archive/refs/heads/main.tar.gz \
        | tar xz -C /tmp/ \
-    && cp -r /tmp/solady-main/test /usr/local/sol-libs/node_modules/@solady/ \
-    && cp -r /tmp/solady-main/test /usr/local/sol-libs/node_modules/solady/ \
+    && cp -r /tmp/solady-main/. /usr/local/sol-libs/node_modules/@solady/ \
+    && cp -r /tmp/solady-main/. /usr/local/sol-libs/node_modules/solady/ \
     && rm -rf /tmp/solady-main
 
 
@@ -61,10 +63,18 @@ COPY requirements.txt .
 RUN pip install --upgrade pip setuptools wheel "jaraco.context>=6.1.1" \
     && pip install -r requirements.txt
 
+# solc-select stores compiler binaries in SOLC_SELECT_ARTIFACTS_FOLDER.
+# Without this it defaults to ~/.solc-select which resolves to /.solc-select
+# inside containers that run without a real home dir — causing PermissionError.
+# Use a world-accessible home so solc-select works for any runtime user.
+# /root has 700 perms — non-root users can't traverse it regardless of subdir perms.
+RUN mkdir -p /opt/solc-home && chmod 777 /opt/solc-home
+ENV HOME=/opt/solc-home
+
 # Pre-install common solc versions so Slither can compile without network access at runtime.
-# solc-select is pulled in as a slither-analyzer dependency.
 RUN solc-select install 0.8.28 0.8.20 0.8.17 0.8.0 0.7.6 0.6.12 \
-    && solc-select use 0.8.28
+    && solc-select use 0.8.28 \
+    && chmod -R 777 /opt/solc-home/.solc-select
 
 COPY app ./app
 COPY entrypoint.sh .
