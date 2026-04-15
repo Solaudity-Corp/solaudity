@@ -15,8 +15,8 @@ const c = {
   panel: 'rgba(24, 24, 29, 0.82)',
   border: 'rgba(185, 185, 189, 0.14)',
   borderSoft: 'rgba(185, 185, 189, 0.22)',
-  accent: '#58D6AB',
-  accentFaint: 'rgba(88, 214, 171, 0.08)',
+  accent: '#b48cff',
+  accentFaint: 'rgba(180, 140, 255, 0.08)',
   text: 'rgba(231, 228, 239, 0.91)',
   textSub: 'rgba(231, 228, 239, 0.72)',
   muted: 'rgba(185, 185, 193, 0.55)',
@@ -89,7 +89,7 @@ function FileTreeItem({ node, depth, selectedId, onSelect }: FileTreeItemProps) 
           paddingLeft: `${8 + depth * 14}px`,
           paddingTop: 4, paddingBottom: 4, paddingRight: 6,
           cursor: 'pointer', borderRadius: 4,
-          background: isSelected ? 'rgba(88,214,171,0.10)' : 'transparent',
+          background: isSelected ? 'rgba(180,140,255,0.10)' : 'transparent',
           fontSize: 11, fontFamily: c.mono, userSelect: 'none',
         }}
         className={css({ _hover: { background: 'rgba(255,255,255,0.05)' } })}
@@ -98,7 +98,7 @@ function FileTreeItem({ node, depth, selectedId, onSelect }: FileTreeItemProps) 
         <div style={{
           width: 10, height: 10, borderRadius: '50%', flexShrink: 0,
           border: `1.5px solid ${isSelected ? c.accent : 'rgba(185,185,189,0.3)'}`,
-          background: isSelected ? 'rgba(88,214,171,0.2)' : 'transparent',
+          background: isSelected ? 'rgba(180,140,255,0.2)' : 'transparent',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           transition: 'all 0.12s',
         }}>
@@ -309,8 +309,8 @@ function RunEntry({ run, isSelected, onSelect, onDelete }: {
   return (
     <Flex direction="column" gap="1" onClick={onSelect} style={{
       padding: '7px 10px', cursor: 'pointer', borderRadius: 6,
-      background: isSelected ? 'rgba(88,214,171,0.07)' : 'transparent',
-      border: `1px solid ${isSelected ? 'rgba(88,214,171,0.2)' : 'transparent'}`,
+      background: isSelected ? 'rgba(180,140,255,0.07)' : 'transparent',
+      border: `1px solid ${isSelected ? 'rgba(180,140,255,0.2)' : 'transparent'}`,
       userSelect: 'none',
     }}
     className={css({ _hover: { background: 'rgba(255,255,255,0.04)' } })}
@@ -453,7 +453,7 @@ export function SlitherView({ auditId }: SlitherViewProps) {
           target="_blank"
           rel="noopener noreferrer"
           style={{ fontSize: 10, color: c.muted, fontFamily: c.mono, textDecoration: 'none' }}
-          className={css({ _hover: { color: 'rgba(88,214,171,0.8)', textDecoration: 'underline' } })}
+          className={css({ _hover: { color: 'rgba(180,140,255,0.8)', textDecoration: 'underline' } })}
         >
           powered by Trail of Bits
         </a>
@@ -557,10 +557,10 @@ export function SlitherView({ auditId }: SlitherViewProps) {
               style={{
                 position: 'absolute', top: 0, right: -3, width: 6, bottom: 0,
                 cursor: 'col-resize', zIndex: 20,
-                background: isResizing ? 'rgba(88,214,171,0.45)' : 'transparent',
+                background: isResizing ? 'rgba(180,140,255,0.45)' : 'transparent',
                 transition: 'background 0.15s ease',
               }}
-              className={css({ _hover: { background: 'rgba(88,214,171,0.35) !important' } })}
+              className={css({ _hover: { background: 'rgba(180,140,255,0.35) !important' } })}
             />
           )}
         </Flex>{/* end left panel */}
@@ -617,9 +617,9 @@ export function SlitherView({ auditId }: SlitherViewProps) {
                 padding: '5px 14px', borderRadius: 7, fontSize: 11, fontWeight: 600,
                 fontFamily: c.mono,
                 cursor: running || !selectedContractId ? 'not-allowed' : 'pointer',
-                color: running || !selectedContractId ? 'rgba(88,214,171,0.35)' : c.accent,
-                background: running || !selectedContractId ? 'rgba(88,214,171,0.04)' : c.accentFaint,
-                border: `1px solid ${running || !selectedContractId ? 'rgba(88,214,171,0.12)' : 'rgba(88,214,171,0.3)'}`,
+                color: running || !selectedContractId ? 'rgba(180,140,255,0.35)' : c.accent,
+                background: running || !selectedContractId ? 'rgba(180,140,255,0.04)' : c.accentFaint,
+                border: `1px solid ${running || !selectedContractId ? 'rgba(180,140,255,0.12)' : 'rgba(88,214,171,0.3)'}`,
                 transition: 'all 0.15s',
               }}
             >

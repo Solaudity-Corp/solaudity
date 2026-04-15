@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { css } from 'styled-system/css'
 import { Box, Flex } from 'styled-system/jsx'
-import { X, Download, Check, AlertCircle, ChevronRight, ChevronLeft, LayoutGrid, Cpu } from 'lucide-react'
+import { X, Download, Check, AlertCircle, ChevronRight, ChevronLeft, LayoutGrid, Cpu, Wrench } from 'lucide-react'
 import { listLibraries, installLibrary } from '../libraries/librariesApi'
 import type { Library, LibraryStatus } from '../libraries/librariesApi'
 import { listSolcVersions, installSolcVersion } from '../solcVersions/solcVersionsApi'
 import type { SolcVersion } from '../solcVersions/solcVersionsApi'
+import { listTools, installTool } from '../tools/toolsApi'
+import type { Tool, ToolStatus } from '../tools/toolsApi'
 
 const cl = {
   bg: '#111116',
@@ -177,6 +179,97 @@ function SolcVersionRow({ ver, onInstall }: { ver: SolcVersion; onInstall: (v: s
 }
 
 // ---------------------------------------------------------------------------
+// Tool status badge
+// ---------------------------------------------------------------------------
+function ToolBadge({ status }: { status: ToolStatus }) {
+  if (status === 'installed') return (
+    <Flex align="center" gap="1" style={{ color: cl.accent, fontSize: 10.5, fontFamily: cl.mono }}>
+      <Check size={10} strokeWidth={2.5} /><span>Installed</span>
+    </Flex>
+  )
+  if (status === 'installing') return (
+    <Flex align="center" gap="1" style={{ color: '#ff8c50', fontSize: 10.5, fontFamily: cl.mono }}>
+      <span style={{ display: 'inline-block', animation: 'spin 1s linear infinite' }}>
+        <Download size={10} strokeWidth={2} />
+      </span>
+      <span>Installing…</span>
+    </Flex>
+  )
+  if (status === 'error') return (
+    <Flex align="center" gap="1" style={{ color: '#f85149', fontSize: 10.5, fontFamily: cl.mono }}>
+      <AlertCircle size={10} strokeWidth={2} /><span>Error</span>
+    </Flex>
+  )
+  return null
+}
+
+// ---------------------------------------------------------------------------
+// Tool card
+// ---------------------------------------------------------------------------
+function ToolCard({ tool, onInstall }: { tool: Tool; onInstall: (id: string) => void }) {
+  const busy = tool.status === 'installing'
+  const done = tool.status === 'installed'
+  const tagColor = '#ff8c50'
+  return (
+    <Box style={{
+      background: cl.card,
+      border: `1px solid ${done ? cl.accentBorder : cl.cardBorder}`,
+      borderRadius: 9, padding: '10px 12px',
+      display: 'flex', flexDirection: 'column', gap: 5,
+      transition: 'border-color 0.2s',
+    }}>
+      <Flex align="center" justify="space-between" gap="2">
+        <Flex align="center" gap="2">
+          <span style={{
+            fontSize: 9.5, fontWeight: 700, letterSpacing: '0.06em',
+            color: tagColor, background: `${tagColor}1a`,
+            borderRadius: 4, padding: '1px 6px', fontFamily: cl.mono,
+          }}>{tool.tag}</span>
+          <span style={{ fontSize: 12.5, fontWeight: 600, color: cl.text, fontFamily: cl.mono }}>
+            {tool.name}
+          </span>
+        </Flex>
+        <ToolBadge status={tool.status} />
+      </Flex>
+      <span style={{ fontSize: 11, color: cl.muted, lineHeight: 1.5 }}>{tool.description}</span>
+      {!done && (
+        <button
+          type="button" disabled={busy} onClick={() => onInstall(tool.id)}
+          className={css({
+            alignSelf: 'flex-start', px: '3', py: '0.5', borderRadius: '5px',
+            fontSize: '10.5px', fontWeight: '600', cursor: busy ? 'not-allowed' : 'pointer',
+            transition: 'all 0.15s ease', border: '1px solid',
+          })}
+          style={{
+            background: busy ? 'rgba(255,140,80,0.04)' : 'rgba(255,140,80,0.09)',
+            borderColor: busy ? 'rgba(255,140,80,0.1)' : 'rgba(255,140,80,0.28)',
+            color: busy ? cl.muted : tagColor,
+            opacity: busy ? 0.7 : 1, fontFamily: cl.mono,
+          }}
+        >
+          {busy ? 'Installing…' : tool.status === 'error' ? 'Retry' : 'Install'}
+        </button>
+      )}
+      {busy && (
+        <span style={{ fontSize: 10.5, color: cl.muted, fontFamily: cl.mono, lineHeight: 1.5 }}>
+          This may take 15–30 min on ARM64 Linux (z3 compiles from source).
+        </span>
+      )}
+      {tool.status === 'error' && tool.error_message && (
+        <span style={{
+          fontSize: 10, color: '#f85149', fontFamily: cl.mono, lineHeight: 1.5,
+          padding: '5px 8px', borderRadius: 5,
+          background: 'rgba(248,81,73,0.07)', border: '1px solid rgba(248,81,73,0.18)',
+          wordBreak: 'break-word',
+        }}>
+          {tool.error_message}
+        </span>
+      )}
+    </Box>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Main menu item row
 // ---------------------------------------------------------------------------
 function MenuItem({
@@ -224,12 +317,18 @@ function MenuItem({
 interface SideNavProps {
   open: boolean
   onClose: () => void
+  openToPanel?: SubPanel | null
 }
 
-type SubPanel = 'libraries' | 'solcVersions' | 'useful'
+export type SubPanel = 'libraries' | 'solcVersions' | 'tools' | 'useful'
 
-export function SideNav({ open, onClose }: SideNavProps) {
+export function SideNav({ open, onClose, openToPanel }: SideNavProps) {
   const [subPanel, setSubPanel] = useState<SubPanel | null>(null)
+
+  // When caller requests a specific panel, jump straight to it.
+  useEffect(() => {
+    if (open && openToPanel) setSubPanel(openToPanel)
+  }, [open, openToPanel])
 
   // Libraries state
   const [libraries, setLibraries] = useState<Library[]>([])
@@ -242,6 +341,12 @@ export function SideNav({ open, onClose }: SideNavProps) {
   const [solcLoading, setSolcLoading] = useState(true)
   const [solcError, setSolcError] = useState<string | null>(null)
   const solcPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  // Tools state
+  const [tools, setTools] = useState<Tool[]>([])
+  const [toolsLoading, setToolsLoading] = useState(true)
+  const [toolsError, setToolsError] = useState<string | null>(null)
+  const toolsPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // Reset to main panel when drawer closes
   useEffect(() => {
@@ -330,12 +435,55 @@ export function SideNav({ open, onClose }: SideNavProps) {
     if (!solcPollRef.current && open) solcPollRef.current = setInterval(loadSolcVersions, POLL_MS)
   }, [open, loadSolcVersions])
 
+  // ── Tools polling ──
+  const loadTools = useCallback(async () => {
+    try {
+      const data = await listTools()
+      setTools(data)
+      setToolsError(null)
+    } catch (err) {
+      setToolsError(err instanceof Error ? err.message : 'Failed to load tools')
+    } finally {
+      setToolsLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!open || subPanel !== 'tools') {
+      if (toolsPollRef.current) { clearInterval(toolsPollRef.current); toolsPollRef.current = null }
+      return
+    }
+    setToolsLoading(true)
+    loadTools()
+    toolsPollRef.current = setInterval(loadTools, POLL_MS)
+    return () => { if (toolsPollRef.current) { clearInterval(toolsPollRef.current); toolsPollRef.current = null } }
+  }, [open, subPanel, loadTools])
+
+  useEffect(() => {
+    const any = tools.some((t) => t.status === 'installing')
+    if (!any && toolsPollRef.current) { clearInterval(toolsPollRef.current); toolsPollRef.current = null }
+    else if (any && !toolsPollRef.current && open && subPanel === 'tools') {
+      toolsPollRef.current = setInterval(loadTools, POLL_MS)
+    }
+  }, [tools, open, subPanel, loadTools])
+
+  const handleToolInstall = useCallback(async (id: string) => {
+    setTools((prev) => prev.map((t) => t.id === id ? { ...t, status: 'installing' } : t))
+    try { await installTool(id) } catch {
+      setTools((prev) => prev.map((t) => t.id === id ? { ...t, status: 'error' } : t))
+      return
+    }
+    if (!toolsPollRef.current && open) toolsPollRef.current = setInterval(loadTools, POLL_MS)
+  }, [open, loadTools])
+
   const downloaded = libraries.filter((l) => l.status === 'downloaded').length
   const installedSolc = solcVersions.filter((v) => v.status === 'installed').length
+  const installedTools = tools.filter((t) => t.status === 'installed').length
   const inSub = subPanel !== null
 
   const subPanelTitle = subPanel === 'libraries' ? 'Libraries'
     : subPanel === 'solcVersions' ? 'Sol Versions'
+    : subPanel === 'tools' ? 'Tools'
     : 'Useful'
 
   return (
@@ -405,6 +553,12 @@ export function SideNav({ open, onClose }: SideNavProps) {
                 sublabel="Install Solidity compiler versions"
                 onClick={() => setSubPanel('solcVersions')}
               />
+              <MenuItem
+                icon={<Wrench size={15} strokeWidth={2} />}
+                label="Tools"
+                sublabel="Install analysis tools (Mythril, …)"
+                onClick={() => setSubPanel('tools')}
+              />
             </Box>
           </Box>
 
@@ -438,6 +592,11 @@ export function SideNav({ open, onClose }: SideNavProps) {
                 {subPanel === 'solcVersions' && solcVersions.length > 0 && (
                   <span style={{ fontSize: 10.5, fontFamily: cl.mono, color: cl.muted }}>
                     {installedSolc}/{solcVersions.length} installed
+                  </span>
+                )}
+                {subPanel === 'tools' && tools.length > 0 && (
+                  <span style={{ fontSize: 10.5, fontFamily: cl.mono, color: cl.muted }}>
+                    {installedTools}/{tools.length} installed
                   </span>
                 )}
                 <button
@@ -511,6 +670,33 @@ export function SideNav({ open, onClose }: SideNavProps) {
                       ))}
                     </Box>
                   )}
+                </Box>
+              )}
+
+              {/* ── Tools ── */}
+              {subPanel === 'tools' && (
+                <Box style={{ padding: '8px 12px 20px', display: 'flex', flexDirection: 'column', gap: 7 }}>
+                  <Box style={{ padding: '6px 4px 2px' }}>
+                    <span style={{ fontSize: 11.5, color: cl.muted, lineHeight: 1.55 }}>
+                      Install heavyweight analysis tools on-demand to keep Docker build times short.
+                    </span>
+                  </Box>
+                  {toolsLoading ? (
+                    <Flex align="center" justify="center" style={{ height: 100, color: cl.muted, fontSize: 12 }}>
+                      Loading…
+                    </Flex>
+                  ) : toolsError ? (
+                    <Flex align="center" gap="2" style={{
+                      padding: '10px 12px', borderRadius: 8,
+                      background: 'rgba(248,81,73,0.08)', border: '1px solid rgba(248,81,73,0.2)',
+                      color: '#f85149', fontSize: 11.5,
+                    }}>
+                      <AlertCircle size={13} strokeWidth={2} />
+                      <span>{toolsError}</span>
+                    </Flex>
+                  ) : tools.map((tool) => (
+                    <ToolCard key={tool.id} tool={tool} onInstall={handleToolInstall} />
+                  ))}
                 </Box>
               )}
 
