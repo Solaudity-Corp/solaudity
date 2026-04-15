@@ -9,6 +9,7 @@ RUN dpkg --add-architecture amd64 \
     && apt-get update \
     && apt-get full-upgrade -y \
     && apt-get install -y --no-install-recommends curl ca-certificates libc6:amd64 \
+       libgmp-dev libssl-dev libffi-dev build-essential pkg-config \
     && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get update \
     && apt-get install -y --no-install-recommends nodejs \
@@ -63,6 +64,20 @@ COPY requirements.txt .
 RUN pip install --upgrade pip setuptools wheel "jaraco.context>=6.1.1" \
     && pip install -r requirements.txt
 
+# Slither and Mythril require conflicting eth-abi versions, so each gets its
+# own venv. The CLI binaries are symlinked into PATH so subprocess calls work.
+RUN python3 -m venv /opt/venv-slither \
+    && /opt/venv-slither/bin/pip install --upgrade pip \
+    && /opt/venv-slither/bin/pip install slither-analyzer==0.11.5 \
+    && ln -sf /opt/venv-slither/bin/slither /usr/local/bin/slither \
+    && ln -sf /opt/venv-slither/bin/crytic-compile /usr/local/bin/crytic-compile \
+    && ln -sf /opt/venv-slither/bin/solc-select /usr/local/bin/solc-select
+
+# Pre-create the mythril venv directory so the runtime installer can write to it
+# regardless of which user the container runs as.
+RUN mkdir -p /opt/venv-mythril && chmod 777 /opt/venv-mythril
+
+
 # solc-select stores compiler binaries in SOLC_SELECT_ARTIFACTS_FOLDER.
 # Without this it defaults to ~/.solc-select which resolves to /.solc-select
 # inside containers that run without a real home dir — causing PermissionError.
@@ -72,8 +87,9 @@ RUN mkdir -p /opt/solc-home && chmod 777 /opt/solc-home
 ENV HOME=/opt/solc-home
 
 # Pre-install common solc versions so Slither can compile without network access at runtime.
-RUN solc-select install 0.8.28 0.8.20 0.8.17 0.8.0 0.7.6 0.6.12 \
-    && solc-select use 0.8.28 \
+# solc-select lives inside the slither venv (not on system PATH) since we moved slither out of requirements.txt.
+RUN /opt/venv-slither/bin/solc-select install 0.8.28 0.8.20 0.8.17 0.8.0 0.7.6 0.6.12 \
+    && /opt/venv-slither/bin/solc-select use 0.8.28 \
     && chmod -R 777 /opt/solc-home/.solc-select
 
 COPY app ./app
