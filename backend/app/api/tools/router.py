@@ -33,12 +33,8 @@ _state: dict[str, str] = {}         # tool_id -> "not_installed" | "installing" 
 _error_msg: dict[str, str] = {}     # tool_id -> last error description
 
 
-def _symlink_path(tool: dict) -> str:
-    return f"/usr/local/bin/{tool['bin_name']}"
-
-
 def _is_installed(tool: dict) -> bool:
-    return os.path.isfile(_symlink_path(tool)) or os.path.islink(_symlink_path(tool))
+    return os.path.isfile(f"{tool['venv_dir']}/bin/{tool['bin_name']}")
 
 
 def _get_status(tool: dict) -> str:
@@ -87,14 +83,10 @@ async def _run_install(tool: dict) -> None:
             if not ok:
                 raise RuntimeError(f"pip install {pkg} failed: {err[-300:] if err else 'unknown error'}")
 
-        # Symlink the CLI binary into PATH
-        dst = _symlink_path(tool)
+        # Verify the binary landed in the venv (no symlink needed — venv bin is on PATH).
         src = f"{venv}/bin/{bin_name}"
         if not os.path.isfile(src):
             raise RuntimeError(f"binary not found after install: {src}")
-        if os.path.exists(dst) or os.path.islink(dst):
-            os.remove(dst)
-        os.symlink(src, dst)
 
         logger.info("[tools] %s installed successfully", tid)
         _state[tid] = "installed"

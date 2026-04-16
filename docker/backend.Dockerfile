@@ -71,10 +71,13 @@ RUN python3 -m venv /opt/venv-slither \
     && /opt/venv-slither/bin/pip install slither-analyzer==0.11.5 \
     && ln -sf /opt/venv-slither/bin/slither /usr/local/bin/slither \
     && ln -sf /opt/venv-slither/bin/crytic-compile /usr/local/bin/crytic-compile \
-    && ln -sf /opt/venv-slither/bin/solc-select /usr/local/bin/solc-select
+    && ln -sf /opt/venv-slither/bin/solc-select /usr/local/bin/solc-select \
+    && ln -sf /opt/venv-slither/bin/solc /usr/local/bin/solc
 
-# Pre-create the mythril venv directory so the runtime installer can write to it
-# regardless of which user the container runs as.
+# Pre-create the mythril venv directory (world-writable) so the runtime installer
+# can populate it regardless of which user the container runs as.
+# /opt/venv-mythril/bin is added to PATH below so 'myth' is found once installed —
+# no symlink into /usr/local/bin is needed (which would require root at runtime).
 RUN mkdir -p /opt/venv-mythril && chmod 777 /opt/venv-mythril
 
 
@@ -85,6 +88,8 @@ RUN mkdir -p /opt/venv-mythril && chmod 777 /opt/venv-mythril
 # /root has 700 perms — non-root users can't traverse it regardless of subdir perms.
 RUN mkdir -p /opt/solc-home && chmod 777 /opt/solc-home
 ENV HOME=/opt/solc-home
+# myth lives in the runtime-installed venv; add its bin to PATH so no root-owned symlink is needed.
+ENV PATH="/opt/venv-mythril/bin:${PATH}"
 
 # Pre-install common solc versions so Slither can compile without network access at runtime.
 # solc-select lives inside the slither venv (not on system PATH) since we moved slither out of requirements.txt.
