@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { CheckCircle2, Clock, FileWarning, Presentation, ShieldAlert, Star, Activity } from 'lucide-react'
+import { Archive, CheckCircle2, Clock, Pin, Presentation, Activity } from 'lucide-react'
 import { css } from 'styled-system/css'
 import { Box, Flex, Grid, Stack } from 'styled-system/jsx'
 import { type MenuSection } from '../components/NavBar'
@@ -79,56 +79,42 @@ function StatusBadge({ status }: { status: string }) {
     return <Badge colorPalette="purple">Draft</Badge>
 }
 
-// Custom CSS Donut Chart for Dark Theme Glassmorphism
-function RiskSummaryChart() {
+function RiskSummaryPlaceholder() {
     const chartRadius = 40
     const circumference = 2 * Math.PI * chartRadius
-
-    // Mock Data for Risk Severity
-    const risks = [
-        { label: 'Critical', value: 3, color: '#e5484d', dashoffset: 0 },
-        { label: 'High', value: 8, color: '#f76b15', dashoffset: circumference * 0.15 },
-        { label: 'Medium', value: 12, color: '#f5d90a', dashoffset: circumference * 0.45 },
-        { label: 'Low', value: 20, color: '#30a46c', dashoffset: circumference * 0.70 },
+    const severities = [
+        { label: 'Critical', color: '#e5484d' },
+        { label: 'High', color: '#f76b15' },
+        { label: 'Medium', color: '#f5d90a' },
+        { label: 'Low', color: '#30a46c' },
     ]
 
     return (
         <Flex direction="column" align="center" justify="center" h="full" gap="6">
-            <Box className={css({ position: 'relative', w: '160px', h: '160px' })}>
+            <Box className={css({ position: 'relative', w: '160px', h: '160px', opacity: '0.35' })}>
                 <svg width="100%" height="100%" viewBox="0 0 100 100">
-                    <circle cx="50" cy="50" r={chartRadius} fill="transparent" stroke="rgba(255,255,255,0.05)" strokeWidth="12" />
-                    {risks.map((risk) => (
-                        <circle
-                            key={risk.label}
-                            cx="50"
-                            cy="50"
-                            r={chartRadius}
-                            fill="transparent"
-                            stroke={risk.color}
-                            strokeWidth="12"
-                            strokeDasharray={circumference}
-                            strokeDashoffset={risk.dashoffset}
-                            strokeLinecap="round"
-                            className={css({ transition: 'all 1s ease-out', transformOrigin: 'center', transform: 'rotate(-90deg)' })}
-                        />
-                    ))}
+                    <circle cx="50" cy="50" r={chartRadius} fill="transparent" stroke="rgba(255,255,255,0.08)" strokeWidth="12" strokeDasharray={`${circumference * 0.25} ${circumference * 0.75}`} strokeDashoffset={0} className={css({ transform: 'rotate(-90deg)', transformOrigin: 'center' })} />
+                    <circle cx="50" cy="50" r={chartRadius} fill="transparent" stroke="rgba(255,255,255,0.05)" strokeWidth="12" strokeDasharray={`${circumference * 0.35} ${circumference * 0.65}`} strokeDashoffset={circumference * -0.25} className={css({ transform: 'rotate(-90deg)', transformOrigin: 'center' })} />
+                    <circle cx="50" cy="50" r={chartRadius} fill="transparent" stroke="rgba(255,255,255,0.03)" strokeWidth="12" strokeDasharray={`${circumference * 0.40} ${circumference * 0.60}`} strokeDashoffset={circumference * -0.60} className={css({ transform: 'rotate(-90deg)', transformOrigin: 'center' })} />
                 </svg>
-                <Flex
-                    direction="column"
-                    align="center"
-                    justify="center"
-                    className={css({ position: 'absolute', inset: 0 })}
-                >
-                    <Box className={css({ fontSize: '2xl', fontWeight: 'bold', color: 'white' })}>43</Box>
-                    <Box className={css({ fontSize: 'xs', color: 'rgba(255,255,255,0.5)' })}>Total Findings</Box>
+                <Flex direction="column" align="center" justify="center" className={css({ position: 'absolute', inset: 0 })}>
+                    <Box className={css({ fontSize: 'xl', fontWeight: 'bold', color: 'rgba(255,255,255,0.3)' })}>—</Box>
                 </Flex>
             </Box>
-            <Grid columns={2} gap="4" w="full" px="4">
-                {risks.map(risk => (
-                    <Flex key={risk.label} align="center" gap="2">
-                        <Box className={css({ w: '3', h: '3', borderRadius: 'full' })} style={{ backgroundColor: risk.color }} />
-                        <Box className={css({ fontSize: 'sm', color: 'rgba(255,255,255,0.8)' })}>{risk.label}</Box>
-                        <Box className={css({ ml: 'auto', fontSize: 'sm', fontWeight: 'bold', color: 'white' })}>{risk.value}</Box>
+            <Box className={css({ textAlign: 'center', px: '4' })}>
+                <Box className={css({ fontSize: 'sm', fontWeight: '600', color: 'rgba(255,255,255,0.35)', mb: '1' })}>
+                    Risk Summary
+                </Box>
+                <Box className={css({ fontSize: 'xs', color: 'rgba(255,255,255,0.22)', lineHeight: '1.55' })}>
+                    Findings data will appear here once analysis results are linked to audits.
+                </Box>
+            </Box>
+            <Grid columns={2} gap="3" w="full" px="4">
+                {severities.map(s => (
+                    <Flex key={s.label} align="center" gap="2">
+                        <Box className={css({ w: '2.5', h: '2.5', borderRadius: 'full', opacity: '0.3' })} style={{ backgroundColor: s.color }} />
+                        <Box className={css({ fontSize: 'xs', color: 'rgba(255,255,255,0.3)' })}>{s.label}</Box>
+                        <Box className={css({ ml: 'auto', fontSize: 'xs', color: 'rgba(255,255,255,0.2)' })}>—</Box>
                     </Flex>
                 ))}
             </Grid>
@@ -210,11 +196,11 @@ export function DashboardWorkspace({ onNavigate }: DashboardWorkspaceProps) {
                     description="Finalized audit reports."
                 />
                 <StatCard
-                    title="Critical Findings"
-                    value="3"
-                    icon={<ShieldAlert size={20} />}
-                    color="#e5484d"
-                    description="High severity vulnerabilities found."
+                    title="Archived"
+                    value={counts.archived}
+                    icon={<Archive size={20} />}
+                    color="#858489"
+                    description="Archived audits."
                 />
             </Grid>
 
@@ -299,7 +285,7 @@ export function DashboardWorkspace({ onNavigate }: DashboardWorkspaceProps) {
                         </Card.Title>
                     </Card.Header>
                     <Card.Body className={css({ p: '6' })}>
-                        <RiskSummaryChart />
+                        <RiskSummaryPlaceholder />
                     </Card.Body>
                 </Card.Root>
 
@@ -321,7 +307,7 @@ export function DashboardWorkspace({ onNavigate }: DashboardWorkspaceProps) {
                 >
                     <Card.Header className={css({ borderBottom: '1px solid rgba(255,255,255,0.05)', pb: '4' })}>
                         <Flex align="center" gap="2">
-                            <Star size={16} className={css({ color: '#f5d90a' })} fill="#f5d90a" />
+                            <Pin size={16} className={css({ color: 'rgba(231, 228, 239, 0.7)' })} />
                             <Card.Title className={css({ color: 'rgba(231, 228, 239, 0.91)', fontSize: 'lg', fontWeight: '700' })}>
                                 Pinned Audits
                             </Card.Title>
@@ -330,7 +316,7 @@ export function DashboardWorkspace({ onNavigate }: DashboardWorkspaceProps) {
                     <Card.Body className={css({ p: 0 })}>
                         {pinnedItems.length === 0 ? (
                             <Box className={css({ p: '6', textAlign: 'center', color: 'rgba(255,255,255,0.4)', fontSize: 'sm' })}>
-                                No pinned audits. Click the star on an audit to pin it here.
+                                No pinned audits. Use the pin icon on an audit to pin it here.
                             </Box>
                         ) : (
                             <Stack gap="0">
@@ -379,29 +365,17 @@ export function DashboardWorkspace({ onNavigate }: DashboardWorkspaceProps) {
                         </Flex>
                     </Card.Header>
                     <Card.Body className={css({ p: '5' })}>
-                        <Stack gap="4">
-                            <Flex gap="3">
-                                <Box className={css({ mt: '1', color: '#30a46c' })}><CheckCircle2 size={16} /></Box>
-                                <Box>
-                                    <Box className={css({ color: 'white', fontSize: 'sm' })}>Uniswap V4 Audit completed.</Box>
-                                    <Box className={css({ color: 'rgba(255,255,255,0.4)', fontSize: 'xs' })}>2 hours ago</Box>
+                        <Flex direction="column" align="center" justify="center" gap="3" className={css({ minH: '120px' })}>
+                            <Activity size={24} className={css({ color: 'rgba(255,255,255,0.15)' })} />
+                            <Box className={css({ textAlign: 'center' })}>
+                                <Box className={css({ fontSize: 'sm', fontWeight: '600', color: 'rgba(255,255,255,0.3)', mb: '1' })}>
+                                    No activity yet
                                 </Box>
-                            </Flex>
-                            <Flex gap="3">
-                                <Box className={css({ mt: '1', color: '#e5484d' })}><FileWarning size={16} /></Box>
-                                <Box>
-                                    <Box className={css({ color: 'white', fontSize: 'sm' })}>Found 2 Critical vulnerabilities in Aave Staking.</Box>
-                                    <Box className={css({ color: 'rgba(255,255,255,0.4)', fontSize: 'xs' })}>5 hours ago</Box>
+                                <Box className={css({ fontSize: 'xs', color: 'rgba(255,255,255,0.2)', lineHeight: '1.55' })}>
+                                    Activity events will appear here as you create and progress audits.
                                 </Box>
-                            </Flex>
-                            <Flex gap="3">
-                                <Box className={css({ mt: '1', color: 'rgba(255,255,255,0.6)' })}><Presentation size={16} /></Box>
-                                <Box>
-                                    <Box className={css({ color: 'white', fontSize: 'sm' })}>Created new draft: Curve Finance Router</Box>
-                                    <Box className={css({ color: 'rgba(255,255,255,0.4)', fontSize: 'xs' })}>Yesterday</Box>
-                                </Box>
-                            </Flex>
-                        </Stack>
+                            </Box>
+                        </Flex>
                     </Card.Body>
                 </Card.Root>
 
