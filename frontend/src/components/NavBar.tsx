@@ -106,6 +106,8 @@ export function NavBar({
       <Box
         as="header"
         className={css({
+          position: 'relative',
+          zIndex: 50,
           borderBottom: '1px solid rgba(185, 185, 189, 0.14)',
           bg: 'rgba(20, 20, 24, 0.95)',
           backdropFilter: 'blur(8px)',
