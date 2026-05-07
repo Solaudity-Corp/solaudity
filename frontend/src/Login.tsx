@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { Eye, EyeOff } from 'lucide-react'
 import { css } from 'styled-system/css'
 import { Box, Flex, Stack } from 'styled-system/jsx'
 import { Button, Card, Field, Input } from './components/ui'
@@ -37,6 +38,8 @@ export default function Login({ onLoginSuccess, onNavigateRegister }: LoginProps
   const [password, setPassword] = useState('')
   const [status, setStatus] = useState<AuthStatus>(null)
   const [loading, setLoading] = useState(false)
+
+  const [showPassword, setShowPassword] = useState(false)
 
   const [titleIndex, setTitleIndex] = useState(0)
   const [displayedTitle, setDisplayedTitle] = useState('')
@@ -133,13 +136,36 @@ export default function Login({ onLoginSuccess, onNavigateRegister }: LoginProps
 
                 <Field.Root>
                   <Field.Label className={css({ color: 'rgba(224, 224, 231, 0.86)' })}>Password</Field.Label>
-                  <Input type="password" placeholder="Password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password"
-                    className={css({
-                      bg: 'rgba(10, 10, 12, 0.6)', borderRadius: '8px', borderColor: 'rgba(255, 255, 255, 0.1)', color: '#e7e4ef',
-                      _placeholder: { color: 'rgba(167, 167, 174, 0.52)' }, transition: 'all 0.2s',
-                      _focusVisible: { borderColor: '#e7e4ef', bg: 'rgba(10, 10, 12, 0.8)', boxShadow: '0 0 0 1px rgba(231, 228, 239, 0.42)' },
-                    })}
-                  />
+                  <Box className={css({ position: 'relative', w: '100%' })}>
+                    <Input
+                      type={showPassword ? 'text' : 'password'}
+                      placeholder="Password"
+                      value={password}
+                      onChange={(event) => setPassword(event.target.value)}
+                      autoComplete="current-password"
+                      className={css({
+                        bg: 'rgba(10, 10, 12, 0.6)', borderRadius: '8px', borderColor: 'rgba(255, 255, 255, 0.1)', color: '#e7e4ef',
+                        pr: '10',
+                        _placeholder: { color: 'rgba(167, 167, 174, 0.52)' }, transition: 'all 0.2s',
+                        _focusVisible: { borderColor: '#e7e4ef', bg: 'rgba(10, 10, 12, 0.8)', boxShadow: '0 0 0 1px rgba(231, 228, 239, 0.42)' },
+                      })}
+                    />
+                    <button
+                      type="button"
+                      aria-label={showPassword ? 'Hide password' : 'Show password'}
+                      onClick={() => setShowPassword((prev) => !prev)}
+                      className={css({
+                        position: 'absolute', right: '3', top: '50%', transform: 'translateY(-50%)',
+                        display: 'grid', placeItems: 'center',
+                        color: 'rgba(167, 167, 174, 0.6)',
+                        bg: 'transparent', border: 'none', cursor: 'pointer', p: '1', borderRadius: '4px',
+                        transition: 'color 0.15s',
+                        _hover: { color: 'rgba(231, 228, 239, 0.9)' },
+                      })}
+                    >
+                      {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </Box>
                 </Field.Root>
 
                 {status && (
