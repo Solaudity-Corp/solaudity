@@ -74,14 +74,12 @@ export function NavBar({
   const controlRadius = '8px'
   const JOURNEY_ANIM_DURATION_MS = 560
   const [sideNavOpen, setSideNavOpen] = useState(false)
+  const isNavOpen = sideNavOpen || !!openSideNavPanel
 
-  // External callers (e.g. MythrilView) can request opening to a specific panel.
-  useEffect(() => {
-    if (openSideNavPanel) {
-      setSideNavOpen(true)
-      onSideNavPanelConsumed?.()
-    }
-  }, [openSideNavPanel, onSideNavPanelConsumed])
+  const handleNavClose = useCallback(() => {
+    setSideNavOpen(false)
+    onSideNavPanelConsumed?.()
+  }, [onSideNavPanelConsumed])
   const [journeyAnimatingFromIndex, setJourneyAnimatingFromIndex] = useState<number | null>(null)
   const [journeyAnimatingToIndex, setJourneyAnimatingToIndex] = useState<number | null>(null)
   const [journeyAnimatingProgress, setJourneyAnimatingProgress] = useState(0)
@@ -469,7 +467,7 @@ export function NavBar({
         </Flex>
       </Box>
 
-      <SideNav open={sideNavOpen} onClose={() => setSideNavOpen(false)} openToPanel={openSideNavPanel} />
+      <SideNav open={isNavOpen} onClose={handleNavClose} openToPanel={openSideNavPanel} />
     </>
   )
 }
