@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from sqlmodel import Session, select
 
 from app.api.auth.auth import get_current_user
@@ -339,6 +339,81 @@ def _parse_issues(raw_json: dict, run: MythrilRun) -> list[MythrilIssue]:
 
 
 # ---------------------------------------------------------------------------
+# Background execution
+# ---------------------------------------------------------------------------
+
+def _execute_run_bg(run_id: UUID, sc_id: UUID, preset: MythrilPreset, started_at: datetime) -> None:
+    """Runs mythril synchronously in a background thread; writes results to DB."""
+    from app.database import engine  # import here to avoid circular imports
+
+    tmpdir: Path | None = None
+    try:
+        with Session(engine) as bg_session:
+            sc = bg_session.get(ScopeContract, sc_id)
+            if sc is None:
+                raise RuntimeError(f"ScopeContract {sc_id} not found in background task")
+
+            tmpdir, file_path = _build_file_in_tempdir(sc, bg_session)
+            exit_code, raw_json, stderr = _run_mythril(file_path, tmpdir, preset)
+
+            finished_at = datetime.now(timezone.utc)
+            duration_ms = int((finished_at - started_at).total_seconds() * 1000)
+
+            issues: list[MythrilIssue] = []
+            error_message: str | None = None
+
+            run = bg_session.get(MythrilRun, run_id)
+            if run is None:
+                raise RuntimeError(f"MythrilRun {run_id} disappeared")
+
+            if raw_json is not None:
+                if not raw_json.get("success", True) and raw_json.get("error"):
+                    error_message = raw_json["error"]
+                issues = _parse_issues(raw_json, run)
+                for iss in issues:
+                    bg_session.add(iss)
+            else:
+                output_snippet = (stderr or "").strip()[:1500] or "(no output)"
+                error_message = f"exit {exit_code}: {output_snippet}"
+
+            counts: dict[str, int] = {"high": 0, "medium": 0, "low": 0}
+            for iss in issues:
+                counts[iss.severity.value.lower()] = counts.get(iss.severity.value.lower(), 0) + 1
+
+            run.status = MythrilStatus.done if error_message is None else MythrilStatus.error
+            run.exit_code = exit_code
+            run.finished_at = finished_at
+            run.duration_ms = duration_ms
+            run.raw_json = raw_json
+            run.stderr_output = stderr[:4000] if stderr else None
+            run.error_message = error_message
+            run.count_high = counts["high"]
+            run.count_medium = counts["medium"]
+            run.count_low = counts["low"]
+
+            bg_session.add(run)
+            bg_session.commit()
+            logger.info("Mythril run %s finished — status=%s issues=%d", run_id, run.status, len(issues))
+
+    except Exception as exc:
+        logger.error("Mythril background task failed for run %s: %s", run_id, exc)
+        try:
+            with Session(engine) as err_session:
+                run = err_session.get(MythrilRun, run_id)
+                if run:
+                    run.status = MythrilStatus.error
+                    run.finished_at = datetime.now(timezone.utc)
+                    run.error_message = str(exc)[:1000]
+                    err_session.add(run)
+                    err_session.commit()
+        except Exception:
+            pass
+    finally:
+        if tmpdir is not None and tmpdir.exists():
+            shutil.rmtree(tmpdir, ignore_errors=True)
+
+
+# ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
 
@@ -351,6 +426,7 @@ def _parse_issues(raw_json: dict, run: MythrilRun) -> list[MythrilIssue]:
 def trigger_run(
     audit_id: UUID,
     scope_contract_id: UUID,
+    background_tasks: BackgroundTasks,
     preset: MythrilPreset = Query(MythrilPreset.standard),
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
@@ -358,75 +434,22 @@ def trigger_run(
     _ensure_audit(session, audit_id, current_user.id)
     sc = _ensure_contract(session, audit_id, scope_contract_id)
 
-    mythril_ver = _mythril_version()
-
     started_at = datetime.now(timezone.utc)
     run = MythrilRun(
         audit_id=audit_id,
         scope_contract_id=scope_contract_id,
         preset=preset,
         status=MythrilStatus.running,
-        mythril_version=mythril_ver,
+        mythril_version=_mythril_version(),
         started_at=started_at,
     )
     session.add(run)
     session.commit()
     session.refresh(run)
 
-    tmpdir: Path | None = None
-    try:
-        tmpdir, file_path = _build_file_in_tempdir(sc, session)
-        exit_code, raw_json, stderr = _run_mythril(file_path, tmpdir, preset)
+    background_tasks.add_task(_execute_run_bg, run.id, sc.id, preset, started_at)
 
-        finished_at = datetime.now(timezone.utc)
-        duration_ms = int((finished_at - started_at).total_seconds() * 1000)
-
-        issues: list[MythrilIssue] = []
-        error_message: str | None = None
-
-        if raw_json is not None:
-            if not raw_json.get("success", True) and raw_json.get("error"):
-                error_message = raw_json["error"]
-            issues = _parse_issues(raw_json, run)
-            for iss in issues:
-                session.add(iss)
-        else:
-            output_snippet = (stderr or "").strip()[:1500] or "(no output)"
-            error_message = f"exit {exit_code}: {output_snippet}"
-
-        counts = {"high": 0, "medium": 0, "low": 0}
-        for iss in issues:
-            counts[iss.severity.value.lower()] = counts.get(iss.severity.value.lower(), 0) + 1
-
-        run.status = MythrilStatus.done if error_message is None else MythrilStatus.error
-        run.exit_code = exit_code
-        run.finished_at = finished_at
-        run.duration_ms = duration_ms
-        run.raw_json = raw_json
-        run.stderr_output = stderr[:4000] if stderr else None
-        run.error_message = error_message
-        run.count_high = counts["high"]
-        run.count_medium = counts["medium"]
-        run.count_low = counts["low"]
-
-        session.add(run)
-        session.commit()
-        session.refresh(run)
-
-        issue_reads = [MythrilIssueRead.model_validate(iss) for iss in issues]
-        return MythrilRunDetail(**MythrilRunRead.model_validate(run).model_dump(), issues=issue_reads)
-
-    except HTTPException:
-        run.status = MythrilStatus.error
-        run.finished_at = datetime.now(timezone.utc)
-        run.error_message = "Run aborted — see server logs"
-        session.add(run)
-        session.commit()
-        raise
-
-    finally:
-        if tmpdir is not None and tmpdir.exists():
-            shutil.rmtree(tmpdir, ignore_errors=True)
+    return MythrilRunDetail(**MythrilRunRead.model_validate(run).model_dump(), issues=[])
 
 
 @router.get(

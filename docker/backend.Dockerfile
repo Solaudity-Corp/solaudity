@@ -1,7 +1,25 @@
 # syntax=docker/dockerfile:1
+
+# ── Stage: Python 3.11 source ─────────────────────────────────────────────────
+# mythril 0.24.8 is incompatible with Python 3.13.
+# Trixie has no python3.11 apt package, so we copy the interpreter + stdlib from
+# the official 3.11 Bookworm image.  glibc on Trixie (2.41) is newer than
+# Bookworm (2.36) — backwards-compatible, so the binary runs fine.
+FROM python:3.11-slim-bookworm AS python311
+
+# ── Main stage ────────────────────────────────────────────────────────────────
 FROM python:3.13-slim-trixie
 
 WORKDIR /app
+
+# Copy Python 3.11 interpreter + stdlib + headers + shared library from the build stage.
+# The include dir is required to compile C extensions (e.g. pyethash) inside the mythril venv.
+COPY --from=python311 /usr/local/bin/python3.11 /usr/local/bin/python3.11
+COPY --from=python311 /usr/local/lib/python3.11 /usr/local/lib/python3.11
+COPY --from=python311 /usr/local/include/python3.11 /usr/local/include/python3.11
+COPY --from=python311 /usr/local/lib/libpython3.11.so.1.0 /usr/local/lib/libpython3.11.so.1.0
+RUN ln -sf /usr/local/lib/libpython3.11.so.1.0 /usr/local/lib/libpython3.11.so \
+    && ldconfig
 
 # Install Node.js for Solidity analysis tooling.
 # Also enable amd64 multi-arch so solc-select's x86_64 binaries run via QEMU on ARM64 hosts.
@@ -9,7 +27,7 @@ RUN dpkg --add-architecture amd64 \
     && apt-get update \
     && apt-get full-upgrade -y \
     && apt-get install -y --no-install-recommends curl ca-certificates libc6:amd64 \
-       libgmp-dev libssl-dev libffi-dev build-essential pkg-config \
+       libgmp-dev libssl-dev libffi-dev build-essential pkg-config cmake \
     && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get update \
     && apt-get install -y --no-install-recommends nodejs \

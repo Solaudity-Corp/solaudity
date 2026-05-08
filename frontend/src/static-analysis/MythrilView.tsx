@@ -465,9 +465,18 @@ export function MythrilView({ auditId, onOpenTools }: MythrilViewProps) {
     setRunning(true)
     setRunError(null)
     try {
-      const detail = await api.triggerRun(auditId, selectedContractId, activePreset)
-      setRuns(prev => [detail, ...prev])
-      setSelectedRunId(detail.id)
+      // POST returns immediately with status='running'; poll until done.
+      const initial = await api.triggerRun(auditId, selectedContractId, activePreset)
+      setRuns(prev => [initial, ...prev])
+      setSelectedRunId(initial.id)
+
+      let detail = initial
+      while (detail.status === 'running') {
+        await new Promise(res => setTimeout(res, 3000))
+        detail = await api.getRun(initial.id)
+        setRuns(prev => prev.map(r => r.id === detail.id ? detail : r))
+      }
+      setSelectedRunId(detail.id) // re-trigger the detail effect with final state
     } catch (e) {
       setRunError((e as Error).message)
     } finally {

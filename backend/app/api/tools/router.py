@@ -19,6 +19,8 @@ TOOL_CATALOG: list[dict] = [
         "description": "Symbolic execution engine for finding security vulnerabilities in EVM bytecode. PS : could take a long time to install on ARM64 Linux due to z3 compilation.",
         "venv_dir": "/opt/venv-mythril",
         "bin_name": "myth",
+        # mythril 0.24.8 is incompatible with Python 3.13 — use 3.11.
+        "python_bin": "python3.11",
         # Installed in two steps so pip can grab a pre-built z3 wheel first.
         # If no pre-built wheel exists for the platform, z3 will compile from
         # source — this can take 15-30 min on ARM64 Linux.
@@ -67,9 +69,10 @@ async def _run_install(tool: dict) -> None:
         logger.info("[tools] installing %s — venv=%s", tid, venv)
 
         # Always run venv creation — it's idempotent (creates or reinitialises).
-        # This avoids needing to delete a pre-created empty directory, which would
-        # require write permission on /opt itself.
-        ok, err = await run("python3", "-m", "venv", venv)
+        # Use the tool-specific Python binary (e.g. python3.11 for mythril which
+        # is incompatible with Python 3.13).
+        python_bin = tool.get("python_bin", "python3")
+        ok, err = await run(python_bin, "-m", "venv", venv)
         if not ok:
             raise RuntimeError(f"venv creation failed: {err}")
 
