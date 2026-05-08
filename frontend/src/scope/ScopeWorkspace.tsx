@@ -25,8 +25,8 @@ const ui = {
     borderSoft: 'rgba(185, 185, 189, 0.35)',
     surfaceContent: 'rgba(26, 26, 32, 0.95)',
     surfaceCard: 'rgba(32, 32, 40, 0.95)',
-    accent: 'rgba(88, 214, 171, 0.9)',
-    accentStr: '#58D6AB',
+    accent: 'rgba(88, 149, 255, 0.9)',
+    accentStr: '#5895FF',
 }
 
 // --- Date utils ---
@@ -182,9 +182,9 @@ function TreeNodeRow({ node, depth, checkedIds, onToggleCheck }: TreeNodeRowProp
                 {node.type === 'file' && (
                     <Box className={css({
                         fontSize: '10px',
-                        color: 'rgba(88, 214, 171, 0.7)',
+                        color: 'rgba(88, 149, 255, 0.7)',
                         fontFamily: "'Roboto Mono', ui-monospace, monospace",
-                        bg: 'rgba(88, 214, 171, 0.08)',
+                        bg: 'rgba(88, 149, 255, 0.08)',
                         px: '1.5',
                         py: '0',
                         borderRadius: '4px',
@@ -346,7 +346,7 @@ function FileTree({ contracts, onClearAll, onToggleScope }: {
                         fontFamily: "'Roboto Mono', ui-monospace, monospace",
                         outline: 'none',
                         _placeholder: { color: ui.textMuted },
-                        _focus: { borderColor: 'rgba(88, 214, 171, 0.35)' },
+                        _focus: { borderColor: 'rgba(88, 149, 255, 0.35)' },
                     })}
                 />
             </Box>
@@ -455,11 +455,11 @@ function ConfirmationSection({ contracts, onSave }: { contracts: ScopeContract[]
                     className={css({
                         px: '4', py: '1.5', borderRadius: '7px', fontSize: 'xs', fontWeight: '600',
                         letterSpacing: '0.05em', textTransform: 'uppercase', cursor: 'pointer',
-                        border: saved ? '1px solid rgba(88, 214, 171, 0.5)' : `1px solid ${ui.borderSoft}`,
+                        border: saved ? '1px solid rgba(88, 149, 255, 0.5)' : `1px solid ${ui.borderSoft}`,
                         color: saved ? ui.accent : ui.textSecondary,
-                        bg: saved ? 'rgba(88, 214, 171, 0.08)' : 'transparent',
+                        bg: saved ? 'rgba(88, 149, 255, 0.08)' : 'transparent',
                         transition: 'all 0.2s',
-                        _hover: { borderColor: 'rgba(88, 214, 171, 0.4)', color: ui.accent },
+                        _hover: { borderColor: 'rgba(88, 149, 255, 0.4)', color: ui.accent },
                     })}
                 >
                     {saved ? 'Saved ✓' : 'Save Scope'}
@@ -479,11 +479,11 @@ function ConfirmationSection({ contracts, onSave }: { contracts: ScopeContract[]
                     className={css({
                         px: '4', py: '2',
                         borderBottom: `1px solid ${ui.borderFaint}`,
-                        bg: 'rgba(88, 214, 171, 0.04)',
+                        bg: 'rgba(88, 149, 255, 0.04)',
                     })}
                 >
                     <Flex align="center" gap="2">
-                        <Box className={css({ w: '6px', h: '6px', borderRadius: '50%', bg: 'rgba(88, 214, 171, 0.8)', flexShrink: 0 })} />
+                        <Box className={css({ w: '6px', h: '6px', borderRadius: '50%', bg: 'rgba(88, 149, 255, 0.8)', flexShrink: 0 })} />
                         <Box className={css({ color: ui.textMuted, fontSize: 'xs' })}>In scope</Box>
                         <Box className={css({ color: ui.textPrimary, fontSize: 'xs', fontWeight: '700', fontFamily: "'Roboto Mono', monospace" })}>{inScope.length}</Box>
                     </Flex>
@@ -507,7 +507,7 @@ function ConfirmationSection({ contracts, onSave }: { contracts: ScopeContract[]
                     ) : (
                         inScope.map((c) => (
                             <Flex key={c.id} align="center" gap="2" className={css({ py: '1', borderBottom: `1px solid ${ui.borderFaint}`, _last: { borderBottom: 'none' } })}>
-                                <File size={12} color="rgba(88, 214, 171, 0.6)" />
+                                <File size={12} color="rgba(88, 149, 255, 0.6)" />
                                 <Box className={css({ color: ui.textSecondary, fontSize: 'xs', fontFamily: "'Roboto Mono', monospace", flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' })}>
                                     {c.file_path}
                                 </Box>
@@ -628,7 +628,7 @@ function AddressPanel({ auditId, addresses, onReload, onReloadContracts, onShowO
         w: 'full', bg: 'transparent',
         border: `1px solid ${ui.borderSoft}`, borderRadius: '8px',
         px: '3', py: '1.5', color: ui.textPrimary, fontSize: 'xs', outline: 'none',
-        _focus: { border: '1px solid rgba(88, 214, 171, 0.5)' },
+        _focus: { border: '1px solid rgba(88, 149, 255, 0.5)' },
     })
 
     return (
@@ -655,7 +655,7 @@ function AddressPanel({ auditId, addresses, onReload, onReloadContracts, onShowO
                                 border: `1px solid ${ui.borderSoft}`, borderRadius: '8px',
                                 px: '3', py: '1.5', color: ui.textPrimary, fontSize: 'xs',
                                 fontFamily: "'Roboto Mono', monospace", outline: 'none',
-                                _focus: { border: '1px solid rgba(88, 214, 171, 0.5)' },
+                                _focus: { border: '1px solid rgba(88, 149, 255, 0.5)' },
                             })}
                         />
                     </Box>
@@ -683,7 +683,7 @@ function AddressPanel({ auditId, addresses, onReload, onReloadContracts, onShowO
                                 w: 'full', bg: 'rgba(26,26,32,0.98)',
                                 border: `1px solid ${ui.borderSoft}`, borderRadius: '8px',
                                 px: '3', py: '1.5', color: ui.textPrimary, fontSize: 'xs', outline: 'none',
-                                _focus: { border: '1px solid rgba(88, 214, 171, 0.5)' },
+                                _focus: { border: '1px solid rgba(88, 149, 255, 0.5)' },
                             })}
                         >
                             {['deployment', 'proxy', 'implementation', 'role', 'token', 'external', 'other'].map((t) => (
@@ -695,8 +695,8 @@ function AddressPanel({ auditId, addresses, onReload, onReloadContracts, onShowO
                         disabled={!addrInput.trim()}
                         onClick={handleAdd}
                         className={css({
-                            bg: addrInput.trim() ? 'rgba(88, 214, 171, 0.9)' : 'rgba(88, 214, 171, 0.3)',
-                            color: '#08211a', fontWeight: '600', fontSize: 'xs',
+                            bg: addrInput.trim() ? 'rgba(88, 149, 255, 0.9)' : 'rgba(88, 149, 255, 0.3)',
+                            color: '#08152e', fontWeight: '600', fontSize: 'xs',
                             px: '4', py: '1.5', borderRadius: '8px',
                             cursor: addrInput.trim() ? 'pointer' : 'not-allowed',
                             transition: 'all 0.2s', whiteSpace: 'nowrap',
@@ -814,7 +814,7 @@ function AddressPanel({ auditId, addresses, onReload, onReloadContracts, onShowO
                                                                 fontSize: '10px', px: '2', py: '0.5', borderRadius: '5px',
                                                                 border: `1px solid ${ui.borderSoft}`, bg: 'transparent',
                                                                 color: ui.textSecondary, cursor: 'pointer', whiteSpace: 'nowrap',
-                                                                _hover: { borderColor: 'rgba(88, 214, 171, 0.4)', color: ui.accent },
+                                                                _hover: { borderColor: 'rgba(88, 149, 255, 0.4)', color: ui.accent },
                                                                 opacity: fetchingId === addr.id ? 0.5 : 1,
                                                             })}
                                                         >
@@ -891,11 +891,11 @@ function AddressPanel({ auditId, addresses, onReload, onReloadContracts, onShowO
                             className={css({
                                 px: '4', py: '1.5', borderRadius: '7px', fontSize: 'xs', fontWeight: '600',
                                 letterSpacing: '0.05em', textTransform: 'uppercase', cursor: 'pointer',
-                                border: saved ? '1px solid rgba(88, 214, 171, 0.5)' : `1px solid ${ui.borderSoft}`,
+                                border: saved ? '1px solid rgba(88, 149, 255, 0.5)' : `1px solid ${ui.borderSoft}`,
                                 color: saved ? ui.accent : ui.textSecondary,
-                                bg: saved ? 'rgba(88, 214, 171, 0.08)' : 'transparent',
+                                bg: saved ? 'rgba(88, 149, 255, 0.08)' : 'transparent',
                                 transition: 'all 0.2s',
-                                _hover: { borderColor: 'rgba(88, 214, 171, 0.4)', color: ui.accent },
+                                _hover: { borderColor: 'rgba(88, 149, 255, 0.4)', color: ui.accent },
                             })}
                         >
                             {saved ? 'Saved ✓' : 'Save Addresses'}
@@ -904,9 +904,9 @@ function AddressPanel({ auditId, addresses, onReload, onReloadContracts, onShowO
 
                     <Box className={css({ borderRadius: '12px', border: `1px solid ${ui.borderFaint}`, bg: 'rgba(18, 18, 22, 0.6)', overflow: 'hidden' })}>
                         {/* Stats */}
-                        <Flex align="center" gap="6" className={css({ px: '4', py: '2', borderBottom: `1px solid ${ui.borderFaint}`, bg: 'rgba(88, 214, 171, 0.04)', flexWrap: 'wrap' })}>
+                        <Flex align="center" gap="6" className={css({ px: '4', py: '2', borderBottom: `1px solid ${ui.borderFaint}`, bg: 'rgba(88, 149, 255, 0.04)', flexWrap: 'wrap' })}>
                             <Flex align="center" gap="2">
-                                <Box className={css({ w: '6px', h: '6px', borderRadius: '50%', bg: 'rgba(88, 214, 171, 0.8)', flexShrink: 0 })} />
+                                <Box className={css({ w: '6px', h: '6px', borderRadius: '50%', bg: 'rgba(88, 149, 255, 0.8)', flexShrink: 0 })} />
                                 <Box className={css({ color: ui.textMuted, fontSize: 'xs' })}>Total</Box>
                                 <Box className={css({ color: ui.textPrimary, fontSize: 'xs', fontWeight: '700', fontFamily: "'Roboto Mono', monospace" })}>{addresses.length}</Box>
                             </Flex>
@@ -916,7 +916,7 @@ function AddressPanel({ auditId, addresses, onReload, onReloadContracts, onShowO
                                 <Box className={css({ color: ui.textSecondary, fontSize: 'xs', fontWeight: '700', fontFamily: "'Roboto Mono', monospace" })}>{contractCount}</Box>
                             </Flex>
                             <Flex align="center" gap="2">
-                                <Box className={css({ w: '6px', h: '6px', borderRadius: '50%', bg: 'rgba(88, 214, 171, 0.5)', flexShrink: 0 })} />
+                                <Box className={css({ w: '6px', h: '6px', borderRadius: '50%', bg: 'rgba(88, 149, 255, 0.5)', flexShrink: 0 })} />
                                 <Box className={css({ color: ui.textMuted, fontSize: 'xs' })}>Verified</Box>
                                 <Box className={css({ color: ui.textSecondary, fontSize: 'xs', fontWeight: '700', fontFamily: "'Roboto Mono', monospace" })}>{verifiedCount}</Box>
                             </Flex>
@@ -1161,9 +1161,9 @@ export default function ScopeWorkspace({ auditId, onNavigate, onOpenProfile }: S
                 onOpenProfile={onOpenProfile}
                 showSearch={false}
                 journeyItems={[
-                    { label: 'Scope', isCurrent: true },
-                    { label: 'Enum', onClick: () => onNavigate(`/enum/${auditId}`) },
-                    { label: 'Static Analysis', onClick: () => onNavigate(`/static-analysis/${auditId}`) },
+                    { label: 'Scope', isCurrent: true, accentColor: 'rgba(88, 149, 255, 0.28)' },
+                    { label: 'Enum', onClick: () => onNavigate(`/enum/${auditId}`), accentColor: 'rgba(88, 214, 171, 0.28)' },
+                    { label: 'Static Analysis', onClick: () => onNavigate(`/static-analysis/${auditId}`), accentColor: 'rgba(180, 140, 255, 0.28)' },
                 ]}
             />
 
@@ -1177,7 +1177,7 @@ export default function ScopeWorkspace({ auditId, onNavigate, onOpenProfile }: S
                             borderRadius: '18px',
                             border: `1px solid ${ui.borderSoft}`,
                             bg: ui.surfaceContent,
-                            boxShadow: '0 0 0 1px rgba(88, 214, 171, 0.06), 0 4px 24px rgba(0,0,0,0.4)',
+                            boxShadow: '0 0 0 1px rgba(88, 149, 255, 0.06), 0 4px 24px rgba(0,0,0,0.4)',
                         })}
                     >
                         <Flex justify="space-between" align="center" flexWrap="wrap" gap="4">
@@ -1227,15 +1227,15 @@ export default function ScopeWorkspace({ auditId, onNavigate, onOpenProfile }: S
                                             className={css({
                                                 p: '4',
                                                 borderRadius: '16px',
-                                                border: `1px solid ${isActive ? 'rgba(88, 214, 171, 0.4)' : ui.borderSoft}`,
-                                                bg: isActive ? 'rgba(88, 214, 171, 0.05)' : ui.surfaceContent,
+                                                border: `1px solid ${isActive ? 'rgba(88, 149, 255, 0.4)' : ui.borderSoft}`,
+                                                bg: isActive ? 'rgba(88, 149, 255, 0.05)' : ui.surfaceContent,
                                                 cursor: 'pointer',
                                                 transition: 'all 0.2s',
-                                                _hover: { bg: isActive ? 'rgba(88, 214, 171, 0.08)' : 'rgba(255, 255, 255, 0.03)' },
+                                                _hover: { bg: isActive ? 'rgba(88, 149, 255, 0.08)' : 'rgba(255, 255, 255, 0.03)' },
                                             })}
                                         >
                                             <Flex align="center" gap="3" mb="2">
-                                                <Icon size={20} style={{ color: isActive ? 'rgba(111, 224, 187, 0.98)' : ui.textMuted }} />
+                                                <Icon size={20} style={{ color: isActive ? 'rgba(111, 185, 255, 0.98)' : ui.textMuted }} />
                                                 <Box className={css({ color: isActive ? ui.textPrimary : ui.textSecondary, fontWeight: '600', fontSize: 'sm' })}>
                                                     {tab.label}
                                                 </Box>
@@ -1268,7 +1268,7 @@ export default function ScopeWorkspace({ auditId, onNavigate, onOpenProfile }: S
                                                         w: 'full', bg: 'transparent',
                                                         border: `1px solid ${ui.borderSoft}`, borderRadius: '8px',
                                                         px: '3', py: '2', color: ui.textPrimary, fontSize: 'sm', outline: 'none',
-                                                        _focus: { border: '1px solid rgba(88, 214, 171, 0.5)' },
+                                                        _focus: { border: '1px solid rgba(88, 149, 255, 0.5)' },
                                                     })}
                                                 />
                                             </Box>
@@ -1279,7 +1279,7 @@ export default function ScopeWorkspace({ auditId, onNavigate, onOpenProfile }: S
                                                     handleGithubClone().finally(() => setIsConnectingGithub(false))
                                                 }}
                                                 className={css({
-                                                    bg: 'rgba(88, 214, 171, 0.9)', color: '#08211a', fontWeight: '600',
+                                                    bg: 'rgba(88, 149, 255, 0.9)', color: '#08152e', fontWeight: '600',
                                                     fontSize: 'sm', px: '5', py: '2', borderRadius: '8px',
                                                     cursor: githubUrl && !isConnectingGithub ? 'pointer' : 'not-allowed',
                                                     opacity: githubUrl && !isConnectingGithub ? 1 : 0.5,
@@ -1310,7 +1310,7 @@ export default function ScopeWorkspace({ auditId, onNavigate, onOpenProfile }: S
                                                         w: 'full', bg: 'transparent',
                                                         border: `1px solid ${ui.borderSoft}`, borderRadius: '8px',
                                                         px: '3', py: '2', color: ui.textPrimary, fontSize: 'sm', outline: 'none',
-                                                        _focus: { border: '1px solid rgba(88, 214, 171, 0.5)' },
+                                                        _focus: { border: '1px solid rgba(88, 149, 255, 0.5)' },
                                                     })}
                                                 />
                                             </Box>
@@ -1321,7 +1321,7 @@ export default function ScopeWorkspace({ auditId, onNavigate, onOpenProfile }: S
                                                     handleAddressLookup().finally(() => setIsFetchingAddress(false))
                                                 }}
                                                 className={css({
-                                                    bg: 'rgba(88, 214, 171, 0.9)', color: '#08211a', fontWeight: '600',
+                                                    bg: 'rgba(88, 149, 255, 0.9)', color: '#08152e', fontWeight: '600',
                                                     fontSize: 'sm', px: '5', py: '2', borderRadius: '8px',
                                                     cursor: contractAddress && !isFetchingAddress ? 'pointer' : 'not-allowed',
                                                     opacity: contractAddress && !isFetchingAddress ? 1 : 0.5,
@@ -1346,10 +1346,10 @@ export default function ScopeWorkspace({ auditId, onNavigate, onOpenProfile }: S
                                             align="center"
                                             justify="center"
                                             className={css({
-                                                border: `1px dashed ${isDragOver ? 'rgba(88, 214, 171, 0.6)' : ui.borderSoft}`,
+                                                border: `1px dashed ${isDragOver ? 'rgba(88, 149, 255, 0.6)' : ui.borderSoft}`,
                                                 borderRadius: '12px',
                                                 py: '8',
-                                                bg: isDragOver ? 'rgba(88, 214, 171, 0.04)' : 'rgba(0,0,0,0.2)',
+                                                bg: isDragOver ? 'rgba(88, 149, 255, 0.04)' : 'rgba(0,0,0,0.2)',
                                                 transition: 'all 0.2s',
                                                 cursor: 'pointer',
                                             })}
@@ -1365,9 +1365,9 @@ export default function ScopeWorkspace({ auditId, onNavigate, onOpenProfile }: S
                                                 <button
                                                     onClick={openFilePicker}
                                                     className={css({
-                                                        bg: 'rgba(88, 214, 171, 0.9)', color: '#08211a', fontWeight: '600',
+                                                        bg: 'rgba(88, 149, 255, 0.9)', color: '#08152e', fontWeight: '600',
                                                         fontSize: 'xs', px: '4', py: '1.5', borderRadius: '7px', cursor: 'pointer',
-                                                        _hover: { bg: 'rgba(88, 214, 171, 1)' }
+                                                        _hover: { bg: 'rgba(88, 149, 255, 1)' }
                                                     })}
                                                 >
                                                     Select Files (.sol / .zip / .tar)
@@ -1378,7 +1378,7 @@ export default function ScopeWorkspace({ auditId, onNavigate, onOpenProfile }: S
                                                         bg: 'transparent', color: ui.textSecondary,
                                                         border: `1px solid ${ui.borderSoft}`, fontWeight: '500',
                                                         fontSize: 'xs', px: '4', py: '1.5', borderRadius: '7px', cursor: 'pointer',
-                                                        _hover: { borderColor: 'rgba(88, 214, 171, 0.4)', color: ui.textPrimary }
+                                                        _hover: { borderColor: 'rgba(88, 149, 255, 0.4)', color: ui.textPrimary }
                                                     })}
                                                 >
                                                     Select Folder
@@ -1450,10 +1450,12 @@ export default function ScopeWorkspace({ auditId, onNavigate, onOpenProfile }: S
                 <SlideButton
                     reversed
                     text="Goto Audits"
+                    theme="blue"
                     onComplete={() => onNavigate('/menu/audits')}
                 />
                 <SlideButton
                     text="Goto Enum"
+                    theme="blue"
                     onComplete={() => onNavigate(`/enum/${auditId}`)}
                 />
             </Flex>

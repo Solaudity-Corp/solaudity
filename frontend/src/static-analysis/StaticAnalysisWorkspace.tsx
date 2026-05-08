@@ -46,6 +46,7 @@ interface StaticAnalysisWorkspaceProps {
 export function StaticAnalysisWorkspace({ auditId, onNavigate, onOpenProfile }: StaticAnalysisWorkspaceProps) {
   const [activeView, setActiveView] = useState<StaticView>('slither')
   const [subNavOpen, setSubNavOpen] = useState(true)
+  const [sideNavPanel, setSideNavPanel] = useState<'tools' | null>(null)
 
   return (
     <Flex direction="column" minH="100vh" className={css({ background: '#101014' })}>
@@ -57,10 +58,12 @@ export function StaticAnalysisWorkspace({ auditId, onNavigate, onOpenProfile }: 
         onOpenProfile={onOpenProfile}
         showSearch={false}
         journeyItems={[
-          { label: 'Scope', onClick: () => onNavigate(`/scope/${auditId}`) },
-          { label: 'Enum', onClick: () => onNavigate(`/enum/${auditId}`) },
-          { label: 'Static Analysis', isCurrent: true },
+          { label: 'Scope', onClick: () => onNavigate(`/scope/${auditId}`), accentColor: 'rgba(88, 149, 255, 0.28)' },
+          { label: 'Enum', onClick: () => onNavigate(`/enum/${auditId}`), accentColor: 'rgba(88, 214, 171, 0.28)' },
+          { label: 'Static Analysis', isCurrent: true, accentColor: 'rgba(180, 140, 255, 0.28)' },
         ]}
+        openSideNavPanel={sideNavPanel}
+        onSideNavPanelConsumed={() => setSideNavPanel(null)}
       />
 
       {/* Collapsible sub-navbar */}
@@ -92,13 +95,13 @@ export function StaticAnalysisWorkspace({ auditId, onNavigate, onOpenProfile }: 
                   className={css({
                     px: '4', py: '1.5', borderRadius: '6px', fontSize: 'sm',
                     fontWeight: isActive ? '600' : '400',
-                    color: isActive ? 'rgba(88, 214, 171, 1)' : 'rgba(185, 185, 193, 0.72)',
-                    background: isActive ? 'rgba(88, 214, 171, 0.08)' : 'transparent',
-                    border: isActive ? '1px solid rgba(88, 214, 171, 0.22)' : '1px solid transparent',
+                    color: isActive ? 'rgba(180, 140, 255, 1)' : 'rgba(185, 185, 193, 0.72)',
+                    background: isActive ? 'rgba(180, 140, 255, 0.09)' : 'transparent',
+                    border: isActive ? '1px solid rgba(180, 140, 255, 0.28)' : '1px solid transparent',
                     cursor: 'pointer', transition: 'all 0.15s ease', whiteSpace: 'nowrap', flexShrink: 0,
                     _hover: {
-                      color: isActive ? 'rgba(88, 214, 171, 1)' : 'rgba(231, 228, 239, 0.88)',
-                      background: isActive ? 'rgba(88, 214, 171, 0.08)' : 'rgba(255, 255, 255, 0.04)',
+                      color: isActive ? 'rgba(180, 140, 255, 1)' : 'rgba(231, 228, 239, 0.88)',
+                      background: isActive ? 'rgba(180, 140, 255, 0.09)' : 'rgba(255, 255, 255, 0.04)',
                     },
                   })}
                 >
@@ -147,7 +150,7 @@ export function StaticAnalysisWorkspace({ auditId, onNavigate, onOpenProfile }: 
           {activeView === 'slither' ? (
             <SlitherView auditId={auditId} />
           ) : activeView === 'mythril' ? (
-            <MythrilView auditId={auditId} />
+            <MythrilView auditId={auditId} onOpenTools={() => setSideNavPanel('tools')} />
           ) : activeView === 'securify' ? (
             <SecurifyView auditId={auditId} />
           ) : activeView === 'aderyn' ? (
@@ -180,10 +183,12 @@ export function StaticAnalysisWorkspace({ auditId, onNavigate, onOpenProfile }: 
         <SlideButton
           reversed
           text="Goto Enum"
+          theme="violet"
           onComplete={() => onNavigate(`/enum/${auditId}`)}
         />
         <SlideButton
           text="Goto Reports"
+          theme="violet"
           onComplete={() => {}}
         />
       </Flex>

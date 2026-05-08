@@ -7,6 +7,7 @@ import { darkMenuContentClass, darkMenuItemClass, disconnectMenuItemClass } from
 import { logoutUser } from '../auth'
 import { SvgLogo } from './SvgLogo'
 import { SideNav } from './SideNav'
+import type { SubPanel } from './SideNav'
 
 export type MenuSection = 'dashboard' | 'audits' | 'reports' | 'activity'
 
@@ -15,6 +16,7 @@ export interface JourneyItem {
   onClick?: () => void
   isCurrent?: boolean
   disabled?: boolean
+  accentColor?: string
 }
 
 interface NavBarProps {
@@ -25,6 +27,8 @@ interface NavBarProps {
   onOpenProfile?: () => void
   showSearch?: boolean
   journeyItems?: JourneyItem[]
+  openSideNavPanel?: SubPanel | null
+  onSideNavPanelConsumed?: () => void
 }
 
 const links: Array<{ label: string; section: MenuSection }> = [
@@ -32,6 +36,29 @@ const links: Array<{ label: string; section: MenuSection }> = [
   { label: 'Reports', section: 'reports' },
   { label: 'Activity', section: 'activity' },
 ]
+
+// ── Color helpers ──────────────────────────────────────────────────────────────
+
+function lerpColor(from: string, to: string, t: number): string {
+  const parse = (c: string): [number, number, number, number] => {
+    const m = c.match(/rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)(?:\s*,\s*([\d.]+))?\s*\)/)
+    if (!m) return [185, 185, 189, 0.18]
+    return [+m[1], +m[2], +m[3], m[4] !== undefined ? +m[4] : 1]
+  }
+  const [r1, g1, b1, a1] = parse(from)
+  const [r2, g2, b2, a2] = parse(to)
+  return `rgba(${Math.round(r1 + (r2 - r1) * t)}, ${Math.round(g1 + (g2 - g1) * t)}, ${Math.round(b1 + (b2 - b1) * t)}, ${+(a1 + (a2 - a1) * t).toFixed(3)})`
+}
+
+function withAlpha(color: string, alpha: number): string {
+  const m = color.match(/rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)/)
+  if (!m) return color
+  return `rgba(${m[1]}, ${m[2]}, ${m[3]}, ${alpha.toFixed(3)})`
+}
+
+const FALLBACK_ACCENT = 'rgba(185, 185, 189, 0.20)'
+
+// ── Component ─────────────────────────────────────────────────────────────────
 
 export function NavBar({
   activeSection,
@@ -41,10 +68,18 @@ export function NavBar({
   onOpenProfile,
   showSearch = true,
   journeyItems = [],
+  openSideNavPanel,
+  onSideNavPanelConsumed,
 }: NavBarProps) {
   const controlRadius = '8px'
-  const JOURNEY_ANIM_DURATION_MS = 520
+  const JOURNEY_ANIM_DURATION_MS = 560
   const [sideNavOpen, setSideNavOpen] = useState(false)
+  const isNavOpen = sideNavOpen || !!openSideNavPanel
+
+  const handleNavClose = useCallback(() => {
+    setSideNavOpen(false)
+    onSideNavPanelConsumed?.()
+  }, [onSideNavPanelConsumed])
   const [journeyAnimatingFromIndex, setJourneyAnimatingFromIndex] = useState<number | null>(null)
   const [journeyAnimatingToIndex, setJourneyAnimatingToIndex] = useState<number | null>(null)
   const [journeyAnimatingProgress, setJourneyAnimatingProgress] = useState(0)
@@ -68,9 +103,8 @@ export function NavBar({
 
     const animate = (now: number) => {
       const t = Math.min((now - startTime) / duration, 1)
-      const eased = t < 0.5
-        ? 4 * t * t * t
-        : 1 - Math.pow(-2 * t + 2, 3) / 2
+      // easeOutQuart: fast initial sweep, silky landing
+      const eased = 1 - Math.pow(1 - t, 4)
       setJourneyAnimatingProgress(eased)
 
       if (t < 1) {
@@ -100,6 +134,14 @@ export function NavBar({
   }, [])
 
   const currentJourneyIndex = journeyItems.findIndex((step) => !!step.isCurrent)
+
+  // Pre-compute source and target colors for the whole animation pass
+  const fromItemColor = journeyAnimatingFromIndex !== null
+    ? (journeyItems[journeyAnimatingFromIndex]?.accentColor ?? FALLBACK_ACCENT)
+    : FALLBACK_ACCENT
+  const toItemColor = journeyAnimatingToIndex !== null
+    ? (journeyItems[journeyAnimatingToIndex]?.accentColor ?? FALLBACK_ACCENT)
+    : FALLBACK_ACCENT
 
   return (
     <>
@@ -201,7 +243,6 @@ export function NavBar({
                   h: '10',
                   px: '3',
                   borderRadius: '10px',
-                  borderLeft: '1px solid rgba(185, 185, 193, 0.22)',
                   border: '1px solid rgba(176, 176, 184, 0.28)',
                   background: 'rgba(16, 16, 20, 0.92)',
                   boxShadow: '0 4px 12px rgba(0, 0, 0, 0.18)',
@@ -211,16 +252,44 @@ export function NavBar({
                 {journeyItems.map((item, idx) => {
                   const isAnimatingCurrent = journeyAnimatingFromIndex === idx
                   const isAnimatingTarget = journeyAnimatingToIndex === idx
+                  const isParticipating = isAnimatingCurrent || isAnimatingTarget
                   const isClickable = !!item.onClick && !item.disabled && !isJourneyAnimating
                   const isForward = journeyAnimatingFromIndex !== null && journeyAnimatingToIndex !== null
                     ? journeyAnimatingToIndex > journeyAnimatingFromIndex
                     : true
+
+                  // Transform origin: source shrinks from its far edge, target grows from its near edge
                   const sourceTransformOrigin = isForward ? 'right center' : 'left center'
                   const targetTransformOrigin = isForward ? 'left center' : 'right center'
                   const currentBadgeFill = isAnimatingCurrent ? 1 - journeyAnimatingProgress : 1
                   const targetBadgeFill = isAnimatingTarget ? journeyAnimatingProgress : 0
                   const badgeFill = item.isCurrent ? currentBadgeFill : targetBadgeFill
                   const badgeTransformOrigin = item.isCurrent ? sourceTransformOrigin : targetTransformOrigin
+
+                  // ── Animated color: both fills morph together from source → target color ──
+                  const itemAccent = item.accentColor ?? FALLBACK_ACCENT
+                  const fillColor = isParticipating
+                    ? lerpColor(fromItemColor, toItemColor, journeyAnimatingProgress)
+                    : itemAccent
+
+                  // ── Glow: pulses at the midpoint of the transition ──
+                  const glowPulse = isParticipating
+                    ? Math.sin(journeyAnimatingProgress * Math.PI)
+                    : (item.isCurrent ? 0.4 : 0)
+                  const glowAlpha = 0.18 + 0.28 * glowPulse
+                  const glowShadow = badgeFill > 0.02
+                    ? `0 0 ${Math.round(8 + 12 * glowPulse)}px ${Math.round(1 + 3 * glowPulse)}px ${withAlpha(fillColor, glowAlpha)}`
+                    : 'none'
+
+                  // ── Leading-edge shimmer: bright streak at the growing edge ──
+                  const shimmerAlpha = Math.min(glowAlpha * 3.5, 0.72)
+                  const shimmerDir = isParticipating
+                    ? (isAnimatingTarget ? (isForward ? '90deg' : '270deg') : (isForward ? '270deg' : '90deg'))
+                    : '90deg'
+                  const fillBackground = isParticipating && badgeFill > 0.02
+                    ? `linear-gradient(${shimmerDir}, ${fillColor} 30%, ${withAlpha(fillColor, shimmerAlpha)} 100%)`
+                    : fillColor
+
                   return (
                     <Flex key={`${item.label}-${idx}`} align="center" gap="1" minW="0" flex="1">
                       <Box minW="0" flex="1">
@@ -232,6 +301,7 @@ export function NavBar({
                             overflow: 'hidden',
                           })}
                         >
+                          {/* Animated fill */}
                           <Box
                             aria-hidden
                             className={css({
@@ -239,14 +309,17 @@ export function NavBar({
                               inset: 0,
                               zIndex: 0,
                               borderRadius: 'md',
-                              bg: 'rgba(88, 214, 171, 0.22)',
-                              transformOrigin: badgeTransformOrigin,
                               pointerEvents: 'none',
-                              transition: isAnimatingCurrent || isAnimatingTarget ? undefined : 'opacity 0.2s ease',
                             })}
                             style={{
+                              transformOrigin: badgeTransformOrigin,
                               transform: `scaleX(${badgeFill})`,
-                              opacity: badgeFill,
+                              opacity: badgeFill > 0.01 ? 1 : 0,
+                              background: fillBackground,
+                              boxShadow: glowShadow,
+                              transition: isParticipating
+                                ? 'none'
+                                : 'opacity 0.3s ease, background 0.5s ease, box-shadow 0.5s ease',
                             }}
                           />
 
@@ -261,13 +334,18 @@ export function NavBar({
                                 lineHeight: '1',
                                 textAlign: 'center',
                                 fontWeight: '600',
-                                color: 'rgba(185, 185, 193, 0.78)',
                                 px: '2',
                                 py: '1',
                                 overflow: 'hidden',
                                 textOverflow: 'ellipsis',
                                 whiteSpace: 'nowrap',
                               })}
+                              style={{
+                                color: isAnimatingCurrent
+                                  ? lerpColor('rgba(231, 228, 239, 0.92)', 'rgba(185, 185, 193, 0.6)', journeyAnimatingProgress)
+                                  : 'rgba(231, 228, 239, 0.92)',
+                                transition: isAnimatingCurrent ? 'none' : 'color 0.3s ease',
+                              }}
                             >
                               {item.label}
                             </Box>
@@ -284,9 +362,6 @@ export function NavBar({
                                 lineHeight: '1',
                                 textAlign: 'center',
                                 fontWeight: '400',
-                                color: isClickable
-                                  ? 'rgba(185, 185, 193, 0.78)'
-                                  : 'rgba(185, 185, 193, 0.45)',
                                 bg: 'transparent',
                                 border: 'none',
                                 cursor: isClickable ? 'pointer' : 'not-allowed',
@@ -295,12 +370,14 @@ export function NavBar({
                                 overflow: 'hidden',
                                 textOverflow: 'ellipsis',
                                 whiteSpace: 'nowrap',
-                                transition: 'color 0.18s ease, transform 0.18s ease',
-                                _hover: isClickable
-                                  ? { color: 'rgba(231, 228, 239, 0.92)' }
-                                  : undefined,
+                                transition: 'color 0.25s ease, transform 0.18s ease',
                                 _active: isClickable ? { transform: 'scale(0.985)' } : undefined,
                               })}
+                              style={{
+                                color: isAnimatingTarget
+                                  ? lerpColor('rgba(185, 185, 193, 0.6)', 'rgba(231, 228, 239, 0.92)', journeyAnimatingProgress)
+                                  : isClickable ? 'rgba(185, 185, 193, 0.78)' : 'rgba(185, 185, 193, 0.45)',
+                              }}
                             >
                               {item.label}
                             </button>
@@ -309,7 +386,16 @@ export function NavBar({
                       </Box>
 
                       {idx < journeyItems.length - 1 && (
-                        <ChevronRight size={12} className={css({ color: 'rgba(167, 167, 174, 0.7)', flexShrink: 0 })} />
+                        <ChevronRight
+                          size={12}
+                          style={{
+                            flexShrink: 0,
+                            color: isParticipating
+                              ? withAlpha(fillColor, 0.55)
+                              : 'rgba(167, 167, 174, 0.7)',
+                            transition: isParticipating ? 'none' : 'color 0.4s ease',
+                          }}
+                        />
                       )}
                     </Flex>
                   )
@@ -383,7 +469,7 @@ export function NavBar({
         </Flex>
       </Box>
 
-      <SideNav open={sideNavOpen} onClose={() => setSideNavOpen(false)} />
+      <SideNav open={isNavOpen} onClose={handleNavClose} openToPanel={openSideNavPanel} />
     </>
   )
 }

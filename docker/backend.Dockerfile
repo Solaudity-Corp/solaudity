@@ -1,7 +1,25 @@
 # syntax=docker/dockerfile:1
+
+# ── Stage: Python 3.11 source ─────────────────────────────────────────────────
+# mythril 0.24.8 is incompatible with Python 3.13.
+# Trixie has no python3.11 apt package, so we copy the interpreter + stdlib from
+# the official 3.11 Bookworm image.  glibc on Trixie (2.41) is newer than
+# Bookworm (2.36) — backwards-compatible, so the binary runs fine.
+FROM python:3.11-slim-bookworm AS python311
+
+# ── Main stage ────────────────────────────────────────────────────────────────
 FROM python:3.13-slim-trixie
 
 WORKDIR /app
+
+# Copy Python 3.11 interpreter + stdlib + headers + shared library from the build stage.
+# The include dir is required to compile C extensions (e.g. pyethash) inside the mythril venv.
+COPY --from=python311 /usr/local/bin/python3.11 /usr/local/bin/python3.11
+COPY --from=python311 /usr/local/lib/python3.11 /usr/local/lib/python3.11
+COPY --from=python311 /usr/local/include/python3.11 /usr/local/include/python3.11
+COPY --from=python311 /usr/local/lib/libpython3.11.so.1.0 /usr/local/lib/libpython3.11.so.1.0
+RUN ln -sf /usr/local/lib/libpython3.11.so.1.0 /usr/local/lib/libpython3.11.so \
+    && ldconfig
 
 # Install Node.js for Solidity analysis tooling.
 # Also enable amd64 multi-arch so solc-select's x86_64 binaries run via QEMU on ARM64 hosts.
@@ -9,6 +27,7 @@ RUN dpkg --add-architecture amd64 \
     && apt-get update \
     && apt-get full-upgrade -y \
     && apt-get install -y --no-install-recommends curl ca-certificates libc6:amd64 \
+       libgmp-dev libssl-dev libffi-dev build-essential pkg-config cmake \
     && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get update \
     && apt-get install -y --no-install-recommends nodejs \
@@ -63,6 +82,23 @@ COPY requirements.txt .
 RUN pip install --upgrade pip setuptools wheel "jaraco.context>=6.1.1" \
     && pip install -r requirements.txt
 
+# Slither and Mythril require conflicting eth-abi versions, so each gets its
+# own venv. The CLI binaries are symlinked into PATH so subprocess calls work.
+RUN python3 -m venv /opt/venv-slither \
+    && /opt/venv-slither/bin/pip install --upgrade pip \
+    && /opt/venv-slither/bin/pip install slither-analyzer==0.11.5 \
+    && ln -sf /opt/venv-slither/bin/slither /usr/local/bin/slither \
+    && ln -sf /opt/venv-slither/bin/crytic-compile /usr/local/bin/crytic-compile \
+    && ln -sf /opt/venv-slither/bin/solc-select /usr/local/bin/solc-select \
+    && ln -sf /opt/venv-slither/bin/solc /usr/local/bin/solc
+
+# Pre-create the mythril venv directory (world-writable) so the runtime installer
+# can populate it regardless of which user the container runs as.
+# /opt/venv-mythril/bin is added to PATH below so 'myth' is found once installed —
+# no symlink into /usr/local/bin is needed (which would require root at runtime).
+RUN mkdir -p /opt/venv-mythril && chmod 777 /opt/venv-mythril
+
+
 # solc-select stores compiler binaries in SOLC_SELECT_ARTIFACTS_FOLDER.
 # Without this it defaults to ~/.solc-select which resolves to /.solc-select
 # inside containers that run without a real home dir — causing PermissionError.
@@ -70,10 +106,13 @@ RUN pip install --upgrade pip setuptools wheel "jaraco.context>=6.1.1" \
 # /root has 700 perms — non-root users can't traverse it regardless of subdir perms.
 RUN mkdir -p /opt/solc-home && chmod 777 /opt/solc-home
 ENV HOME=/opt/solc-home
+# myth lives in the runtime-installed venv; add its bin to PATH so no root-owned symlink is needed.
+ENV PATH="/opt/venv-mythril/bin:${PATH}"
 
 # Pre-install common solc versions so Slither can compile without network access at runtime.
-RUN solc-select install 0.8.28 0.8.20 0.8.17 0.8.0 0.7.6 0.6.12 \
-    && solc-select use 0.8.28 \
+# solc-select lives inside the slither venv (not on system PATH) since we moved slither out of requirements.txt.
+RUN /opt/venv-slither/bin/solc-select install 0.8.28 0.8.20 0.8.17 0.8.0 0.7.6 0.6.12 \
+    && /opt/venv-slither/bin/solc-select use 0.8.28 \
     && chmod -R 777 /opt/solc-home/.solc-select
 
 COPY app ./app

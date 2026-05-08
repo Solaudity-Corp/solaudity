@@ -35,7 +35,8 @@ RUN pip install --upgrade pip wheel "jaraco.context>=6.1.1" \
 RUN mkdir -p /opt/solc-home && chmod 777 /opt/solc-home
 ENV HOME=/opt/solc-home
 
-RUN solc-select install 0.8.28 0.8.20 0.8.17 0.8.0 0.7.6 0.6.12 \
+RUN pip install solc-select \
+    && solc-select install 0.8.28 0.8.20 0.8.17 0.8.0 0.7.6 0.6.12 \
     && solc-select use 0.8.28 \
     && chmod -R 777 /opt/solc-home/.solc-select
 

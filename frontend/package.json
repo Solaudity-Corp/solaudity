@@ -31,7 +31,21 @@
     "react-dom": "^19.2.0"
   },
   "overrides": {
-    "dompurify": "3.3.3",
+    "dompurify": "3.4.2",
+    "hono": ">=4.12.16",
+    "ip-address": ">=10.1.1",
+    "@pandacss/postcss": {
+      "postcss": ">=8.5.10"
+    },
+    "@pandacss/node": {
+      "postcss": ">=8.5.10"
+    },
+    "@pandacss/generator": {
+      "postcss": ">=8.5.10"
+    },
+    "@pandacss/core": {
+      "postcss": ">=8.5.10"
+    },
     "picomatch": "4.0.4",
     "micromatch": {
       "picomatch": "2.3.2"
@@ -52,7 +66,7 @@
     "eslint-plugin-react-refresh": "^0.4.24",
     "globals": "^16.5.0",
     "jsdom": "^27.1.0",
-    "postcss": "^8.5.6",
+    "postcss": "^8.5.10",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.48.0",
     "vite": "^7.3.1",
