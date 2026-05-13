@@ -6,7 +6,7 @@ import { NavBar } from '../components/NavBar'
 import SlideButton from '../components/SlideButton'
 import { SlitherView } from './SlitherView'
 import { MythrilView } from './MythrilView'
-import { SecurifyView } from './SecurifyView'
+import { Analyzer4View } from './Analyzer4View'
 import { AderynView } from './AderynView'
 import { CertoraView } from './CertoraView'
 import { SMTCheckerView } from './SMTCheckerView'
@@ -17,7 +17,7 @@ import { OrchestrationView } from './OrchestrationView'
 type StaticView =
   | 'slither'
   | 'mythril'
-  | 'securify'
+  | 'analyzer4'
   | 'aderyn'
   | 'certora'
   | 'smtchecker'
@@ -28,7 +28,7 @@ type StaticView =
 const views: Array<{ id: StaticView; label: string }> = [
   { id: 'slither', label: 'Slither' },
   { id: 'mythril', label: 'Mythril' },
-  { id: 'securify', label: 'Securify' },
+  { id: 'analyzer4', label: '4naly3er' },
   { id: 'aderyn', label: 'Aderyn' },
   { id: 'certora', label: 'Certora Prover' },
   { id: 'smtchecker', label: 'SMTChecker' },
@@ -151,8 +151,8 @@ export function StaticAnalysisWorkspace({ auditId, onNavigate, onOpenProfile }: 
             <SlitherView auditId={auditId} />
           ) : activeView === 'mythril' ? (
             <MythrilView auditId={auditId} onOpenTools={() => setSideNavPanel('tools')} />
-          ) : activeView === 'securify' ? (
-            <SecurifyView auditId={auditId} />
+          ) : activeView === 'analyzer4' ? (
+            <Analyzer4View auditId={auditId} />
           ) : activeView === 'aderyn' ? (
             <AderynView auditId={auditId} />
           ) : activeView === 'certora' ? (
