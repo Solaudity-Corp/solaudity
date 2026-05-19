@@ -3,13 +3,19 @@ from uuid import UUID
 from fastapi import APIRouter, Depends
 from sqlmodel import Session
 
-from app.api.ai import service
+from app.api.ai import service, vuln_service
 from app.api.ai.schemas import (
     AiDocListResponse,
     ExtractAuditFieldsRequest,
     ExtractAuditFieldsResponse,
     GenerateDocRequest,
     GenerateDocResponse,
+)
+from app.api.ai.vuln_schemas import (
+    VulnScanListResponse,
+    VulnScanRequest,
+    VulnScanResponse,
+    VulnTypesResponse,
 )
 from app.api.auth.auth import get_current_user
 from app.database import get_session
@@ -86,3 +92,36 @@ def list_docs_for_address_route(
 ):
     """Return all AI docs for a decompiled address, newest first."""
     return service.list_docs_for_address(address_id=address_id, session=session)
+
+
+# ---------------------------------------------------------------------------
+# AI Vuln Scanner — SC01–SC10 : 2026
+# ---------------------------------------------------------------------------
+
+@router.get("/vuln-types", response_model=VulnTypesResponse)
+def list_vuln_types():
+    """Return the catalog of supported vulnerability types."""
+    return vuln_service.list_vuln_types()
+
+
+@router.post("/vuln-scan", response_model=VulnScanResponse)
+def run_vuln_scan(
+    payload: VulnScanRequest,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    """Run an AI vulnerability scan on a contract for the specified vuln type."""
+    return vuln_service.run_vuln_scan(
+        payload=payload,
+        current_user=current_user,
+        session=session,
+    )
+
+
+@router.get("/vuln-scans/contract/{contract_id}", response_model=VulnScanListResponse)
+def list_vuln_scans_for_contract(
+    contract_id: UUID,
+    session: Session = Depends(get_session),
+):
+    """Return all past vuln scans for a contract, newest first."""
+    return vuln_service.list_scans_for_contract(contract_id=contract_id, session=session)
