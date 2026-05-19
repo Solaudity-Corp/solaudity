@@ -19,7 +19,7 @@ async function apiFetch(url: string, options: RequestInit = {}): Promise<Respons
   return res
 }
 
-export type ToolStatus = 'not_installed' | 'installing' | 'installed' | 'error'
+export type ToolStatus = 'not_installed' | 'installing' | 'installed' | 'error' | 'not_supported'
 
 export interface Tool {
   id: string
