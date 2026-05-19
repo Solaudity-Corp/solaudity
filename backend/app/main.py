@@ -15,6 +15,8 @@ from app.api.enum.heimdall.router import router as heimdall_router
 from app.api.static_analysis.slither.router import router as slither_router
 from app.api.static_analysis.mythril.router import router as mythril_router
 from app.api.static_analysis.analyzer4.router import router as analyzer4_router
+from app.api.static_analysis.certora.router import router as certora_router
+from app.api.static_analysis.smtchecker.router import router as smtchecker_router
 from app.api.solc_versions.router import router as solc_versions_router
 from app.api.tools.router import router as tools_router
 
@@ -55,6 +57,8 @@ app.include_router(heimdall_router)
 app.include_router(slither_router)
 app.include_router(mythril_router)
 app.include_router(analyzer4_router)
+app.include_router(certora_router)
+app.include_router(smtchecker_router)
 app.include_router(solc_versions_router)
 app.include_router(tools_router)
 
