@@ -200,6 +200,11 @@ function ToolBadge({ status }: { status: ToolStatus }) {
       <AlertCircle size={10} strokeWidth={2} /><span>Error</span>
     </Flex>
   )
+  if (status === 'not_supported') return (
+    <Flex align="center" gap="1" style={{ color: 'rgba(185,185,193,0.45)', fontSize: 10.5, fontFamily: cl.mono }}>
+      <span>Not supported</span>
+    </Flex>
+  )
   return null
 }
 
@@ -209,14 +214,16 @@ function ToolBadge({ status }: { status: ToolStatus }) {
 function ToolCard({ tool, onInstall }: { tool: Tool; onInstall: (id: string) => void }) {
   const busy = tool.status === 'installing'
   const done = tool.status === 'installed'
-  const tagColor = '#ff8c50'
+  const unsupported = tool.status === 'not_supported'
+  const tagColor = unsupported ? 'rgba(185,185,193,0.35)' : '#ff8c50'
   return (
     <Box style={{
-      background: cl.card,
-      border: `1px solid ${done ? cl.accentBorder : cl.cardBorder}`,
+      background: unsupported ? 'rgba(255,255,255,0.01)' : cl.card,
+      border: `1px solid ${done ? cl.accentBorder : unsupported ? 'rgba(185,185,189,0.08)' : cl.cardBorder}`,
       borderRadius: 9, padding: '10px 12px',
       display: 'flex', flexDirection: 'column', gap: 5,
       transition: 'border-color 0.2s',
+      opacity: unsupported ? 0.55 : 1,
     }}>
       <Flex align="center" justify="space-between" gap="2">
         <Flex align="center" gap="2">
@@ -225,14 +232,23 @@ function ToolCard({ tool, onInstall }: { tool: Tool; onInstall: (id: string) => 
             color: tagColor, background: `${tagColor}1a`,
             borderRadius: 4, padding: '1px 6px', fontFamily: cl.mono,
           }}>{tool.tag}</span>
-          <span style={{ fontSize: 12.5, fontWeight: 600, color: cl.text, fontFamily: cl.mono }}>
+          <span style={{ fontSize: 12.5, fontWeight: 600, color: unsupported ? 'rgba(185,185,193,0.55)' : cl.text, fontFamily: cl.mono }}>
             {tool.name}
           </span>
         </Flex>
         <ToolBadge status={tool.status} />
       </Flex>
       <span style={{ fontSize: 11, color: cl.muted, lineHeight: 1.5 }}>{tool.description}</span>
-      {!done && (
+      {unsupported && tool.error_message && (
+        <span style={{
+          fontSize: 10, color: 'rgba(185,185,193,0.55)', fontFamily: cl.mono, lineHeight: 1.5,
+          padding: '5px 8px', borderRadius: 5,
+          background: 'rgba(185,185,193,0.05)', border: '1px solid rgba(185,185,189,0.12)',
+        }}>
+          {tool.error_message}
+        </span>
+      )}
+      {!done && !unsupported && (
         <button
           type="button" disabled={busy} onClick={() => onInstall(tool.id)}
           className={css({
@@ -249,11 +265,6 @@ function ToolCard({ tool, onInstall }: { tool: Tool; onInstall: (id: string) => 
         >
           {busy ? 'Installing…' : tool.status === 'error' ? 'Retry' : 'Install'}
         </button>
-      )}
-      {busy && (
-        <span style={{ fontSize: 10.5, color: cl.muted, fontFamily: cl.mono, lineHeight: 1.5 }}>
-          This may take 15–30 min on ARM64 Linux (z3 compiles from source).
-        </span>
       )}
       {tool.status === 'error' && tool.error_message && (
         <span style={{
