@@ -111,7 +111,7 @@ ENV PATH="/opt/venv-mythril/bin:${PATH}"
 
 # Pre-install common solc versions so Slither can compile without network access at runtime.
 # solc-select lives inside the slither venv (not on system PATH) since we moved slither out of requirements.txt.
-RUN /opt/venv-slither/bin/solc-select install 0.8.28 0.8.20 0.8.17 0.8.0 0.7.6 0.6.12 \
+RUN /opt/venv-slither/bin/solc-select install 0.8.30 0.8.28 0.8.20 0.8.17 0.8.0 0.7.6 0.6.12 \
     && /opt/venv-slither/bin/solc-select use 0.8.28 \
     && chmod -R 777 /opt/solc-home/.solc-select
 
@@ -123,6 +123,46 @@ RUN curl -sL https://github.com/Picodes/4naly3er/archive/refs/heads/main.tar.gz 
     && npm install --legacy-peer-deps \
     && npm cache clean --force
 COPY 4naly3er-run-json.ts /opt/4naly3er/run_json.ts
+
+# z3 SMT solver — required by solc's CHC engine (SMTChecker)
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends z3 \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# ── Certora Prover (local JVM mode) ──────────────────────────────────────────
+# Installs OpenJDK (required to run the CertoraProver JAR) and certora-cli in
+# its own venv so it cannot conflict with the main requirements.
+# certora-cli bundles the CertoraProver JAR and runs it locally via --local.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends default-jre-headless \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN python3 -m venv /opt/venv-certora \
+    && /opt/venv-certora/bin/pip install --upgrade pip \
+    && /opt/venv-certora/bin/pip install certora-cli \
+    && ln -sf /opt/venv-certora/bin/certoraRun /usr/local/bin/certoraRun
+
+# Pre-download the CertoraProver JAR at build time so the image starts offline-ready.
+# HOME is already /opt/solc-home — certora-cli caches the JAR there, keeping it in
+# this image layer. The warmup proof is expected to fail (empty contract / trivial spec);
+# only the JAR fetch matters. We clean up the temp files afterwards.
+RUN mkdir -p /tmp/certora-warmup \
+    && printf 'pragma solidity ^0.8.0;\ncontract Warmup {}\n' \
+         > /tmp/certora-warmup/Warmup.sol \
+    && printf 'methods {}\nrule trivial() { assert true; }\n' \
+         > /tmp/certora-warmup/Warmup.spec \
+    && (cd /tmp/certora-warmup \
+        && certoraRun Warmup.sol \
+             --verify Warmup:Warmup.spec \
+             --solc /usr/local/bin/solc \
+             --local \
+             --output_folder /tmp/certora-out \
+             2>&1 | head -200) \
+    || echo "Certora warmup exited non-zero — expected, JAR should now be cached" \
+    && rm -rf /tmp/certora-warmup /tmp/certora-out \
+    && (chmod -R 777 /opt/solc-home/.certora 2>/dev/null || true)
 
 COPY app ./app
 COPY entrypoint.sh .
