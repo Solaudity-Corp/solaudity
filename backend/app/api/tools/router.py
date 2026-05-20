@@ -36,19 +36,39 @@ TOOL_CATALOG: list[dict] = [
         "install_type": "script",
         "bin_check": "/usr/local/bin/echidna",
         "install_cmds": [
-            # Build direct download URL — no GitHub API call, avoids network timeouts.
-            # v2.2.4 is the latest stable release with pre-built Linux binaries for both archs.
+            # Step 1: Detect the latest version tag via GitHub redirect (1 lightweight request, no API).
             "bash -c '"
-            "ARCH=$(uname -m); VERSION=2.2.4; "
-            "if echo \"$ARCH\" | grep -qE \"aarch64|arm64\"; then SUFFIX=Ubuntu-22.04-aarch64; else SUFFIX=Linux; fi; "
-            "echo \"https://github.com/crytic/echidna/releases/download/v${VERSION}/echidna-${VERSION}-${SUFFIX}.tar.gz\" > /tmp/.echidna_url"
+            "REDIR=$(curl -fsSL --max-time 20 -o /dev/null -w \"%{url_effective}\" https://github.com/crytic/echidna/releases/latest 2>/dev/null); "
+            "VERSION=$(echo \"$REDIR\" | sed \"s|.*/tag/v||; s|[^0-9.].*||\"); "
+            "[ -n \"$VERSION\" ] || { echo \"ERROR: could not detect echidna version\" >&2; exit 1; }; "
+            "echo \"Detected version: $VERSION\"; "
+            "echo \"$VERSION\" > /tmp/.echidna_ver"
             "'",
-            # Download (5-minute timeout — binary is ~50 MB)
+            # Step 2: Probe candidate filenames with HEAD requests until one returns 302/200.
+            # Tries the most common Linux asset naming conventions across releases.
+            "bash -c '"
+            "VERSION=$(cat /tmp/.echidna_ver); ARCH=$(uname -m); "
+            "if echo \"$ARCH\" | grep -qE \"aarch64|arm64\"; then "
+            "  NAMES=\"echidna-${VERSION}-Ubuntu-22.04-aarch64.tar.gz echidna-${VERSION}-aarch64-linux.tar.gz\"; "
+            "else "
+            "  NAMES=\"echidna-${VERSION}-Linux.tar.gz echidna-${VERSION}-Ubuntu-22.04-x86_64.tar.gz echidna-${VERSION}-Ubuntu-20.04-x86_64.tar.gz echidna-${VERSION}-Ubuntu-18.04-x86_64.tar.gz\"; "
+            "fi; "
+            "BASE=https://github.com/crytic/echidna/releases/download/v${VERSION}; "
+            "for NAME in $NAMES; do "
+            "  CODE=$(curl -o /dev/null -s -w \"%{http_code}\" --max-time 15 --head \"${BASE}/${NAME}\"); "
+            "  echo \"Probing $NAME -> HTTP $CODE\"; "
+            "  if [ \"$CODE\" = \"302\" ] || [ \"$CODE\" = \"200\" ]; then "
+            "    echo \"${BASE}/${NAME}\" > /tmp/.echidna_url; break; "
+            "  fi; "
+            "done; "
+            "[ -f /tmp/.echidna_url ] || { echo \"ERROR: no valid asset found for echidna v${VERSION}\" >&2; exit 1; }"
+            "'",
+            # Step 3: Download the binary (5-minute timeout, ~50 MB).
             "bash -c 'curl -fsSL --max-time 300 \"$(cat /tmp/.echidna_url)\" -o /tmp/echidna.tar.gz'",
-            # Extract binary and install
+            # Step 4: Extract the echidna binary and install it.
             "bash -c 'mkdir -p /tmp/echidna_ex && tar -xzf /tmp/echidna.tar.gz -C /tmp/echidna_ex/ && find /tmp/echidna_ex -name echidna -type f | head -1 | xargs -I{} mv {} /usr/local/bin/echidna'",
             "chmod +x /usr/local/bin/echidna",
-            "rm -rf /tmp/echidna.tar.gz /tmp/echidna_ex /tmp/.echidna_url",
+            "rm -rf /tmp/echidna.tar.gz /tmp/echidna_ex /tmp/.echidna_url /tmp/.echidna_ver",
         ],
     },
     {
