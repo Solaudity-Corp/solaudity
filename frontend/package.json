@@ -26,6 +26,8 @@
     "@types/marked": "^5.0.2",
     "@viz-js/viz": "^3.11.0",
     "@xyflow/react": "^12.10.2",
+    "@xterm/xterm": "^5.5.0",
+    "@xterm/addon-fit": "^0.10.0",
     "framer-motion": "^12.34.0",
     "lucide-react": "^0.563.0",
     "marked": "^18.0.4",

@@ -4,7 +4,6 @@ services:
     build:
       context: ../backend
       dockerfile: ../docker/backend.Dockerfile
-    user: "${HOST_UID}:${HOST_GID}"
     ports:
       - "8001:8001"
     volumes:

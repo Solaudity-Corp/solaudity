@@ -15,6 +15,7 @@ from sqlmodel import Session, select
 
 from app.api.auth.auth import get_current_user
 from app.api.dynamic_analysis.echidna.schemas import EchidnaRunDetail, EchidnaRunRead
+from app.api.solc_utils import make_solc_home, resolve_solc_binary
 from app.database import get_session
 from app.models.audits import Audit
 from app.models.echidna import EchidnaRun, EchidnaStatus, EchidnaTestMode
@@ -30,11 +31,25 @@ router = APIRouter(
 )
 
 _CONTRACTS_STORAGE_DIR = Path(os.getenv("CONTRACTS_STORAGE_DIR", "/data/contracts"))
+_SOL_LIBS = Path("/usr/local/sol-libs/node_modules")
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+def _write_echidna_config(tmpdir: Path) -> None:
+    """Write echidna.yaml with absolute remappings for the pre-installed sol-libs."""
+    if not _SOL_LIBS.exists():
+        return
+    remappings: list[str] = []
+    for pkg in sorted(_SOL_LIBS.iterdir()):
+        remappings.append(f'  - "{pkg.name}/={pkg}/"')
+    if not remappings:
+        return
+    config_lines = ["remappings:"] + remappings
+    (tmpdir / "echidna.yaml").write_text("\n".join(config_lines) + "\n")
+
 
 def _ensure_audit(session: Session, audit_id: UUID, owner_id: UUID) -> Audit:
     audit = session.get(Audit, audit_id)
@@ -100,6 +115,8 @@ def _build_file_in_tempdir(sc: ScopeContract, session: Session) -> tuple[Path, P
     if sol_libs.exists():
         (tmpdir / "node_modules").symlink_to(sol_libs)
 
+    _write_echidna_config(tmpdir)
+
     return tmpdir, dst
 
 
@@ -146,6 +163,7 @@ def _run_echidna(
     test_mode: EchidnaTestMode,
     timeout_seconds: int,
     seed: int | None,
+    solc_binary: str | None,
 ) -> tuple[int, list, str, str]:
     """Run echidna and return (exit_code, test_results, stdout, stderr)."""
     cmd = [
@@ -156,8 +174,14 @@ def _run_echidna(
     ]
     if seed is not None:
         cmd += ["--seed", str(seed)]
+    config_path = tmpdir / "echidna.yaml"
+    if config_path.exists():
+        cmd += ["--config", str(config_path)]
 
-    logger.info("ECHIDNA CMD: %s | cwd=%s", " ".join(cmd), tmpdir)
+    solc_home = make_solc_home(tmpdir, solc_binary)
+    env = {**os.environ, "HOME": str(solc_home)}
+
+    logger.info("ECHIDNA CMD: %s | cwd=%s | solc=%s", " ".join(cmd), tmpdir, solc_binary)
 
     try:
         result = subprocess.run(
@@ -166,6 +190,7 @@ def _run_echidna(
             text=True,
             timeout=timeout_seconds + 60,
             cwd=str(tmpdir),
+            env=env,
         )
     except subprocess.TimeoutExpired as exc:
         raise HTTPException(status_code=408, detail="Echidna timed out") from exc
@@ -226,8 +251,13 @@ def trigger_run(
     tmpdir: Path | None = None
     try:
         tmpdir, file_path = _build_file_in_tempdir(sc, session)
+
+        solc_binary, solc_err = resolve_solc_binary(file_path)
+        if solc_err:
+            raise HTTPException(status_code=422, detail=solc_err)
+
         exit_code, test_results, stdout, stderr = _run_echidna(
-            file_path, tmpdir, test_mode, timeout_seconds, seed
+            file_path, tmpdir, test_mode, timeout_seconds, seed, solc_binary
         )
 
         finished_at = datetime.now(timezone.utc)

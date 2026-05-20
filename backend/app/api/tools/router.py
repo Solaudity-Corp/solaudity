@@ -29,44 +29,6 @@ TOOL_CATALOG: list[dict] = [
         "packages": ["z3-solver==4.12.2.0", "mythril==0.24.8"],
     },
     {
-        "id": "echidna",
-        "name": "Echidna",
-        "tag": "Fuzzer",
-        "description": "Property-based smart contract fuzzer by Trail of Bits. Finds invariant violations via automated input generation.",
-        "install_type": "script",
-        "bin_check": "/usr/local/bin/echidna",
-        "install_cmds": [
-            # Detect version + scrape the release HTML page to get the real asset URL.
-            # Avoids the GitHub JSON API (times out) and hardcoded filenames (break on new releases).
-            "bash -c '"
-            "ARCH=$(uname -m); "
-            "REDIR=$(curl -fsSL --max-time 20 -o /dev/null -w \"%{url_effective}\" https://github.com/crytic/echidna/releases/latest 2>/dev/null); "
-            "VERSION=$(echo \"$REDIR\" | sed \"s|.*/tag/v||; s|[^0-9.].*||\"); "
-            "[ -n \"$VERSION\" ] || { echo ERROR: version detection failed >&2; exit 1; }; "
-            "echo \"Detected echidna v${VERSION}\"; "
-            "HTML=$(curl -fsSL --max-time 30 \"https://github.com/crytic/echidna/releases/tag/v${VERSION}\" 2>/dev/null); "
-            "if echo \"$ARCH\" | grep -qE \"aarch64|arm64\"; then "
-            "  URL=$(echo \"$HTML\" | grep -oE \"/crytic/echidna/releases/download/[^ \\\"<]+\\.tar\\.gz\" | grep -iE \"aarch64|arm64\" | head -1); "
-            "fi; "
-            "if [ -z \"$URL\" ]; then "
-            "  URL=$(echo \"$HTML\" | grep -oE \"/crytic/echidna/releases/download/[^ \\\"<]+\\.tar\\.gz\" | grep -ivE \"macos|darwin|windows|arm\" | head -1); "
-            "fi; "
-            "if [ -z \"$URL\" ]; then "
-            "  URL=$(echo \"$HTML\" | grep -oE \"/crytic/echidna/releases/download/[^ \\\"<]+\\.tar\\.gz\" | grep -ivE \"macos|darwin|windows\" | head -1); "
-            "fi; "
-            "[ -n \"$URL\" ] || { echo ERROR: no asset found in release page >&2; exit 1; }; "
-            "echo \"https://github.com${URL}\" > /tmp/.echidna_url; "
-            "echo \"Downloading: https://github.com${URL}\""
-            "'",
-            # Download the binary (5-minute timeout, ~50 MB).
-            "bash -c 'curl -fsSL --max-time 300 \"$(cat /tmp/.echidna_url)\" -o /tmp/echidna.tar.gz'",
-            # Extract the echidna binary and install it.
-            "bash -c 'mkdir -p /tmp/echidna_ex && tar -xzf /tmp/echidna.tar.gz -C /tmp/echidna_ex/ && find /tmp/echidna_ex -name echidna -type f | head -1 | xargs -I{} mv {} /usr/local/bin/echidna'",
-            "chmod +x /usr/local/bin/echidna",
-            "rm -rf /tmp/echidna.tar.gz /tmp/echidna_ex /tmp/.echidna_url",
-        ],
-    },
-    {
         "id": "kevm",
         "name": "KEVM",
         "tag": "Formal",
