@@ -7,6 +7,7 @@ import Register from './Register'
 import ScopeWorkspace from './scope/ScopeWorkspace'
 import { EnumWorkspace } from './enum/EnumWorkspace'
 import { StaticAnalysisWorkspace } from './static-analysis/StaticAnalysisWorkspace'
+import { DynamicAnalysisWorkspace } from './dynamic-analysis/DynamicAnalysisWorkspace'
 
 type AppPath = string // Support dynamic paths like /scope/:auditId and /enum/:auditId
 
@@ -25,6 +26,7 @@ function normalizePathname(pathname: string): AppPath {
   if (normalized.startsWith('/scope/')) return pathname
   if (normalized.startsWith('/enum/')) return pathname
   if (normalized.startsWith('/static-analysis/')) return pathname
+  if (normalized.startsWith('/dynamic-analysis/')) return pathname
 
   return '/login'
 }
@@ -154,6 +156,17 @@ export default function App() {
     const auditId = pathname.split('/')[2]
     return (
       <StaticAnalysisWorkspace
+        auditId={auditId}
+        onNavigate={(nextPath: string) => navigate(nextPath)}
+        onOpenProfile={() => navigate('/profile')}
+      />
+    )
+  }
+
+  if (pathname.startsWith('/dynamic-analysis/')) {
+    const auditId = pathname.split('/')[2]
+    return (
+      <DynamicAnalysisWorkspace
         auditId={auditId}
         onNavigate={(nextPath: string) => navigate(nextPath)}
         onOpenProfile={() => navigate('/profile')}
