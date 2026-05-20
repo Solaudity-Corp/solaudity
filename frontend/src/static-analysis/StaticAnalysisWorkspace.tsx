@@ -10,9 +10,8 @@ import { Analyzer4View } from './Analyzer4View'
 import { AderynView } from './AderynView'
 import { CertoraView } from './CertoraView'
 import { SMTCheckerView } from './SMTCheckerView'
-import { KEVMView } from './KEVMView'
-import { CodeQualityView } from './CodeQualityView'
-import { OrchestrationView } from './OrchestrationView'
+import KEVMView from './KEVMView'
+import { AiVulnView } from './AiVulnView'
 
 type StaticView =
   | 'slither'
@@ -22,8 +21,7 @@ type StaticView =
   | 'certora'
   | 'smtchecker'
   | 'kevm'
-  | 'codequality'
-  | 'orchestration'
+  | 'aivuln'
 
 const views: Array<{ id: StaticView; label: string }> = [
   { id: 'slither', label: 'Slither' },
@@ -33,8 +31,7 @@ const views: Array<{ id: StaticView; label: string }> = [
   { id: 'certora', label: 'Certora Prover' },
   { id: 'smtchecker', label: 'SMTChecker' },
   { id: 'kevm', label: 'KEVM' },
-  { id: 'codequality', label: 'Qualité de code' },
-  { id: 'orchestration', label: 'Orchestration' },
+  { id: 'aivuln', label: 'AI Vuln Scanner' },
 ]
 
 interface StaticAnalysisWorkspaceProps {
@@ -160,11 +157,9 @@ export function StaticAnalysisWorkspace({ auditId, onNavigate, onOpenProfile }: 
           ) : activeView === 'smtchecker' ? (
             <SMTCheckerView auditId={auditId} />
           ) : activeView === 'kevm' ? (
-            <KEVMView auditId={auditId} />
-          ) : activeView === 'codequality' ? (
-            <CodeQualityView auditId={auditId} />
+            <KEVMView auditId={auditId} onOpenTools={() => setSideNavPanel('tools')} />
           ) : (
-            <OrchestrationView auditId={auditId} />
+            <AiVulnView auditId={auditId} />
           )}
         </Box>
       </Flex>

@@ -164,6 +164,8 @@ RUN mkdir -p /tmp/certora-warmup \
     && rm -rf /tmp/certora-warmup /tmp/certora-out \
     && (chmod -R 777 /opt/solc-home/.certora 2>/dev/null || true)
 
+# KEVM is installed on-demand at runtime via the Tools panel (same pattern as Mythril).
+
 COPY app ./app
 COPY entrypoint.sh .
 RUN chmod +x entrypoint.sh
