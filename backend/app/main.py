@@ -21,6 +21,7 @@ from app.api.static_analysis.kevm.router import router as kevm_router
 from app.api.solc_versions.router import router as solc_versions_router
 from app.api.tools.router import router as tools_router
 from app.api.terminal.router import router as terminal_router
+from app.api.reports.router import router as reports_router
 
 app = FastAPI()
 
@@ -65,6 +66,7 @@ app.include_router(kevm_router)
 app.include_router(solc_versions_router)
 app.include_router(tools_router)
 app.include_router(terminal_router)
+app.include_router(reports_router)
 
 
 @app.get("/health")
