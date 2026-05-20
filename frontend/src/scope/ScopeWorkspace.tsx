@@ -10,6 +10,7 @@ import type { ScopeAddress, ScopeContract } from './api'
 import { getMessageFromError } from './api'
 import SlideButton from '../components/SlideButton'
 import { ProcessingOverlay } from '../components/ProcessingOverlay'
+import { NotesOverlay } from '../notes/NotesOverlay'
 
 interface ScopeWorkspaceProps {
     auditId: string
@@ -969,6 +970,7 @@ export default function ScopeWorkspace({ auditId, onNavigate, onOpenProfile }: S
     const [audit, setAudit] = useState<AuditRecord | null>(null)
     const [isLoading, setIsLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
+    const [notesOpen, setNotesOpen] = useState(false)
 
     // Source tabs
     const [activeTab, setActiveTab] = useState<'github' | 'address' | 'upload'>('github')
@@ -1165,7 +1167,9 @@ export default function ScopeWorkspace({ auditId, onNavigate, onOpenProfile }: S
                     { label: 'Enum', onClick: () => onNavigate(`/enum/${auditId}`), accentColor: 'rgba(88, 214, 171, 0.28)' },
                     { label: 'Static Analysis', onClick: () => onNavigate(`/static-analysis/${auditId}`), accentColor: 'rgba(180, 140, 255, 0.28)' },
                 ]}
+                onOpenNotes={() => setNotesOpen(true)}
             />
+            {notesOpen && <NotesOverlay auditId={auditId} onClose={() => setNotesOpen(false)} />}
 
             <Flex flex="1" px={{ base: '4', md: '8' }} py={{ base: '4', md: '6' }} direction="column" gap="6">
 

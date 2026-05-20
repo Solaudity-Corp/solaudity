@@ -1,4 +1,5 @@
 import { useCallback, useState } from 'react'
+import { NotesOverlay } from '../notes/NotesOverlay'
 import { css } from 'styled-system/css'
 import { Box, Flex } from 'styled-system/jsx'
 import { ChevronUp, ChevronDown } from 'lucide-react'
@@ -34,6 +35,7 @@ export function EnumWorkspace({ auditId, onNavigate, onOpenProfile }: EnumWorksp
   const [activeView, setActiveView] = useState<EnumView>('tree')
   const [subNavOpen, setSubNavOpen] = useState(true)
   const [jumpTo, setJumpTo] = useState<JumpTarget>(null)
+  const [notesOpen, setNotesOpen] = useState(false)
 
   const handleGoToCode = useCallback((contractId: string, line: number) => {
     setJumpTo({ contractId, line })
@@ -54,7 +56,9 @@ export function EnumWorkspace({ auditId, onNavigate, onOpenProfile }: EnumWorksp
           { label: 'Enum', isCurrent: true, accentColor: 'rgba(88, 214, 171, 0.28)' },
           { label: 'Static Analysis', onClick: () => onNavigate(`/static-analysis/${auditId}`), accentColor: 'rgba(180, 140, 255, 0.28)' },
         ]}
+        onOpenNotes={() => setNotesOpen(true)}
       />
+      {notesOpen && <NotesOverlay auditId={auditId} onClose={() => setNotesOpen(false)} />}
 
       {/* Collapsible sub-navbar */}
       <Box
