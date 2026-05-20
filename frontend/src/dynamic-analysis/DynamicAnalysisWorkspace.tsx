@@ -5,6 +5,7 @@ import { ChevronUp, ChevronDown, Bug, Zap, Terminal, Construction } from 'lucide
 import { NavBar } from '../components/NavBar'
 import SlideButton from '../components/SlideButton'
 import { NotesOverlay } from '../notes/NotesOverlay'
+import { EchidnaView } from './EchidnaView'
 
 // ---------------------------------------------------------------------------
 // Theme
@@ -262,7 +263,10 @@ export function DynamicAnalysisWorkspace({ auditId, onNavigate, onOpenProfile }:
         })}
       >
         <Box width="100%">
-          <ToolPlaceholder tool={activeTool} />
+          {activeView === 'echidna'
+            ? <EchidnaView auditId={auditId} />
+            : <ToolPlaceholder tool={activeTool} />
+          }
         </Box>
       </Flex>
 
