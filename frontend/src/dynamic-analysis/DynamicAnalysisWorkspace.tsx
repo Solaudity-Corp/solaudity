@@ -160,6 +160,7 @@ export function DynamicAnalysisWorkspace({ auditId, onNavigate, onOpenProfile }:
   const [activeView, setActiveView] = useState<DynView>('echidna')
   const [subNavOpen, setSubNavOpen] = useState(true)
   const [notesOpen, setNotesOpen] = useState(false)
+  const [sideNavPanel, setSideNavPanel] = useState<'tools' | null>(null)
 
   const activeTool = TOOLS.find(t => t.id === activeView)!
 
@@ -178,6 +179,8 @@ export function DynamicAnalysisWorkspace({ auditId, onNavigate, onOpenProfile }:
           { label: 'Static Analysis', onClick: () => onNavigate(`/static-analysis/${auditId}`), accentColor: 'rgba(180, 140, 255, 0.28)' },
           { label: 'Dynamic Analysis', isCurrent: true, accentColor: y.accentNav },
         ]}
+        openSideNavPanel={sideNavPanel}
+        onSideNavPanelConsumed={() => setSideNavPanel(null)}
         onOpenNotes={() => setNotesOpen(true)}
       />
       {notesOpen && <NotesOverlay auditId={auditId} onClose={() => setNotesOpen(false)} />}
@@ -264,7 +267,7 @@ export function DynamicAnalysisWorkspace({ auditId, onNavigate, onOpenProfile }:
       >
         <Box width="100%">
           {activeView === 'echidna'
-            ? <EchidnaView auditId={auditId} />
+            ? <EchidnaView auditId={auditId} onOpenTools={() => setSideNavPanel('tools')} />
             : <ToolPlaceholder tool={activeTool} />
           }
         </Box>

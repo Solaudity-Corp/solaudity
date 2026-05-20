@@ -6,12 +6,13 @@ import {
   ChevronDown, ChevronRight, ChevronLeft,
   CheckCircle2, XCircle, AlertCircle,
   File, Folder, FolderOpen,
-  Bug,
+  Bug, Download,
 } from 'lucide-react'
 import { useSidebarResize } from '../components/useSidebarResize'
 import * as api from './echidnaApi'
 import type { EchidnaRun, EchidnaRunDetail, EchidnaTestMode, EchidnaTestResult } from './echidnaApi'
 import * as scopeApi from '../scope/api'
+import { listTools } from '../tools/toolsApi'
 
 // ---------------------------------------------------------------------------
 // Theme
@@ -323,9 +324,11 @@ function RunEntry({ run, isSelected, onSelect, onDelete }: {
 // ---------------------------------------------------------------------------
 interface EchidnaViewProps {
   auditId: string
+  onOpenTools?: () => void
 }
 
-export function EchidnaView({ auditId }: EchidnaViewProps) {
+export function EchidnaView({ auditId, onOpenTools }: EchidnaViewProps) {
+  const [echidnaInstalled, setEchidnaInstalled] = useState<boolean | null>(null)
   const [contracts, setContracts] = useState<scopeApi.ScopeContract[]>([])
   const [selectedContractId, setSelectedContractId] = useState<string>('')
   const [loadingContracts, setLoadingContracts] = useState(true)
@@ -341,6 +344,16 @@ export function EchidnaView({ auditId }: EchidnaViewProps) {
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null)
   const [loadingDetail, setLoadingDetail] = useState(false)
   const [runDetail, setRunDetail] = useState<EchidnaRunDetail | null>(null)
+
+  // Check if Echidna is installed
+  useEffect(() => {
+    listTools()
+      .then(tools => {
+        const t = tools.find(t => t.id === 'echidna')
+        setEchidnaInstalled(t?.status === 'installed')
+      })
+      .catch(() => setEchidnaInstalled(true))
+  }, [])
 
   // Load contracts
   useEffect(() => {
@@ -415,6 +428,46 @@ export function EchidnaView({ auditId }: EchidnaViewProps) {
   const treeNodes = buildFileTree(contracts)
   const activeModeDef = MODES.find(m => m.id === activeMode)!
   const selectedContract = contracts.find(c => c.id === selectedContractId)
+
+  // Install gate
+  if (echidnaInstalled === false) {
+    return (
+      <Flex
+        direction="column" align="center" justify="center" gap="5"
+        style={{
+          minHeight: 420, borderRadius: 14,
+          border: `1px solid ${c.border}`,
+          background: c.panel,
+        }}
+      >
+        <Flex align="center" justify="center" style={{
+          width: 56, height: 56, borderRadius: 14,
+          background: c.accentFaint, border: `1px solid ${c.accentBorder}`,
+        }}>
+          <Download size={24} style={{ color: c.accent }} />
+        </Flex>
+        <Flex direction="column" align="center" gap="1">
+          <span style={{ fontSize: 15, fontWeight: 600, color: c.text }}>Echidna is not installed</span>
+          <span style={{ fontSize: 12, color: c.muted, fontFamily: c.mono, textAlign: 'center', maxWidth: 380 }}>
+            Install it from the Tools panel. Downloads a static binary from GitHub — no compilation required.
+          </span>
+        </Flex>
+        <button
+          type="button"
+          onClick={onOpenTools}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 7,
+            padding: '8px 20px', borderRadius: 8, fontSize: 12.5, fontWeight: 600,
+            fontFamily: c.mono, cursor: 'pointer',
+            color: c.accent, background: c.accentFaint,
+            border: `1px solid ${c.accentBorder}`,
+          }}
+        >
+          <Download size={13} /> Install Echidna
+        </button>
+      </Flex>
+    )
+  }
 
   return (
     <Flex style={{ width: '100%', minHeight: 480, gap: 0 }}>
