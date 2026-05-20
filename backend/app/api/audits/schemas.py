@@ -263,3 +263,14 @@ class AuditOpenUpdate(BaseModel):
     """
     opened_by: UUID | None = None
     model_config = ConfigDict(extra="forbid")
+
+
+class NoteRead(BaseModel):
+    content: str
+    updated_at: datetime | None = None
+    model_config = ConfigDict(from_attributes=True)
+
+
+class NoteUpsert(BaseModel):
+    content: str
+    model_config = ConfigDict(extra="forbid")
