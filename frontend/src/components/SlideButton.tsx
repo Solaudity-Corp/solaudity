@@ -3,7 +3,7 @@ import { css } from 'styled-system/css'
 import { Box, Flex } from 'styled-system/jsx'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 
-export type SlideTheme = 'violet' | 'green' | 'blue'
+export type SlideTheme = 'violet' | 'green' | 'blue' | 'yellow'
 
 interface SlideButtonProps {
     onComplete: () => void
@@ -44,6 +44,13 @@ const THEMES: Record<SlideTheme, { border: string; fill: string; thumb: string; 
         thumb:   'rgba(88, 149, 255, 0.92)',
         shadow:  'rgba(88, 149, 255, 0.28)',
         icon:    '#08152e',
+    },
+    yellow: {
+        border:  'rgba(245, 200, 60, 0.32)',
+        fill:    'rgba(245, 200, 60, 0.10)',
+        thumb:   'rgba(245, 200, 60, 0.92)',
+        shadow:  'rgba(245, 200, 60, 0.28)',
+        icon:    '#1e1700',
     },
 }
 
