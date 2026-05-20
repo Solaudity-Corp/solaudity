@@ -166,6 +166,55 @@ RUN mkdir -p /tmp/certora-warmup \
 
 # KEVM is installed on-demand at runtime via the Tools panel (same pattern as Mythril).
 
+# Echidna — property-based smart contract fuzzer (Trail of Bits)
+# Queries the GitHub API via curl (not Python urllib) to get the latest release,
+# then downloads the Linux binary. unzip is added in case the asset is a zip.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends unzip \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* \
+    && curl -fsSL --max-time 60 \
+         -H "User-Agent: solaudity-dockerfile" \
+         "https://api.github.com/repos/crytic/echidna/releases/latest" \
+         -o /tmp/echidna_rel.json \
+    && URL=$(python3 -c "import json,sys; d=json.load(open('/tmp/echidna_rel.json')); a=d.get('assets',[]); u=next((x['browser_download_url'] for x in a if 'linux' in x['name'].lower() and not any(b in x['name'].lower() for b in ['macos','darwin','windows']) and any(x['name'].lower().endswith(e) for e in ['.tar.gz','.zip'])),None) or next((x['browser_download_url'] for x in a if not any(b in x['name'].lower() for b in ['macos','darwin','windows']) and any(x['name'].lower().endswith(e) for e in ['.tar.gz','.zip'])),None); print(u) if u else sys.exit(1)") \
+    && echo "Downloading echidna: $URL" \
+    && curl -fsSL --max-time 300 "$URL" -o /tmp/echidna_dl \
+    && mkdir -p /tmp/echidna_ex \
+    && (echo "$URL" | grep -qE '\.zip$' \
+        && unzip -o /tmp/echidna_dl -d /tmp/echidna_ex/ \
+        || tar -xf /tmp/echidna_dl -C /tmp/echidna_ex/) \
+    && find /tmp/echidna_ex -name echidna -type f | head -1 \
+       | xargs -I{} install -m 755 {} /usr/local/bin/echidna \
+    && echidna --version \
+    && rm -rf /tmp/echidna_dl /tmp/echidna_ex /tmp/echidna_rel.json
+
+# Medusa — Go-based corpus fuzzer (Trail of Bits)
+RUN curl -fsSL --max-time 60 \
+         -H "User-Agent: solaudity-dockerfile" \
+         "https://api.github.com/repos/crytic/medusa/releases/latest" \
+         -o /tmp/medusa_rel.json \
+    && ARCH=$(uname -m) \
+    && URL=$(python3 -c "import json,sys,os; d=json.load(open('/tmp/medusa_rel.json')); a=d.get('assets',[]); arch=os.environ.get('ARCH','x86_64'); arm=arch in ('aarch64','arm64'); u=next((x['browser_download_url'] for x in a if 'linux' in x['name'].lower() and ('arm64' in x['name'].lower() or 'aarch64' in x['name'].lower()) and x['name'].endswith('.tar.gz')),None) if arm else next((x['browser_download_url'] for x in a if 'linux' in x['name'].lower() and not any(b in x['name'].lower() for b in ['arm','aarch']) and x['name'].endswith('.tar.gz')),None); print(u) if u else sys.exit(1)" ARCH="$ARCH") \
+    && echo "Downloading medusa: $URL" \
+    && curl -fsSL --max-time 300 "$URL" -o /tmp/medusa_dl.tar.gz \
+    && mkdir -p /tmp/medusa_ex \
+    && tar -xzf /tmp/medusa_dl.tar.gz -C /tmp/medusa_ex/ \
+    && find /tmp/medusa_ex -name medusa -type f | head -1 \
+       | xargs -I{} install -m 755 {} /usr/local/bin/medusa \
+    && medusa --version \
+    && rm -rf /tmp/medusa_dl.tar.gz /tmp/medusa_ex /tmp/medusa_rel.json
+
+# Foundry (forge, cast, anvil) — download nightly release tarball directly (no git required)
+RUN ARCH=$(uname -m) \
+    && if [ "$ARCH" = "aarch64" ]; then FA="arm64"; else FA="amd64"; fi \
+    && curl -fsSL --max-time 300 \
+         "https://github.com/foundry-rs/foundry/releases/download/nightly/foundry_nightly_linux_${FA}.tar.gz" \
+         -o /tmp/foundry.tar.gz \
+    && tar -xzf /tmp/foundry.tar.gz -C /usr/local/bin/ forge cast anvil \
+    && rm /tmp/foundry.tar.gz \
+    && forge --version
+
 COPY app ./app
 COPY entrypoint.sh .
 RUN chmod +x entrypoint.sh
