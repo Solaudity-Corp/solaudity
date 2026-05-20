@@ -434,6 +434,7 @@ export function DynamicAnalysisWorkspace({ auditId, onNavigate, onOpenProfile }:
           { label: 'Enum', onClick: () => onNavigate(`/enum/${auditId}`), accentColor: 'rgba(88, 214, 171, 0.28)' },
           { label: 'Static Analysis', onClick: () => onNavigate(`/static-analysis/${auditId}`), accentColor: 'rgba(180, 140, 255, 0.28)' },
           { label: 'Dynamic Analysis', isCurrent: true, accentColor: 'rgba(245, 200, 60, 0.28)' },
+          { label: 'Reports', onClick: () => onNavigate(`/reports/${auditId}`), accentColor: 'rgba(255,90,80,0.28)' },
         ]}
         openSideNavPanel={sideNavPanel}
         onSideNavPanelConsumed={() => setSideNavPanel(null)}
@@ -728,7 +729,7 @@ export function DynamicAnalysisWorkspace({ auditId, onNavigate, onOpenProfile }:
         <SlideButton
           text="Goto Reports"
           theme="yellow"
-          onComplete={() => {}}
+          onComplete={() => onNavigate(`/reports/${auditId}`)}
         />
       </Flex>
 
