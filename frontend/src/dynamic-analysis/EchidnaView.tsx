@@ -349,9 +349,8 @@ export function EchidnaView({ auditId }: EchidnaViewProps) {
     scopeApi.listContracts(auditId, true)
       .then(res => {
         if (!active) return
-        const sols = res.filter(c => c.file_path.endsWith('.sol'))
-        setContracts(sols)
-        if (sols.length > 0) setSelectedContractId(sols[0].id)
+        setContracts(res.items)
+        if (res.items[0]) setSelectedContractId(res.items[0].id)
       })
       .catch(() => {})
       .finally(() => { if (active) setLoadingContracts(false) })
@@ -451,7 +450,7 @@ export function EchidnaView({ auditId }: EchidnaViewProps) {
                   <Loader size={14} style={{ color: c.muted, animation: 'spin 1s linear infinite' }} />
                 </Flex>
               : treeNodes.length === 0
-                ? <span style={{ fontSize: 11, color: c.muted, padding: '8px 12px', display: 'block', fontFamily: c.mono }}>No .sol files in scope</span>
+                ? <span style={{ fontSize: 11, color: c.muted, padding: '8px 12px', display: 'block', fontFamily: c.mono }}>No contracts in scope</span>
                 : treeNodes.map(n => (
                     <FileTreeItem key={n.path} node={n} depth={0} selectedId={selectedContractId} onSelect={handleSelectContract} />
                   ))
