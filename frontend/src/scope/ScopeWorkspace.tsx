@@ -1166,6 +1166,7 @@ export default function ScopeWorkspace({ auditId, onNavigate, onOpenProfile }: S
                     { label: 'Scope', isCurrent: true, accentColor: 'rgba(88, 149, 255, 0.28)' },
                     { label: 'Enum', onClick: () => onNavigate(`/enum/${auditId}`), accentColor: 'rgba(88, 214, 171, 0.28)' },
                     { label: 'Static Analysis', onClick: () => onNavigate(`/static-analysis/${auditId}`), accentColor: 'rgba(180, 140, 255, 0.28)' },
+                    { label: 'Dynamic Analysis', onClick: () => onNavigate(`/dynamic-analysis/${auditId}`), accentColor: 'rgba(245, 200, 60, 0.28)' },
                 ]}
                 onOpenNotes={() => setNotesOpen(true)}
             />
