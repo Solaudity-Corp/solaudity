@@ -14,6 +14,10 @@ vi.mock('../src/audits/AuditsWorkspace', () => ({
   ),
 }))
 
+vi.mock('../src/reports/AllReportsView', () => ({
+  AllReportsView: () => <div>all-reports-view</div>,
+}))
+
 describe('Menu', () => {
   it('renders the audits workspace for the audits section', () => {
     render(
@@ -28,7 +32,7 @@ describe('Menu', () => {
     expect(screen.getByText('audits-workspace:')).toBeInTheDocument()
   })
 
-  it('renders the reports placeholder content for non-audit sections', () => {
+  it('renders the reports view for the reports section', () => {
     render(
       <Menu
         path="/menu/reports"
@@ -38,9 +42,6 @@ describe('Menu', () => {
     )
 
     expect(screen.getByTestId('nav-bar')).toHaveTextContent('reports')
-    expect(screen.getByText('Reports')).toBeInTheDocument()
-    expect(
-      screen.getByText('UI scaffold is ready. You can now wire this section to backend endpoints when available.'),
-    ).toBeInTheDocument()
+    expect(screen.getByText('all-reports-view')).toBeInTheDocument()
   })
 })

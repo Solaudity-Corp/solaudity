@@ -44,7 +44,6 @@ export function AllReportsView({ searchQuery, onNavigate }: Props) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    setLoading(true)
     api.allFindings()
       .then(setFindings)
       .catch(() => {})
