@@ -340,8 +340,8 @@ export default function KEVMView({ auditId, onOpenTools }: { auditId: string; on
       setRuns(prev => [detail, ...prev])
       setSelectedRun(detail)
       setFindings(detail.findings)
-    } catch (e: any) {
-      setError(e.message ?? 'Run failed')
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Run failed')
     } finally {
       setRunning(false)
     }

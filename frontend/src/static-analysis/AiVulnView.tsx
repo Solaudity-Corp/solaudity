@@ -209,11 +209,11 @@ function VulnPicker({ types, selected, onChange, disabled }: {
 // ---------------------------------------------------------------------------
 // Section divider
 // ---------------------------------------------------------------------------
-function SectionDivider({ title, risk, model, date, sectionRef }: {
-  title: string; risk: string; model: string; date: string; sectionRef?: React.RefObject<HTMLDivElement | null>
+function SectionDivider({ title, risk, model, date }: {
+  title: string; risk: string; model: string; date: string
 }) {
   return (
-    <Box ref={sectionRef} style={{ marginBottom: 4, marginTop: 8 }}>
+    <Box style={{ marginBottom: 4, marginTop: 8 }}>
       <Flex align="center" gap="3" style={{ padding: '10px 0 8px' }}>
         <Box style={{ flex: 1, height: 1, background: 'rgba(180,140,255,0.15)' }} />
         <Flex align="center" gap="2" style={{
@@ -258,7 +258,7 @@ export function AiVulnView({ auditId }: { auditId: string }) {
   const [history, setHistory] = useState<VulnScan[]>([])
 
   // section nav tabs
-  const sectionRefs = useRef<Map<string, React.RefObject<HTMLDivElement | null>>>(new Map())
+  const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({})
 
   const { effectiveWidth, sidebarOpen, setSidebarOpen, isResizing, handleResizerMouseDown } =
     useSidebarResize({ defaultWidth: 220 })
@@ -272,14 +272,13 @@ export function AiVulnView({ auditId }: { auditId: string }) {
     api.listVulnScansForContract(contractId).then(setHistory).catch(() => {})
   }, [])
 
-  useEffect(() => {
-    if (selectedContract) {
-      setScanResults([])
-      setHistory([])
-      setError(null)
-      loadHistory(selectedContract.id)
-    }
-  }, [selectedContract, loadHistory])
+  const handleContractSelect = useCallback((sc: scopeApi.ScopeContract) => {
+    setSelectedContract(sc)
+    setScanResults([])
+    setHistory([])
+    setError(null)
+    loadHistory(sc.id)
+  }, [loadHistory])
 
   const handleScan = async () => {
     if (!selectedContract || selectedVulns.size === 0 || scanning) return
@@ -297,8 +296,8 @@ export function AiVulnView({ auditId }: { auditId: string }) {
         const scan = await api.runVulnScan(auditId, selectedContract.id, v.id)
         results.push(scan)
         setScanResults([...results])
-      } catch (e: any) {
-        setError(`${v.id}: ${e.message ?? 'Scan failed'}`)
+      } catch (e: unknown) {
+        setError(`${v.id}: ${e instanceof Error ? e.message : 'Scan failed'}`)
         break
       }
     }
@@ -311,8 +310,7 @@ export function AiVulnView({ auditId }: { auditId: string }) {
   }
 
   const scrollToSection = (vulnId: string) => {
-    const ref = sectionRefs.current.get(vulnId)
-    ref?.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    sectionRefs.current[vulnId]?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
   const tree = buildFileTree(contracts)
@@ -340,7 +338,7 @@ export function AiVulnView({ auditId }: { auditId: string }) {
             <Box style={{ flex: 1, overflowY: 'auto', padding: '6px 4px', borderBottom: `1px solid ${c.border}` }}>
               {tree.length === 0
                 ? <span style={{ fontSize: 11, color: c.muted, fontFamily: c.mono, padding: '8px 12px', display: 'block' }}>No contracts in scope</span>
-                : tree.map(node => <FileTreeItem key={node.path} node={node} depth={0} selectedId={selectedContract?.id ?? ''} onSelect={sc => setSelectedContract(sc)} />)
+                : tree.map(node => <FileTreeItem key={node.path} node={node} depth={0} selectedId={selectedContract?.id ?? ''} onSelect={handleContractSelect} />)
               }
             </Box>
 
@@ -492,18 +490,13 @@ export function AiVulnView({ auditId }: { auditId: string }) {
           {scanResults.map(scan => {
             const vinfo = vulnTypes.find(v => v.id === scan.vuln_type)
             const risk = extractRisk(scan.content)
-            if (!sectionRefs.current.has(scan.vuln_type)) {
-              sectionRefs.current.set(scan.vuln_type, { current: null } as React.RefObject<HTMLDivElement | null>)
-            }
-            const ref = sectionRefs.current.get(scan.vuln_type)!
             return (
-              <Box key={scan.vuln_type} style={{ marginBottom: 32 }}>
+              <Box key={scan.vuln_type} ref={(el) => { sectionRefs.current[scan.vuln_type] = el }} style={{ marginBottom: 32 }}>
                 <SectionDivider
                   title={vinfo?.title ?? scan.vuln_type}
                   risk={risk}
                   model={scan.model}
                   date={formatDate(scan.created_at)}
-                  sectionRef={ref}
                 />
                 <ScanRenderer content={scan.content} />
               </Box>
