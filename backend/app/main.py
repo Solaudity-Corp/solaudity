@@ -20,6 +20,7 @@ from app.api.static_analysis.smtchecker.router import router as smtchecker_route
 from app.api.static_analysis.kevm.router import router as kevm_router
 from app.api.solc_versions.router import router as solc_versions_router
 from app.api.tools.router import router as tools_router
+from app.api.dynamic_analysis.echidna.router import router as echidna_router
 
 app = FastAPI()
 
@@ -63,6 +64,7 @@ app.include_router(smtchecker_router)
 app.include_router(kevm_router)
 app.include_router(solc_versions_router)
 app.include_router(tools_router)
+app.include_router(echidna_router)
 
 
 @app.get("/health")

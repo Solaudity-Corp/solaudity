@@ -29,6 +29,36 @@ TOOL_CATALOG: list[dict] = [
         "packages": ["z3-solver==4.12.2.0", "mythril==0.24.8"],
     },
     {
+        "id": "echidna",
+        "name": "Echidna",
+        "tag": "Fuzzer",
+        "description": "Property-based smart contract fuzzer by Trail of Bits. Finds invariant violations via automated input generation.",
+        "install_type": "script",
+        "bin_check": "/usr/local/bin/echidna",
+        "install_cmds": [
+            # Query GitHub API to find the right binary URL for this architecture
+            "python3 -c \""
+            "import urllib.request, json, os, sys; "
+            "req = urllib.request.Request('https://api.github.com/repos/crytic/echidna/releases/latest', headers={'User-Agent': 'solaudity'}); "
+            "data = json.loads(urllib.request.urlopen(req, timeout=30).read()); "
+            "arch = os.uname().machine; "
+            "assets = [a for a in data.get('assets', []) if 'linux' in a['name'].lower() and (arch in a['name'] or ('aarch64' in arch and 'arm' in a['name'].lower()) or ('x86_64' in arch and 'x86_64' in a['name']))]; "
+            "url = assets[0]['browser_download_url'] if assets else ''; "
+            "open('/tmp/.echidna_url', 'w').write(url); "
+            "sys.exit(0 if url else 1)"
+            "\"",
+            "bash -c 'curl -fsSL \"$(cat /tmp/.echidna_url)\" -o /tmp/echidna_dl'",
+            "bash -c 'URL=$(cat /tmp/.echidna_url); mkdir -p /tmp/echidna_ex; "
+            "if echo \"$URL\" | grep -q \\.zip; then "
+            "  unzip -o /tmp/echidna_dl -d /tmp/echidna_ex; "
+            "else "
+            "  tar -xf /tmp/echidna_dl -C /tmp/echidna_ex/; "
+            "fi; "
+            "find /tmp/echidna_ex -name echidna -type f | head -1 | xargs -I{} mv {} /usr/local/bin/echidna'",
+            "chmod +x /usr/local/bin/echidna",
+        ],
+    },
+    {
         "id": "kevm",
         "name": "KEVM",
         "tag": "Formal",
