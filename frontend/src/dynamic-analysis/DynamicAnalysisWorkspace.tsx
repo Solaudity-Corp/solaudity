@@ -318,6 +318,9 @@ function CheatSheet({ onClose }: { onClose: () => void }) {
 // ---------------------------------------------------------------------------
 // Reusable sidebar button
 // ---------------------------------------------------------------------------
+const hoverDefault = css({ _hover: { background: 'rgba(255,255,255,0.07) !important' } })
+const hoverDanger  = css({ _hover: { background: 'rgba(255,90,90,0.1) !important', borderColor: 'rgba(255,90,90,0.3) !important' } })
+
 function SidebarBtn({
   label, color, icon, disabled, onClick,
   variant = 'default',
@@ -327,19 +330,19 @@ function SidebarBtn({
   icon?: React.ReactNode
   disabled?: boolean
   onClick: () => void
-  variant?: 'default' | 'danger' | 'info'
+  variant?: 'default' | 'danger'
 }) {
   const variantStyle =
     variant === 'danger'
-      ? { bg: 'rgba(255,90,90,0.05)', border: '1px solid rgba(255,90,90,0.2)', color: 'rgba(255,120,120,0.8)', hover: { background: 'rgba(255,90,90,0.1) !important', borderColor: 'rgba(255,90,90,0.3) !important' } }
-      : { bg: disabled ? 'transparent' : 'rgba(255,255,255,0.03)', border: `1px solid ${disabled ? 'rgba(185,185,189,0.07)' : 'rgba(185,185,189,0.1)'}`, color: disabled ? 'rgba(185,185,193,0.5)' : 'rgba(231,228,239,0.72)', hover: { background: 'rgba(255,255,255,0.07) !important' } }
+      ? { bg: 'rgba(255,90,90,0.05)', border: '1px solid rgba(255,90,90,0.2)', color: 'rgba(255,120,120,0.8)' }
+      : { bg: disabled ? 'transparent' : 'rgba(255,255,255,0.03)', border: `1px solid ${disabled ? 'rgba(185,185,189,0.07)' : 'rgba(185,185,189,0.1)'}`, color: disabled ? 'rgba(185,185,193,0.5)' : 'rgba(231,228,239,0.72)' }
 
   return (
     <button
       type="button"
       disabled={disabled}
       onClick={onClick}
-      className={css({ _hover: variantStyle.hover as Record<string, string> })}
+      className={variant === 'danger' ? hoverDanger : hoverDefault}
       style={{
         display: 'flex', alignItems: 'center', gap: 6,
         width: '100%', padding: '5px 9px', borderRadius: 6, textAlign: 'left',
@@ -390,12 +393,6 @@ export function DynamicAnalysisWorkspace({ auditId, onNavigate, onOpenProfile }:
       .catch(() => {})
   }, [auditId])
 
-  // Reset anvil state on disconnect (new session = anvil is gone)
-  useEffect(() => {
-    if (status === 'disconnected') setAnvilRunning(false)
-  }, [status])
-
-
   const wsUrl = useMemo(() => {
     const base = (API_BASE_URL ?? 'http://localhost:8001').replace(/^http/, 'ws')
     const token = encodeURIComponent(getAccessToken() ?? '')
@@ -404,6 +401,7 @@ export function DynamicAnalysisWorkspace({ auditId, onNavigate, onOpenProfile }:
 
   const handleStatusChange = useCallback((s: 'connecting' | 'connected' | 'disconnected') => {
     setStatus(s)
+    if (s === 'disconnected') setAnvilRunning(false)
   }, [])
 
   const handleReconnect = useCallback(() => {
