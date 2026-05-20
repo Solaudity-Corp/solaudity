@@ -16,9 +16,14 @@ from app.api.audits.schemas import (
     AuditPinUpdate,
     AuditRead,
     AuditUpdate,
+    NoteRead,
+    NoteUpsert,
 )
 from app.database import get_session
 from app.models.audits import AuditStatus
+from app.models.note import AuditNote
+from sqlmodel import select
+from datetime import datetime, timezone
 
 router = APIRouter(
     prefix="/audits",
@@ -166,3 +171,35 @@ def delete_audit(
         return Response(status_code=status.HTTP_204_NO_CONTENT)
     except Exception as exc:  # pragma: no cover - centralized error mapping
         _raise_service_error(exc)
+
+
+@router.get("/{audit_id}/note", response_model=NoteRead)
+def get_note(
+    audit_id: UUID,
+    session: Session = Depends(get_session),
+    _current_user: User = Depends(get_current_user),
+) -> NoteRead:
+    note = session.exec(select(AuditNote).where(AuditNote.audit_id == audit_id)).first()
+    if note is None:
+        return NoteRead(content="", updated_at=None)
+    return NoteRead.model_validate(note)
+
+
+@router.put("/{audit_id}/note", response_model=NoteRead)
+def upsert_note(
+    audit_id: UUID,
+    payload: NoteUpsert,
+    session: Session = Depends(get_session),
+    _current_user: User = Depends(get_current_user),
+) -> NoteRead:
+    note = session.exec(select(AuditNote).where(AuditNote.audit_id == audit_id)).first()
+    if note is None:
+        note = AuditNote(audit_id=audit_id, content=payload.content)
+        session.add(note)
+    else:
+        note.content = payload.content
+        note.updated_at = datetime.now(timezone.utc)
+        session.add(note)
+    session.commit()
+    session.refresh(note)
+    return NoteRead.model_validate(note)

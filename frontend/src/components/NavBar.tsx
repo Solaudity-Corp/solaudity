@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { css } from 'styled-system/css'
 import { Box, Flex, Stack } from 'styled-system/jsx'
-import { ChevronRight, Settings2 } from 'lucide-react'
+import { ChevronRight, Settings2, Pencil } from 'lucide-react'
 import { Menu, NavLink } from '@/components/ui'
 import { darkMenuContentClass, darkMenuItemClass, disconnectMenuItemClass } from '@/components/ui/menu.styles'
 import { logoutUser } from '../auth'
@@ -29,6 +29,7 @@ interface NavBarProps {
   journeyItems?: JourneyItem[]
   openSideNavPanel?: SubPanel | null
   onSideNavPanelConsumed?: () => void
+  onOpenNotes?: () => void
 }
 
 const links: Array<{ label: string; section: MenuSection }> = [
@@ -70,6 +71,7 @@ export function NavBar({
   journeyItems = [],
   openSideNavPanel,
   onSideNavPanelConsumed,
+  onOpenNotes,
 }: NavBarProps) {
   const controlRadius = '8px'
   const JOURNEY_ANIM_DURATION_MS = 560
@@ -400,6 +402,31 @@ export function NavBar({
                     </Flex>
                   )
                 })}
+
+                {/* Notes button — only shown when journey is visible */}
+                {onOpenNotes && (
+                  <>
+                    <Box style={{ width: 1, height: 18, background: 'rgba(185,185,189,0.18)', flexShrink: 0, marginLeft: 4 }} />
+                    <button
+                      type="button"
+                      onClick={onOpenNotes}
+                      className={css({
+                        display: 'flex', alignItems: 'center', gap: '1.5',
+                        px: '2.5', py: '1', borderRadius: '6px', border: 'none',
+                        background: 'transparent', cursor: 'pointer', flexShrink: 0,
+                        color: 'rgba(185,185,193,0.65)',
+                        transition: 'all 0.15s ease',
+                        _hover: {
+                          background: 'rgba(180,140,255,0.08)',
+                          color: 'rgba(180,140,255,0.9)',
+                        },
+                      })}
+                    >
+                      <Pencil size={11} strokeWidth={2} />
+                      <span style={{ fontSize: 12, fontWeight: 500, lineHeight: 1 }}>Notes</span>
+                    </button>
+                  </>
+                )}
               </Flex>
             </Flex>
           )}

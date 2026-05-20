@@ -12,6 +12,7 @@ import { CertoraView } from './CertoraView'
 import { SMTCheckerView } from './SMTCheckerView'
 import KEVMView from './KEVMView'
 import { AiVulnView } from './AiVulnView'
+import { NotesOverlay } from '../notes/NotesOverlay'
 
 type StaticView =
   | 'slither'
@@ -44,6 +45,7 @@ export function StaticAnalysisWorkspace({ auditId, onNavigate, onOpenProfile }: 
   const [activeView, setActiveView] = useState<StaticView>('slither')
   const [subNavOpen, setSubNavOpen] = useState(true)
   const [sideNavPanel, setSideNavPanel] = useState<'tools' | null>(null)
+  const [notesOpen, setNotesOpen] = useState(false)
 
   return (
     <Flex direction="column" minH="100vh" className={css({ background: '#101014' })}>
@@ -61,7 +63,9 @@ export function StaticAnalysisWorkspace({ auditId, onNavigate, onOpenProfile }: 
         ]}
         openSideNavPanel={sideNavPanel}
         onSideNavPanelConsumed={() => setSideNavPanel(null)}
+        onOpenNotes={() => setNotesOpen(true)}
       />
+      {notesOpen && <NotesOverlay auditId={auditId} onClose={() => setNotesOpen(false)} />}
 
       {/* Collapsible sub-navbar */}
       <Box
