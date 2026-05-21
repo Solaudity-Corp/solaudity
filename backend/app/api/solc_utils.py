@@ -66,22 +66,69 @@ def resolve_solc_binary(file_path: Path) -> tuple[str | None, str | None]:
     - (None, None)  — no pragma found; caller should use its default
     - (None, msg)   — pragma found but no compatible version is installed
     """
+    return resolve_solc_binary_for_project(file_path, None)
+
+
+def resolve_solc_binary_for_project(
+    file_path: Path,
+    tmpdir: Path | None,
+    max_scan: int = 500,
+) -> tuple[str | None, str | None]:
+    """
+    Like resolve_solc_binary but also scans all .sol files under *tmpdir*
+    (including node_modules) to collect pragma constraints from dependencies.
+
+    This ensures that a dep with a stricter pragma (e.g. OZ v5 requiring
+    ^0.8.20) is taken into account even when the target only specifies ^0.8.0.
+
+    - (path, None)  — found a compatible installed binary
+    - (None, None)  — no pragma found anywhere; caller should use its default
+    - (None, msg)   — pragma found but no compatible version is installed
+    """
     try:
         content = file_path.read_text(errors="ignore")
         m = re.search(r"pragma\s+solidity\s+([^;]+);", content)
-        if not m:
+        target_spec = m.group(1).strip() if m else None
+        target_constraints = _expand_constraints(target_spec) if target_spec else []
+
+        extra_constraints: list[tuple[str, Ver]] = []
+        if tmpdir is not None:
+            scanned = 0
+            for sol_file in tmpdir.rglob("*.sol"):
+                if sol_file == file_path:
+                    continue
+                try:
+                    m2 = re.search(r"pragma\s+solidity\s+([^;]+);", sol_file.read_text(errors="ignore"))
+                    if m2:
+                        extra_constraints.extend(_expand_constraints(m2.group(1).strip()))
+                except Exception:
+                    pass
+                scanned += 1
+                if scanned >= max_scan:
+                    break
+
+        all_constraints = target_constraints + extra_constraints
+        if not all_constraints:
             return None, None
-        spec = m.group(1).strip()
-        constraints = _expand_constraints(spec)
-        if not constraints:
-            return None, None
-        for v in reversed(installed_versions()):
-            if _satisfies(v, constraints):
+
+        installed = installed_versions()
+
+        for v in reversed(installed):
+            if _satisfies(v, all_constraints):
                 binary = _SOLC_ARTIFACTS / f"solc-{v[0]}.{v[1]}.{v[2]}"
                 if binary.exists():
                     return str(binary), None
+
+        # Fallback: satisfy at least the target file's constraints.
+        if target_constraints:
+            for v in reversed(installed):
+                if _satisfies(v, target_constraints):
+                    binary = _SOLC_ARTIFACTS / f"solc-{v[0]}.{v[1]}.{v[2]}"
+                    if binary.exists():
+                        return str(binary), None
+
         return None, (
-            f"No installed solc version satisfies `pragma solidity {spec}`. "
+            f"No installed solc version satisfies `pragma solidity {target_spec or '(unknown)'}`. "
             f"Please install a compatible version via the Sol Versions panel."
         )
     except Exception:

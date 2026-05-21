@@ -116,11 +116,14 @@ RUN /opt/venv-slither/bin/solc-select install 0.8.30 0.8.28 0.8.20 0.8.17 0.8.0 
     && chmod -R 777 /opt/solc-home/.solc-select
 
 # 4naly3er — TypeScript static analyser (Node.js is already present from the surya step)
+# Override the bundled solc npm package to 0.8.28 so it can compile contracts
+# that import OZ v5 (which requires ^0.8.20).
 RUN curl -sL https://github.com/Picodes/4naly3er/archive/refs/heads/main.tar.gz \
        | tar xz -C /tmp/ \
     && mv /tmp/4naly3er-main /opt/4naly3er \
     && cd /opt/4naly3er \
     && npm install --legacy-peer-deps \
+    && npm install --legacy-peer-deps solc@0.8.28 \
     && npm cache clean --force
 COPY 4naly3er-run-json.ts /opt/4naly3er/run_json.ts
 

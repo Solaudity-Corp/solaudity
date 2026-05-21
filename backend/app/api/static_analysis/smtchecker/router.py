@@ -17,6 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel import Session, select
 
 from app.api.auth.auth import get_current_user
+from app.api.solc_utils import resolve_solc_binary_for_project
 from app.api.static_analysis.smtchecker.schemas import (
     SMTCheckerFindingRead,
     SMTCheckerRunDetail,
@@ -151,47 +152,27 @@ def _build_solc_input(target_rel: str, tmpdir: Path, engine: str) -> dict:
     }
 
 
-_SOLC_ARTIFACTS_DIR = Path(os.getenv("SOLC_SELECT_ARTIFACTS_FOLDER", "/opt/solc-home/.solc-select/artifacts"))
-_SOLC_SELECT_BIN = "/opt/venv-slither/bin/solc-select"
+def _get_solc_bin(tmpdir: Path, target_path: Path) -> str:
+    """Return the solc binary compatible with all .sol files in tmpdir.
 
-
-def _resolve_pragma_version(content: str) -> str | None:
-    """Extract the first concrete X.Y.Z version from a pragma solidity statement."""
-    m = re.search(r'pragma\s+solidity\s+[^;]*?(\d+\.\d+\.\d+)', content)
-    return m.group(1) if m else None
-
-
-def _get_solc_bin(contract_content: str) -> str:
-    """Return the solc binary that matches the contract's pragma version.
-
-    Falls back to the system solc when the required version cannot be resolved.
+    Scans pragma constraints across all files (including node_modules deps) so
+    that e.g. OZ v5's ^0.8.20 requirement is respected even when the target
+    contract only declares ^0.8.0.  Falls back to the system solc shim when no
+    installed version can be resolved.
     """
-    version = _resolve_pragma_version(contract_content)
-    if version:
-        artifact = _SOLC_ARTIFACTS_DIR / f"solc-{version}" / f"solc-{version}"
-        if artifact.exists():
-            return str(artifact)
-        # Try installing on the fly (requires network; best-effort).
-        try:
-            subprocess.run(
-                [_SOLC_SELECT_BIN, "install", version],
-                timeout=60, capture_output=True,
-            )
-            if artifact.exists():
-                return str(artifact)
-        except Exception:
-            logger.warning("solc-select install %s failed — falling back to default solc", version)
+    binary, _ = resolve_solc_binary_for_project(target_path, tmpdir)
+    if binary:
+        return binary
     return shutil.which("solc") or "/usr/local/bin/solc"
 
 
 def _run_smtchecker(
     tmpdir: Path,
     target_filename: str,
-    contract_content: str,
     engine: str,
     timeout: int = 300,
 ) -> tuple[int, dict | None, str]:
-    solc_bin = _get_solc_bin(contract_content)
+    solc_bin = _get_solc_bin(tmpdir, tmpdir / target_filename)
     if not Path(solc_bin).exists():
         raise HTTPException(status_code=501, detail="solc is not installed on this server")
 
@@ -294,10 +275,8 @@ def trigger_run(
 
     tmpdir: Path | None = None
     try:
-        tmpdir, contract_content, target_filename = _build_tempdir(audit_id, sc, session)
-        exit_code, raw_json, stderr = _run_smtchecker(
-            tmpdir, target_filename, contract_content, engine
-        )
+        tmpdir, _, target_filename = _build_tempdir(audit_id, sc, session)
+        exit_code, raw_json, stderr = _run_smtchecker(tmpdir, target_filename, engine)
 
         finished_at = datetime.now(timezone.utc)
         duration_ms = int((finished_at - started_at).total_seconds() * 1000)
