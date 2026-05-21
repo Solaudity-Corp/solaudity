@@ -155,35 +155,66 @@ def _satisfies(v: Ver, constraints: list[tuple[str, Ver]]) -> bool:
     return True
 
 
-def _resolve_solc_binary(file_path: Path) -> tuple[str | None, str | None]:
+def _resolve_solc_binary(file_path: Path, tmpdir: Path | None = None) -> tuple[str | None, str | None]:
     """
-    Parse the pragma solidity spec and return (binary_path, error_message).
+    Parse pragma solidity from file_path and all .sol files under tmpdir, then
+    return (binary_path, error_message).
     - (path, None)  — found a compatible installed binary
-    - (None, None)  — no pragma found, slither will use its default
+    - (None, None)  — no pragma found anywhere; slither will use its default
     - (None, msg)   — pragma found but no compatible version is installed
+
+    Scanning all files (including node_modules) ensures that a dependency with a
+    stricter pragma (e.g. OZ v5 requiring ^0.8.20) is taken into account even
+    when the target contract only specifies ^0.8.0.
     """
     try:
         content = file_path.read_text(errors="ignore")
         m = re.search(r"pragma\s+solidity\s+([^;]+);", content)
-        if not m:
-            return None, None
-        spec = m.group(1).strip()
+        target_spec = m.group(1).strip() if m else None
+        target_constraints = _expand_constraints(target_spec) if target_spec else []
 
-        constraints = _expand_constraints(spec)
-        if not constraints:
+        # Collect additional pragma constraints from all other .sol files in tmpdir
+        # (capped at 500 files to stay fast).
+        extra_constraints: list[tuple[str, Ver]] = []
+        if tmpdir is not None:
+            scanned = 0
+            for sol_file in tmpdir.rglob("*.sol"):
+                if sol_file == file_path:
+                    continue
+                try:
+                    m2 = re.search(r"pragma\s+solidity\s+([^;]+);", sol_file.read_text(errors="ignore"))
+                    if m2:
+                        extra_constraints.extend(_expand_constraints(m2.group(1).strip()))
+                except Exception:
+                    pass
+                scanned += 1
+                if scanned >= 500:
+                    break
+
+        all_constraints = target_constraints + extra_constraints
+        if not all_constraints:
             return None, None
 
         installed = _installed_versions()
-        # Pick the highest version that satisfies all constraints
+
+        # First pass: satisfy all constraints (target + dependencies).
         for v in reversed(installed):
-            if _satisfies(v, constraints):
+            if _satisfies(v, all_constraints):
                 binary = _SOLC_ARTIFACTS / f"solc-{v[0]}.{v[1]}.{v[2]}"
                 if binary.exists():
                     return str(binary), None
 
-        # No installed version satisfies the pragma
+        # Second pass: fall back to target file only if no version satisfies everything
+        # (handles unusual cases where different dep versions have conflicting pragmas).
+        if target_constraints:
+            for v in reversed(installed):
+                if _satisfies(v, target_constraints):
+                    binary = _SOLC_ARTIFACTS / f"solc-{v[0]}.{v[1]}.{v[2]}"
+                    if binary.exists():
+                        return str(binary), None
+
         return None, (
-            f"No installed solc version satisfies `pragma solidity {spec}`. "
+            f"No installed solc version satisfies `pragma solidity {target_spec or '(unknown)'}`. "
             f"Please install a compatible version via the Sol Versions panel."
         )
     except Exception:
@@ -213,7 +244,7 @@ def _run_slither(file_path: Path, tmpdir: Path, preset: SlitherPreset = SlitherP
     extra_flags = _PRESET_FLAGS.get(preset, [])
     json_out = tmpdir / "_slither_out.json"
 
-    solc_binary, solc_err = _resolve_solc_binary(file_path)
+    solc_binary, solc_err = _resolve_solc_binary(file_path, tmpdir)
     if solc_err:
         raise HTTPException(status_code=422, detail=solc_err)
 
