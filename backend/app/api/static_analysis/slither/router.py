@@ -90,6 +90,7 @@ def _ensure_contract(session: Session, audit_id: UUID, scope_contract_id: UUID) 
 
 
 _SOLC_ARTIFACTS = Path("/opt/solc-home/.solc-select/artifacts")
+_SOL_LIBS_BASE = Path("/usr/local/sol-libs")
 
 Ver = tuple[int, int, int]
 
@@ -190,6 +191,42 @@ def _resolve_solc_binary(file_path: Path) -> tuple[str | None, str | None]:
         return None, None
 
 
+def _select_oz_libs(solc_binary: str | None) -> Path | None:
+    """
+    Return the pre-built node_modules path that matches the resolved solc version.
+
+    Mapping:
+      solc < 0.8.0          → nm-v3   (OZ v3, ^0.6.0)
+      solc 0.8.0  – 0.8.19  → nm-v4   (OZ v4, ^0.8.0)
+      solc 0.8.20 – 0.8.23  → nm-v5-legacy  (OZ 5.0.2, ^0.8.20)
+      solc ≥ 0.8.24         → nm-v5-modern  (OZ v5 latest, ^0.8.24)
+    """
+    key = "nm-v4"  # safe default
+    if solc_binary is not None:
+        m = re.search(r"solc-(\d+)\.(\d+)\.(\d+)$", Path(solc_binary).name)
+        if m:
+            mi, pa = int(m.group(2)), int(m.group(3))
+            if mi < 8:
+                key = "nm-v3"
+            elif mi == 8 and pa < 20:
+                key = "nm-v4"
+            elif mi == 8 and pa < 24:
+                key = "nm-v5-legacy"
+            else:
+                key = "nm-v5-modern"
+
+    candidate = _SOL_LIBS_BASE / key / "node_modules"
+    if candidate.exists():
+        return candidate
+
+    # Fallback: try sets in order of preference
+    for fallback in ("nm-v4", "nm-v5-legacy", "nm-v3", "nm-v5-modern"):
+        p = _SOL_LIBS_BASE / fallback / "node_modules"
+        if p.exists():
+            return p
+    return None
+
+
 def _slither_version() -> str | None:
     """Return slither version string, or None if not installed."""
     try:
@@ -239,7 +276,7 @@ def _run_slither(file_path: Path, tmpdir: Path, preset: SlitherPreset = SlitherP
     env["HOME"] = str(request_home)
 
     node_modules = tmpdir / "node_modules"
-    remaps = _build_solc_remaps(node_modules)
+    remaps = _build_solc_remaps(node_modules, tmpdir)
     remaps_flags = ["--solc-remaps", remaps] if remaps else []
     # Allow solc to read from node_modules (remapped paths resolve there)
     allow_flags = ["--solc-args", f"--allow-paths {node_modules}"] if node_modules.exists() else []
@@ -288,12 +325,31 @@ def _run_slither(file_path: Path, tmpdir: Path, preset: SlitherPreset = SlitherP
     return result.returncode, raw_json, (stderr or stdout or f"(no output, exit {result.returncode})")
 
 
-def _build_solc_remaps(node_modules: Path) -> str | None:
+def _build_solc_remaps(node_modules: Path, tmpdir: Path | None = None) -> str | None:
     """
-    Scan node_modules and build a solc remapping string so that imports like
-    `forge-std/Script.sol` or `@openzeppelin/contracts/...` resolve correctly.
+    Build a solc remapping string from:
+    1. remappings.txt in the project root (Foundry convention), if present.
+    2. Auto-generated remappings from node_modules, including per-sub-package
+       aliases for scoped packages so that bare imports like
+       `openzeppelin-contracts/token/ERC20/ERC20.sol` resolve correctly.
     Returns a space-separated remapping string, or None if nothing to remap.
     """
+    # 1. Honour explicit remappings.txt if the project ships one
+    if tmpdir is not None:
+        remappings_file = tmpdir / "remappings.txt"
+        if remappings_file.exists():
+            try:
+                lines = [
+                    l.strip()
+                    for l in remappings_file.read_text().splitlines()
+                    if l.strip() and not l.strip().startswith("#")
+                ]
+                if lines:
+                    return " ".join(lines)
+            except Exception:
+                pass
+
+    # 2. Auto-generate from node_modules
     if not node_modules.exists():
         return None
     parts: list[str] = []
@@ -302,9 +358,16 @@ def _build_solc_remaps(node_modules: Path) -> str | None:
             if not entry.is_dir():
                 continue
             if entry.name.startswith("@"):
-                # Scoped namespace — one remapping covers all sub-packages:
-                # @openzeppelin/ → node_modules/@openzeppelin/
+                scope = entry.name[1:]  # e.g. "openzeppelin"
+                # Scoped namespace: @openzeppelin/ → node_modules/@openzeppelin/
                 parts.append(f"{entry.name}/={entry}/")
+                # Per-sub-package alias: openzeppelin-contracts/ → .../contracts/
+                try:
+                    for subpkg in entry.iterdir():
+                        if subpkg.is_dir():
+                            parts.append(f"{scope}-{subpkg.name}/={subpkg}/")
+                except Exception:
+                    pass
             else:
                 parts.append(f"{entry.name}/={entry}/")
     except Exception:
@@ -351,9 +414,10 @@ def _build_file_in_tempdir(sc: ScopeContract, session: Session) -> tuple[Path, P
             detail=f"Source file not found on disk: {sc.storage_key}",
         )
 
-    # Symlink pre-installed Solidity libs (OpenZeppelin, forge-std if installed, etc.)
-    sol_libs = Path("/usr/local/sol-libs/node_modules")
-    if sol_libs.exists():
+    # Symlink the OZ set that matches the contract's solc version
+    solc_binary, _ = _resolve_solc_binary(dst)
+    sol_libs = _select_oz_libs(solc_binary)
+    if sol_libs is not None:
         (tmpdir / "node_modules").symlink_to(sol_libs)
 
     return tmpdir, dst

@@ -42,31 +42,40 @@ RUN cd /opt/surya \
     && npm cache clean --force
 ENV PATH="/opt/surya/node_modules/.bin:${PATH}"
 
-# Pre-install all major OpenZeppelin versions so surya can resolve any import.
-# Each version is installed in a temp dir, then merged with cp -n (no-clobber)
-# so v5 files take precedence, v4 fills deprecated files, v3/v2 fill the rest.
+# Pre-install OpenZeppelin in four separate node_modules sets, one per solc range.
+# The backend selects the right set at runtime based on the contract's pragma:
+#   nm-v3        → OZ v3  (solc 0.6.x / 0.7.x)
+#   nm-v4        → OZ v4  (solc 0.8.0  – 0.8.19)
+#   nm-v5-legacy → OZ 5.0.2 (solc 0.8.20 – 0.8.23, no transient storage)
+#   nm-v5-modern → OZ v5 latest (solc ≥ 0.8.24, uses transient ^0.8.24)
+# Each set also bundles ds-test and solady so it is self-contained.
 # NOTE: must be outside /data — that path is a host volume mount at runtime.
-RUN mkdir -p /usr/local/sol-libs/node_modules \
-    && npm install --prefix /tmp/oz2 @openzeppelin/contracts@2 @openzeppelin/contracts-upgradeable@2 || true \
-    && npm install --prefix /tmp/oz3 @openzeppelin/contracts@3 @openzeppelin/contracts-upgradeable@3 \
-    && npm install --prefix /tmp/oz4 @openzeppelin/contracts@4 @openzeppelin/contracts-upgradeable@4 \
-    && npm install --prefix /tmp/oz5 @openzeppelin/contracts@5 @openzeppelin/contracts-upgradeable@5 \
-    && rsync -a --ignore-existing /tmp/oz5/node_modules/@openzeppelin/ /usr/local/sol-libs/node_modules/@openzeppelin/ \
-    && rsync -a --ignore-existing /tmp/oz4/node_modules/@openzeppelin/ /usr/local/sol-libs/node_modules/@openzeppelin/ \
-    && rsync -a --ignore-existing /tmp/oz3/node_modules/@openzeppelin/ /usr/local/sol-libs/node_modules/@openzeppelin/ \
-    && (rsync -a --ignore-existing /tmp/oz2/node_modules/@openzeppelin/ /usr/local/sol-libs/node_modules/@openzeppelin/ 2>/dev/null || true) \
-    && rm -rf /tmp/oz2 /tmp/oz3 /tmp/oz4 /tmp/oz5 \
-    && chmod -R 777 /usr/local/sol-libs \
-    && mkdir -p /usr/local/sol-libs/node_modules/ds-test \
+RUN mkdir -p /usr/local/sol-libs \
+    && npm install --prefix /tmp/oz3    @openzeppelin/contracts@3     @openzeppelin/contracts-upgradeable@3 \
+    && npm install --prefix /tmp/oz4    @openzeppelin/contracts@4     @openzeppelin/contracts-upgradeable@4 \
+    && npm install --prefix /tmp/oz5leg @openzeppelin/contracts@5.0.2 @openzeppelin/contracts-upgradeable@5.0.2 \
+    && npm install --prefix /tmp/oz5mod @openzeppelin/contracts@5     @openzeppelin/contracts-upgradeable@5 \
+    && mkdir -p /usr/local/sol-libs/nm-v3/node_modules \
+    && mkdir -p /usr/local/sol-libs/nm-v4/node_modules \
+    && mkdir -p /usr/local/sol-libs/nm-v5-legacy/node_modules \
+    && mkdir -p /usr/local/sol-libs/nm-v5-modern/node_modules \
+    && cp -r /tmp/oz3/node_modules/@openzeppelin    /usr/local/sol-libs/nm-v3/node_modules/ \
+    && cp -r /tmp/oz4/node_modules/@openzeppelin    /usr/local/sol-libs/nm-v4/node_modules/ \
+    && cp -r /tmp/oz5leg/node_modules/@openzeppelin /usr/local/sol-libs/nm-v5-legacy/node_modules/ \
+    && cp -r /tmp/oz5mod/node_modules/@openzeppelin /usr/local/sol-libs/nm-v5-modern/node_modules/ \
+    && rm -rf /tmp/oz3 /tmp/oz4 /tmp/oz5leg /tmp/oz5mod \
     && curl -sL https://github.com/dapphub/ds-test/archive/refs/heads/master.tar.gz \
        | tar xz -C /tmp/ \
-    && cp -r /tmp/ds-test-master/src/. /usr/local/sol-libs/node_modules/ds-test/ \
-    && rm -rf /tmp/ds-test-master \
     && curl -sL https://github.com/Vectorized/solady/archive/refs/heads/main.tar.gz \
        | tar xz -C /tmp/ \
-    && cp -r /tmp/solady-main/. /usr/local/sol-libs/node_modules/@solady/ \
-    && cp -r /tmp/solady-main/. /usr/local/sol-libs/node_modules/solady/ \
-    && rm -rf /tmp/solady-main
+    && for SET in nm-v3 nm-v4 nm-v5-legacy nm-v5-modern; do \
+         mkdir -p /usr/local/sol-libs/$SET/node_modules/ds-test ; \
+         cp -r /tmp/ds-test-master/src/. /usr/local/sol-libs/$SET/node_modules/ds-test/ ; \
+         cp -r /tmp/solady-main/. /usr/local/sol-libs/$SET/node_modules/@solady/ ; \
+         cp -r /tmp/solady-main/. /usr/local/sol-libs/$SET/node_modules/solady/ ; \
+       done \
+    && rm -rf /tmp/ds-test-master /tmp/solady-main \
+    && chmod -R 777 /usr/local/sol-libs
 
 
 # Installing heimdall — amd64 from upstream, arm64 from fork (aircag/heimdall-rs)
