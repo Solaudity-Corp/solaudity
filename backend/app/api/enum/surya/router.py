@@ -123,15 +123,47 @@ def _build_temp_dir(
         shutil.copy2(src, dst)
         paths.append(dst)
 
-    # Symlink pre-installed Solidity libs so surya can resolve @openzeppelin etc.
+    # Build node_modules in tmpdir so surya can resolve @openzeppelin etc.
+    # We create a real directory (not a symlink to the whole tree) so we can
+    # add extra entries for Foundry-style bare imports like "openzeppelin-contracts/".
+    nm = tmpdir / "node_modules"
+    nm.mkdir(exist_ok=True)
+
     sol_libs = Path("/usr/local/sol-libs/node_modules")
     if sol_libs.exists():
-        (tmpdir / "node_modules").symlink_to(sol_libs)
+        for entry in sol_libs.iterdir():
+            link = nm / entry.name
+            if not link.exists():
+                link.symlink_to(entry)
+        # Foundry remapping aliases: "openzeppelin-contracts/" → "@openzeppelin/contracts/"
+        for alias, pkg in _FOUNDRY_ALIASES.items():
+            real_path = sol_libs / pkg
+            alias_link = nm / alias
+            if real_path.exists() and not alias_link.exists():
+                alias_link.symlink_to(real_path)
+
+    # Foundry projects use bare imports like "src/Foo.sol" or "interfaces/IFoo.sol".
+    # Surya resolves non-relative imports through node_modules, so symlink every
+    # top-level project directory into node_modules/ so these paths resolve.
+    for top_dir in tmpdir.iterdir():
+        if top_dir.name == "node_modules" or not top_dir.is_dir():
+            continue
+        link = nm / top_dir.name
+        if not link.exists():
+            link.symlink_to(top_dir)
 
     return tmpdir, paths
 
 
 _PARSE_ERR_FILE_RE = re.compile(r"Error found while parsing file:\s*(\S+\.sol)")
+_IMPORT_ERR_RE = re.compile(r"Import path not resolved to a file:\s*\S+")
+
+_FOUNDRY_ALIASES: dict[str, str] = {
+    "openzeppelin-contracts": "@openzeppelin/contracts",
+    "openzeppelin-contracts-upgradeable": "@openzeppelin/contracts-upgradeable",
+    "forge-std": "forge-std",
+    "solmate": "solmate",
+}
 
 
 def _run_surya(args: list[str], timeout: int = 60, cwd: str | None = None) -> str:
@@ -294,7 +326,19 @@ def get_ftrace(
         if not paths:
             raise HTTPException(status_code=404, detail="No contract files found in scope")
         fn_id = f"{contract_name}::{function}"
-        return _run_surya_on_files(["ftrace", "-i", fn_id, visibility], tmpdir, paths)
+        result = _run_surya_on_files(["ftrace", "-i", fn_id, visibility], tmpdir, paths)
+        if _IMPORT_ERR_RE.search(result):
+            # Unresolved import in a dependency — retry with just the target contract so
+            # internal calls still trace even without the full dependency tree.
+            rel = Path(sc.file_path)
+            if rel.is_absolute():
+                rel = Path(*rel.parts[1:])
+            target = tmpdir / rel
+            if target.exists():
+                fallback = _run_surya_on_files(["ftrace", "-i", fn_id, visibility], tmpdir, [target])
+                if fallback.strip() and not _IMPORT_ERR_RE.search(fallback):
+                    return fallback
+        return result
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
 

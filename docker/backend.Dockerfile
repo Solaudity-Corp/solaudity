@@ -27,7 +27,7 @@ RUN dpkg --add-architecture amd64 \
     && apt-get update \
     && apt-get full-upgrade -y \
     && apt-get install -y --no-install-recommends curl ca-certificates libc6:amd64 \
-       libgmp-dev libssl-dev libffi-dev build-essential pkg-config cmake \
+       libgmp-dev libssl-dev libffi-dev build-essential pkg-config cmake rsync \
     && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get update \
     && apt-get install -y --no-install-recommends nodejs \
@@ -51,10 +51,10 @@ RUN mkdir -p /usr/local/sol-libs/node_modules \
     && npm install --prefix /tmp/oz3 @openzeppelin/contracts@3 @openzeppelin/contracts-upgradeable@3 \
     && npm install --prefix /tmp/oz4 @openzeppelin/contracts@4 @openzeppelin/contracts-upgradeable@4 \
     && npm install --prefix /tmp/oz5 @openzeppelin/contracts@5 @openzeppelin/contracts-upgradeable@5 \
-    && cp -rn /tmp/oz5/node_modules/@openzeppelin /usr/local/sol-libs/node_modules/ \
-    && cp -rn /tmp/oz4/node_modules/@openzeppelin /usr/local/sol-libs/node_modules/ \
-    && cp -rn /tmp/oz3/node_modules/@openzeppelin /usr/local/sol-libs/node_modules/ \
-    && (cp -rn /tmp/oz2/node_modules/@openzeppelin /usr/local/sol-libs/node_modules/ 2>/dev/null || true) \
+    && rsync -a --ignore-existing /tmp/oz5/node_modules/@openzeppelin/ /usr/local/sol-libs/node_modules/@openzeppelin/ \
+    && rsync -a --ignore-existing /tmp/oz4/node_modules/@openzeppelin/ /usr/local/sol-libs/node_modules/@openzeppelin/ \
+    && rsync -a --ignore-existing /tmp/oz3/node_modules/@openzeppelin/ /usr/local/sol-libs/node_modules/@openzeppelin/ \
+    && (rsync -a --ignore-existing /tmp/oz2/node_modules/@openzeppelin/ /usr/local/sol-libs/node_modules/@openzeppelin/ 2>/dev/null || true) \
     && rm -rf /tmp/oz2 /tmp/oz3 /tmp/oz4 /tmp/oz5 \
     && chmod -R 777 /usr/local/sol-libs \
     && mkdir -p /usr/local/sol-libs/node_modules/ds-test \
