@@ -25,10 +25,10 @@ RUN ln -sf /usr/local/lib/libpython3.11.so.1.0 /usr/local/lib/libpython3.11.so \
 # bookworm ships glibc 2.36; the upstream heimdall binary requires GLIBC_2.39 (trixie).
 RUN dpkg --add-architecture amd64 \
     && echo "deb http://deb.debian.org/debian trixie main" > /etc/apt/sources.list.d/trixie.list \
-    && printf 'Package: *\nPin: release a=trixie\nPin-Priority: 100\n\nPackage: libc6 libc6:amd64 libc-bin libgcc-s1 libgcc-s1:amd64\nPin: release a=trixie\nPin-Priority: 600\n' \
+    && printf 'Package: *\nPin: release a=trixie\nPin-Priority: 100\n\nPackage: libc6 libc6:amd64 libc-bin libc6-dev libc6-dev:amd64 libc-dev-bin libgcc-s1 libgcc-s1:amd64\nPin: release a=trixie\nPin-Priority: 600\n' \
        > /etc/apt/preferences.d/99trixie-libc \
     && apt-get update \
-    && apt-get install -y -t trixie libc6 libc6:amd64 libc-bin libgcc-s1 libgcc-s1:amd64 \
+    && apt-get install -y -t trixie libc6 libc6:amd64 libc-bin libc6-dev libc6-dev:amd64 libc-dev-bin libgcc-s1 libgcc-s1:amd64 \
     && rm /etc/apt/sources.list.d/trixie.list /etc/apt/preferences.d/99trixie-libc \
     && apt-get full-upgrade -y \
     && apt-get install -y --no-install-recommends curl ca-certificates \
