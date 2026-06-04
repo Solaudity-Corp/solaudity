@@ -5,6 +5,7 @@ on:
     branches:
       - main
   workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read
@@ -14,6 +15,7 @@ permissions:
 jobs:
   backend:
     name: Backend Tests
+    if: github.actor != 'dependabot[bot]' || github.event_name == 'workflow_call'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
@@ -114,6 +116,7 @@ jobs:
 
   appsec:
     name: API Security Tests
+    if: github.actor != 'dependabot[bot]' || github.event_name == 'workflow_call'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
@@ -212,6 +215,7 @@ jobs:
 
   frontend:
     name: Frontend Tests
+    if: github.actor != 'dependabot[bot]' || github.event_name == 'workflow_call'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
