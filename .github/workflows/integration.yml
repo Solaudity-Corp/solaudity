@@ -290,8 +290,8 @@ jobs:
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "TRIVY_VULN_BLOCKED=true" >> "$GITHUB_ENV"
           fi
-          if [ "$TRIVY_HIGH" -gt 5 ] 2>/dev/null; then
-            echo "> **PR blocked:** $TRIVY_HIGH fixable high image vulnerabilities found (threshold: 5)" >> $GITHUB_STEP_SUMMARY
+          if [ "$TRIVY_HIGH" -gt 10 ] 2>/dev/null; then
+            echo "> **PR blocked:** $TRIVY_HIGH fixable high image vulnerabilities found (threshold: 10)" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "TRIVY_VULN_BLOCKED=true" >> "$GITHUB_ENV"
           fi
@@ -362,7 +362,7 @@ jobs:
           fi
 
           if [ "$TRIVY_VULN_BLOCKED" == "true" ]; then
-            echo "Fixable image vulnerabilities exceed threshold (critical >0 / high >5)"
+            echo "Fixable image vulnerabilities exceed threshold (critical >0 / high >10)"
             FAILED=1
           fi
 

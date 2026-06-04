@@ -136,7 +136,7 @@ COPY 4naly3er-run-json.ts /opt/4naly3er/run_json.ts
 RUN --mount=type=cache,target=/opt/solc-home/.cache/pip \
     python3 -m venv /opt/venv-certora \
     && /opt/venv-certora/bin/pip install --upgrade pip \
-    && /opt/venv-certora/bin/pip install certora-cli==7.9.4 \
+    && /opt/venv-certora/bin/pip install certora-cli \
     && ln -sf /opt/venv-certora/bin/certoraRun /usr/local/bin/certoraRun
 
 # Pre-download the CertoraProver JAR at build time so the image starts offline-ready.
