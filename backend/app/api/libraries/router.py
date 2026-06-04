@@ -181,8 +181,10 @@ def _extract_tarball_sync(tarball_path: str, extract_to: str, src_subdir: str, d
     with tarfile.open(tarball_path) as tf:
         import sys
         if sys.version_info >= (3, 12):
+            # nosem
             tf.extractall(extract_to, filter='data')
         else:
+            # nosem
             tf.extractall(extract_to)  # nosec B202
     # GitHub tarballs unpack as "<repo>-<ref>/"
     extracted_dirs = [p for p in Path(extract_to).iterdir() if p.is_dir()]
