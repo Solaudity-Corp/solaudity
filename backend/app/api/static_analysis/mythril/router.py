@@ -42,6 +42,7 @@ router = APIRouter(
 
 _CONTRACTS_STORAGE_DIR = Path(os.getenv("CONTRACTS_STORAGE_DIR", "/data/contracts"))
 _SOLC_ARTIFACTS = Path("/opt/solc-home/.solc-select/artifacts")
+_SOL_LIBS_BASE = Path("/usr/local/sol-libs")
 
 # Number of transactions and execution timeout per preset
 _PRESET_CONFIG: dict[MythrilPreset, dict] = {
@@ -156,6 +157,30 @@ def _resolve_solc_binary(file_path: Path) -> tuple[str | None, str | None]:
         return None, None
 
 
+def _select_oz_libs(solc_binary: str | None) -> Path | None:
+    key = "nm-v4"
+    if solc_binary is not None:
+        m = re.match(r"solc-(\d+)\.(\d+)\.(\d+)$", Path(solc_binary).name)
+        if m:
+            mi, pa = int(m.group(2)), int(m.group(3))
+            if mi < 8:
+                key = "nm-v3"
+            elif mi == 8 and pa < 20:
+                key = "nm-v4"
+            elif mi == 8 and pa < 24:
+                key = "nm-v5-legacy"
+            else:
+                key = "nm-v5-modern"
+    candidate = _SOL_LIBS_BASE / key / "node_modules"
+    if candidate.exists():
+        return candidate
+    for fallback in ("nm-v4", "nm-v5-legacy", "nm-v3", "nm-v5-modern"):
+        p = _SOL_LIBS_BASE / fallback / "node_modules"
+        if p.exists():
+            return p
+    return None
+
+
 def _mythril_version() -> str | None:
     try:
         result = subprocess.run(
@@ -197,10 +222,6 @@ def _build_file_in_tempdir(sc: ScopeContract, session: Session) -> tuple[Path, P
             detail=f"Source file not found on disk: {sc.storage_key}",
         )
 
-    sol_libs = Path("/usr/local/sol-libs/node_modules")
-    if sol_libs.exists():
-        (tmpdir / "node_modules").symlink_to(sol_libs)
-
     return tmpdir, dst
 
 
@@ -215,8 +236,17 @@ def _build_solc_json(file_path: Path, node_modules: Path) -> Path | None:
     remappings: list[str] = []
     try:
         for entry in node_modules.iterdir():
-            if entry.is_dir():
-                remappings.append(f"{entry.name}/={entry}/")
+            if not entry.is_dir():
+                continue
+            remappings.append(f"{entry.name}/={entry}/")
+            if entry.name.startswith("@"):
+                scope = entry.name[1:]  # e.g. "openzeppelin"
+                try:
+                    for subpkg in entry.iterdir():
+                        if subpkg.is_dir():
+                            remappings.append(f"{scope}-{subpkg.name}/={subpkg}/")
+                except Exception:
+                    pass
     except Exception:
         pass
     if not remappings:
@@ -260,7 +290,11 @@ def _run_mythril(
             (solc_dir / "global-version").write_text(global_ver.read_text())
     env["HOME"] = str(request_home)
 
+    oz_libs = _select_oz_libs(solc_binary)
     node_modules = tmpdir / "node_modules"
+    if oz_libs and not node_modules.exists():
+        node_modules.symlink_to(oz_libs)
+
     solc_json = _build_solc_json(file_path, node_modules)
 
     cmd = [

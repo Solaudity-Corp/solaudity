@@ -103,8 +103,7 @@ RUN python3 -m venv /opt/venv-slither \
 
 # Pre-create the mythril venv directory (world-writable) so the runtime installer
 # can populate it regardless of which user the container runs as.
-# /opt/venv-mythril/bin is added to PATH below so 'myth' is found once installed —
-# no symlink into /usr/local/bin is needed (which would require root at runtime).
+# /opt/venv-mythril/bin is added to PATH below so 'myth' is found once installed.
 RUN mkdir -p /opt/venv-mythril && chmod 777 /opt/venv-mythril
 
 
