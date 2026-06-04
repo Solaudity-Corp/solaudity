@@ -76,18 +76,6 @@ jobs:
         run: curl --retry 15 --retry-delay 3 --retry-all-errors -sf http://localhost:5173/
         continue-on-error: true
 
-      - name: Trivy scan frontend image
-        id: trivy-frontend
-        if: steps.build-frontend.outcome == 'success'
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
-        with:
-          image-ref: docker-frontend:latest
-          format: sarif
-          output: trivy-frontend.sarif
-          severity: CRITICAL,HIGH
-          ignore-unfixed: true
-        continue-on-error: true
-
       - name: Trivy scan frontend (JSON)
         id: trivy-frontend-json
         if: steps.build-frontend.outcome == 'success'
@@ -96,18 +84,6 @@ jobs:
           image-ref: docker-frontend:latest
           format: json
           output: trivy-frontend.json
-          severity: CRITICAL,HIGH
-          ignore-unfixed: true
-        continue-on-error: true
-
-      - name: Trivy scan backend image
-        id: trivy-backend
-        if: steps.build-backend.outcome == 'success'
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
-        with:
-          image-ref: docker-backend:latest
-          format: sarif
-          output: trivy-backend.sarif
           severity: CRITICAL,HIGH
           ignore-unfixed: true
         continue-on-error: true
