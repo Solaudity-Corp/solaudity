@@ -17,6 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlmodel import Session, select
 
 from app.api.auth.auth import get_current_user
+from app.api.static_analysis._shared import select_oz_libs, build_remappings
 from app.api.static_analysis.slither.schemas import (
     SlitherFindingRead,
     SlitherRunDetail,
@@ -90,7 +91,6 @@ def _ensure_contract(session: Session, audit_id: UUID, scope_contract_id: UUID) 
 
 
 _SOLC_ARTIFACTS = Path("/opt/solc-home/.solc-select/artifacts")
-_SOL_LIBS_BASE = Path("/usr/local/sol-libs")
 
 Ver = tuple[int, int, int]
 
@@ -189,42 +189,6 @@ def _resolve_solc_binary(file_path: Path) -> tuple[str | None, str | None]:
         )
     except Exception:
         return None, None
-
-
-def _select_oz_libs(solc_binary: str | None) -> Path | None:
-    """
-    Return the pre-built node_modules path that matches the resolved solc version.
-
-    Mapping:
-      solc < 0.8.0          → nm-v3   (OZ v3, ^0.6.0)
-      solc 0.8.0  – 0.8.19  → nm-v4   (OZ v4, ^0.8.0)
-      solc 0.8.20 – 0.8.23  → nm-v5-legacy  (OZ 5.0.2, ^0.8.20)
-      solc ≥ 0.8.24         → nm-v5-modern  (OZ v5 latest, ^0.8.24)
-    """
-    key = "nm-v4"  # safe default
-    if solc_binary is not None:
-        m = re.search(r"solc-(\d+)\.(\d+)\.(\d+)$", Path(solc_binary).name)
-        if m:
-            mi, pa = int(m.group(2)), int(m.group(3))
-            if mi < 8:
-                key = "nm-v3"
-            elif mi == 8 and pa < 20:
-                key = "nm-v4"
-            elif mi == 8 and pa < 24:
-                key = "nm-v5-legacy"
-            else:
-                key = "nm-v5-modern"
-
-    candidate = _SOL_LIBS_BASE / key / "node_modules"
-    if candidate.exists():
-        return candidate
-
-    # Fallback: try sets in order of preference
-    for fallback in ("nm-v4", "nm-v5-legacy", "nm-v3", "nm-v5-modern"):
-        p = _SOL_LIBS_BASE / fallback / "node_modules"
-        if p.exists():
-            return p
-    return None
 
 
 def _slither_version() -> str | None:
@@ -350,28 +314,7 @@ def _build_solc_remaps(node_modules: Path, tmpdir: Path | None = None) -> str | 
                 pass
 
     # 2. Auto-generate from node_modules
-    if not node_modules.exists():
-        return None
-    parts: list[str] = []
-    try:
-        for entry in node_modules.iterdir():
-            if not entry.is_dir():
-                continue
-            if entry.name.startswith("@"):
-                scope = entry.name[1:]  # e.g. "openzeppelin"
-                # Scoped namespace: @openzeppelin/ → node_modules/@openzeppelin/
-                parts.append(f"{entry.name}/={entry}/")
-                # Per-sub-package alias: openzeppelin-contracts/ → .../contracts/
-                try:
-                    for subpkg in entry.iterdir():
-                        if subpkg.is_dir():
-                            parts.append(f"{scope}-{subpkg.name}/={subpkg}/")
-                except Exception:
-                    pass
-            else:
-                parts.append(f"{entry.name}/={entry}/")
-    except Exception:
-        pass
+    parts = build_remappings(node_modules)
     return " ".join(parts) if parts else None
 
 
@@ -416,7 +359,7 @@ def _build_file_in_tempdir(sc: ScopeContract, session: Session) -> tuple[Path, P
 
     # Symlink the OZ set that matches the contract's solc version
     solc_binary, _ = _resolve_solc_binary(dst)
-    sol_libs = _select_oz_libs(solc_binary)
+    sol_libs = select_oz_libs(solc_binary)
     if sol_libs is not None:
         (tmpdir / "node_modules").symlink_to(sol_libs)
 
