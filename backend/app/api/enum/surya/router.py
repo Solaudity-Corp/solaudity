@@ -164,6 +164,8 @@ _SURYA_FATAL_RE = re.compile(
     r"|TypeError:"
     r"|ReferenceError:"
     r"|SyntaxError:"
+    r"|no 'node_modules' directory could be found"
+    r"|Error:"
 )
 
 
@@ -463,6 +465,95 @@ def get_dependencies(
 # flatten — inline all imports
 # ---------------------------------------------------------------------------
 
+_IMPORT_PATH_RE = re.compile(r"""^\s*import\s+(?:[^"']*?)?["']([^"']+)["']""", re.MULTILINE)
+_PRAGMA_LINE_RE = re.compile(r"^\s*pragma\s+\S[^;]*;", re.MULTILINE)
+_SPDX_LINE_RE   = re.compile(r"^\s*//\s*SPDX-License-Identifier:.*$", re.MULTILINE)
+
+
+def _resolve_sol_import(import_path: str, current_file: Path, tmpdir: Path) -> Path | None:
+    """Resolve a Solidity import path to a real file under tmpdir or its node_modules."""
+    if import_path.startswith("./") or import_path.startswith("../"):
+        candidate = current_file.parent / import_path
+        if candidate.exists():
+            return candidate
+        # If current_file is inside a symlinked OZ dir, also try relative to the real path.
+        try:
+            real_candidate = current_file.resolve().parent / import_path
+            if real_candidate.exists():
+                return real_candidate
+        except Exception:
+            pass
+        return None
+
+    # Non-relative: resolve through node_modules then directly from tmpdir root.
+    for base in (tmpdir / "node_modules", tmpdir):
+        candidate = base / import_path
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def _flatten_file(
+    file: Path,
+    tmpdir: Path,
+    seen: set[str],
+    spdx_emitted: list[bool],
+    pragma_emitted: list[bool],
+) -> list[str]:
+    """Recursively inline imports, keeping one SPDX and one pragma (from the root file)."""
+    try:
+        real_key = str(file.resolve())
+    except Exception:
+        real_key = str(file)
+    if real_key in seen:
+        return []
+    seen.add(real_key)
+
+    try:
+        content = file.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return [f"// flatten: could not read {file.name}"]
+
+    output: list[str] = []
+    for line in content.splitlines():
+        # SPDX — emit only from the root file (first occurrence)
+        if _SPDX_LINE_RE.match(line):
+            if not spdx_emitted[0]:
+                output.append(line)
+                spdx_emitted[0] = True
+            continue
+
+        # pragma — emit only from the root file (first occurrence); skip OZ/lib pragmas
+        if _PRAGMA_LINE_RE.match(line):
+            if not pragma_emitted[0]:
+                output.append(line)
+                pragma_emitted[0] = True
+            continue
+
+        # import — inline recursively, no separator comment
+        m = _IMPORT_PATH_RE.match(line)
+        if m:
+            import_path = m.group(1)
+            resolved = _resolve_sol_import(import_path, file, tmpdir)
+            if resolved:
+                output.extend(_flatten_file(resolved, tmpdir, seen, spdx_emitted, pragma_emitted))
+            else:
+                output.append(f"// UNRESOLVED: {line.strip()}")
+            continue
+
+        output.append(line)
+
+    return output
+
+
+def _python_flatten(target: Path, tmpdir: Path) -> str:
+    """Flatten a Solidity file by recursively inlining all imports using Python."""
+    lines = _flatten_file(target, tmpdir, set(), [False], [False])
+    # Strip leading/trailing blank lines but keep internal structure
+    text = "\n".join(lines)
+    return text.strip() + "\n"
+
+
 @router.get(
     "/audits/{audit_id}/flatten",
     response_class=PlainTextResponse,
@@ -487,11 +578,17 @@ def get_flatten(
         target = tmpdir / rel
         if not target.exists():
             raise HTTPException(status_code=404, detail="Source file not found on disk")
+
+        # Try surya first — it produces cleaner output for simple projects.
         result = _run_surya(["flatten", str(rel)], cwd=str(tmpdir))
-        if not result.strip() or result.lstrip().startswith("Error:"):
-            raw = target.read_text(encoding="utf-8")
-            return f"// surya flatten: could not resolve imports — showing raw source\n\n{raw}"
-        return result
+        if result.strip() and not _SURYA_FATAL_RE.search(result):
+            return result
+
+        # Surya failed (Truffle remapping error, unresolved import, crash…).
+        # Fall back to our own Python flattener which follows symlinks into node_modules
+        # and handles both npm-style and Foundry-style import paths.
+        py_result = _python_flatten(target, tmpdir)
+        return py_result
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
 

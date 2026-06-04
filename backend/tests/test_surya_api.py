@@ -824,13 +824,13 @@ def test_describe_surya_timeout_returns_408(
 # ================================= flatten fallback =================================
 
 
-def test_flatten_falls_back_to_raw_source_on_empty_output(
+def test_flatten_falls_back_to_python_on_empty_output(
     client: TestClient,
     auth_headers: dict[str, str],
     test_audit: dict,
     test_contract: dict,
 ):
-    """When surya returns empty output, flatten should fall back to the raw file content."""
+    """When surya returns empty output, flatten falls back to the Python flattener."""
     audit_id = test_audit["id"]
     contract_id = test_contract["id"]
 
@@ -841,17 +841,16 @@ def test_flatten_falls_back_to_raw_source_on_empty_output(
             params={"scope_contract_id": contract_id},
         )
     assert resp.status_code == 200
-    assert "surya flatten: could not resolve imports" in resp.text
     assert "contract Token" in resp.text
 
 
-def test_flatten_falls_back_to_raw_source_on_error_output(
+def test_flatten_falls_back_to_python_on_error_output(
     client: TestClient,
     auth_headers: dict[str, str],
     test_audit: dict,
     test_contract: dict,
 ):
-    """When surya returns an Error: prefix, flatten should fall back to the raw file content."""
+    """When surya returns an error, flatten falls back to the Python flattener."""
     audit_id = test_audit["id"]
     contract_id = test_contract["id"]
 
@@ -862,4 +861,4 @@ def test_flatten_falls_back_to_raw_source_on_error_output(
             params={"scope_contract_id": contract_id},
         )
     assert resp.status_code == 200
-    assert "surya flatten: could not resolve imports" in resp.text
+    assert "contract Token" in resp.text
