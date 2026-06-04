@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -31,6 +32,7 @@ from app.models.analyzer4 import (
     Analyzer4Status,
 )
 from app.models.user import User
+from app.utils.sol_libs import expand_pragma_constraints, select_oz_libs
 
 router = APIRouter(
     prefix="/static-analysis/analyzer4",
@@ -98,9 +100,34 @@ def _build_audit_in_tempdir(
     for sc in all_contracts:
         _copy_contract(sc, src)
 
-    sol_libs = Path("/usr/local/sol-libs/node_modules")
-    if sol_libs.exists():
-        (parent / "node_modules").symlink_to(sol_libs)
+    # Pick the OZ node_modules set matching the contracts' pragma versions.
+    best_min: tuple[int, int, int] | None = None
+    for sc in all_contracts:
+        rel = Path(sc.file_path)
+        if rel.is_absolute():
+            rel = Path(*rel.parts[1:])
+        p = src / rel
+        try:
+            content = p.read_text(errors="ignore")
+            m = re.search(r"pragma\s+solidity\s+([^;]+);", content)
+            if not m:
+                continue
+            for op, ver in expand_pragma_constraints(m.group(1).strip()):
+                if op in (">=", "="):
+                    if best_min is None or ver > best_min:
+                        best_min = ver
+        except Exception:
+            continue
+    sol_libs = select_oz_libs(
+        f"solc-{best_min[0]}.{best_min[1]}.{best_min[2]}" if best_min else None
+    )
+    nm = parent / "node_modules"
+    nm.mkdir(exist_ok=True)
+    if sol_libs and sol_libs.exists():
+        for entry in sol_libs.iterdir():
+            link = nm / entry.name
+            if not link.exists():
+                link.symlink_to(entry)
 
     rel = Path(target_sc.file_path)
     if rel.is_absolute():
