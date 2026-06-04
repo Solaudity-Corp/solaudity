@@ -17,6 +17,7 @@ from app.database import get_session
 from app.models.audits import Audit
 from app.models.scope import ScopeContract
 from app.models.user import User
+from app.utils.sol_libs import expand_pragma_constraints, select_oz_libs
 
 router = APIRouter(
     prefix="/enum/surya",
@@ -129,8 +130,8 @@ def _build_temp_dir(
     nm = tmpdir / "node_modules"
     nm.mkdir(exist_ok=True)
 
-    sol_libs = Path("/usr/local/sol-libs/node_modules")
-    if sol_libs.exists():
+    sol_libs = _pick_oz_libs(paths)
+    if sol_libs and sol_libs.exists():
         for entry in sol_libs.iterdir():
             link = nm / entry.name
             if not link.exists():
@@ -156,7 +157,40 @@ def _build_temp_dir(
 
 
 _PARSE_ERR_FILE_RE = re.compile(r"Error found while parsing file:\s*(\S+\.sol)")
-_IMPORT_ERR_RE = re.compile(r"Import path not resolved to a file:\s*\S+")
+# Catches import errors AND surya JS crashes (TypeError when traversing
+# null nodes in the inheritance graph, ReferenceError for missing symbols, etc.)
+_SURYA_FATAL_RE = re.compile(
+    r"Import path not resolved to a file:\s*\S+"
+    r"|TypeError:"
+    r"|ReferenceError:"
+    r"|SyntaxError:"
+)
+
+
+def _pick_oz_libs(paths: list[Path]) -> Path | None:
+    """Select the OZ node_modules set that best matches the contracts' pragma statements.
+
+    Strategy: find the highest minimum-required solc version across all contracts
+    (e.g. ^0.8.24 requires ≥ 0.8.24) and use that to pick the OZ set.  This
+    ensures that a v5-only file like access/extensions/IAccessControlDefaultAdminRules.sol
+    is found when the contract was written for OZ v5.
+    """
+    best_min: tuple[int, int, int] | None = None
+    for p in paths:
+        try:
+            content = p.read_text(errors="ignore")
+            m = re.search(r"pragma\s+solidity\s+([^;]+);", content)
+            if not m:
+                continue
+            for op, ver in expand_pragma_constraints(m.group(1).strip()):
+                if op in (">=", "="):
+                    if best_min is None or ver > best_min:
+                        best_min = ver
+        except Exception:
+            continue
+
+    binary = f"solc-{best_min[0]}.{best_min[1]}.{best_min[2]}" if best_min else None
+    return select_oz_libs(binary)
 
 _FOUNDRY_ALIASES: dict[str, str] = {
     "openzeppelin-contracts": "@openzeppelin/contracts",
@@ -327,17 +361,24 @@ def get_ftrace(
             raise HTTPException(status_code=404, detail="No contract files found in scope")
         fn_id = f"{contract_name}::{function}"
         result = _run_surya_on_files(["ftrace", "-i", fn_id, visibility], tmpdir, paths)
-        if _IMPORT_ERR_RE.search(result):
-            # Unresolved import in a dependency — retry with just the target contract so
-            # internal calls still trace even without the full dependency tree.
+        if _SURYA_FATAL_RE.search(result):
+            # Surya crashed (unresolved import, TypeError in inheritance traversal, etc.)
+            # Retry with just the target contract so internal calls still trace.
             rel = Path(sc.file_path)
             if rel.is_absolute():
                 rel = Path(*rel.parts[1:])
             target = tmpdir / rel
             if target.exists():
                 fallback = _run_surya_on_files(["ftrace", "-i", fn_id, visibility], tmpdir, [target])
-                if fallback.strip() and not _IMPORT_ERR_RE.search(fallback):
+                if fallback.strip() and not _SURYA_FATAL_RE.search(fallback):
                     return fallback
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"Surya could not trace {fn_id}: the contract may use syntax or "
+                    "inheritance patterns that surya does not support."
+                ),
+            )
         return result
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
