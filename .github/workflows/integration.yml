@@ -5,6 +5,10 @@ on:
     branches:
       - main
   workflow_call:
+    inputs:
+      is_workflow_call:
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -15,7 +19,7 @@ permissions:
 jobs:
   integration:
     name: Docker Build & Integration
-    if: github.actor != 'dependabot[bot]' || github.event_name == 'workflow_call'
+    if: github.actor != 'dependabot[bot]' || inputs.is_workflow_call == true
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
