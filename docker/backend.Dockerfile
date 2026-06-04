@@ -22,10 +22,16 @@ RUN ln -sf /usr/local/lib/libpython3.11.so.1.0 /usr/local/lib/libpython3.11.so \
 
 # Install Node.js for Solidity analysis tooling.
 # Also enable amd64 multi-arch so solc-select's x86_64 binaries run via QEMU on ARM64 hosts.
+# bookworm ships glibc 2.36; the upstream heimdall binary requires GLIBC_2.39 (trixie).
 RUN dpkg --add-architecture amd64 \
+    && echo "deb http://deb.debian.org/debian trixie main" > /etc/apt/sources.list.d/trixie.list \
+    && printf 'Package: *\nPin: release a=trixie\nPin-Priority: 100\n\nPackage: libc6 libc6:amd64 libc-bin libgcc-s1 libgcc-s1:amd64\nPin: release a=trixie\nPin-Priority: 600\n' \
+       > /etc/apt/preferences.d/99trixie-libc \
     && apt-get update \
+    && apt-get install -y -t trixie libc6 libc6:amd64 libc-bin libgcc-s1 libgcc-s1:amd64 \
+    && rm /etc/apt/sources.list.d/trixie.list /etc/apt/preferences.d/99trixie-libc \
     && apt-get full-upgrade -y \
-    && apt-get install -y --no-install-recommends curl ca-certificates libc6:amd64 \
+    && apt-get install -y --no-install-recommends curl ca-certificates \
        libgmp-dev libssl-dev libffi-dev build-essential pkg-config cmake \
        z3 default-jre-headless unzip \
     && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
