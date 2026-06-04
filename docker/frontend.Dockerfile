@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM node:24-alpine AS build
+FROM node:24.4.1-alpine AS build
 
 WORKDIR /app
 
@@ -9,7 +9,7 @@ RUN --mount=type=cache,target=/root/.npm npm ci
 COPY . .
 RUN npm run build
 
-FROM nginx:stable-alpine-slim AS runtime
+FROM nginx:1.27.2-alpine-slim AS runtime
 
 RUN apk upgrade --no-cache
 

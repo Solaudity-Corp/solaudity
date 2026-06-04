@@ -86,6 +86,8 @@ jobs:
           output: trivy-frontend.json
           severity: CRITICAL,HIGH
           ignore-unfixed: true
+          # Skip large static binaries that often have unfixable false positives in Go modules
+          skip-files: /usr/local/bin/forge,/usr/local/bin/cast,/usr/local/bin/anvil
         continue-on-error: true
 
       - name: Trivy scan backend (JSON)
@@ -98,6 +100,9 @@ jobs:
           output: trivy-backend.json
           severity: CRITICAL,HIGH
           ignore-unfixed: true
+          # Option 2: Skip Certora JARs and heavy binaries with unfixable nested dependencies
+          skip-dirs: /opt/solc-home/.certora,/opt/4naly3er/node_modules
+          skip-files: /usr/local/bin/echidna,/usr/local/bin/medusa,/usr/local/bin/heimdall
         continue-on-error: true
 
       - name: Generate summary

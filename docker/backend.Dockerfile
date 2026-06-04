@@ -22,16 +22,10 @@ RUN ln -sf /usr/local/lib/libpython3.11.so.1.0 /usr/local/lib/libpython3.11.so \
 
 # Install Node.js for Solidity analysis tooling.
 # Also enable amd64 multi-arch so solc-select's x86_64 binaries run via QEMU on ARM64 hosts.
-# bookworm ships glibc 2.36; the upstream heimdall binary requires GLIBC_2.39 (trixie).
 RUN dpkg --add-architecture amd64 \
-    && echo "deb http://deb.debian.org/debian trixie main" > /etc/apt/sources.list.d/trixie.list \
-    && printf 'Package: *\nPin: release a=trixie\nPin-Priority: 100\n\nPackage: libc6 libc6:amd64 libc-bin libc6-dev libc6-dev:amd64 libc-dev-bin libgcc-s1 libgcc-s1:amd64\nPin: release a=trixie\nPin-Priority: 600\n' \
-       > /etc/apt/preferences.d/99trixie-libc \
     && apt-get update \
-    && apt-get install -y -t trixie libc6 libc6:amd64 libc-bin libc6-dev libc6-dev:amd64 libc-dev-bin libgcc-s1 libgcc-s1:amd64 \
-    && rm /etc/apt/sources.list.d/trixie.list /etc/apt/preferences.d/99trixie-libc \
     && apt-get full-upgrade -y \
-    && apt-get install -y --no-install-recommends curl ca-certificates \
+    && apt-get install -y --no-install-recommends curl ca-certificates libc6:amd64 \
        libgmp-dev libssl-dev libffi-dev build-essential pkg-config cmake \
        z3 default-jre-headless unzip \
     && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
@@ -137,10 +131,12 @@ COPY 4naly3er-run-json.ts /opt/4naly3er/run_json.ts
 # ── Certora Prover (local JVM mode) ──────────────────────────────────────────
 # certora-cli bundles the CertoraProver JAR and runs it locally via --local.
 # z3, default-jre-headless: installed in the main apt block above.
+# Note: Certora JARs contain many nested Java dependencies that may trigger
+# high-severity vulnerabilities in Trivy. These are excluded in CI.
 RUN --mount=type=cache,target=/opt/solc-home/.cache/pip \
     python3 -m venv /opt/venv-certora \
     && /opt/venv-certora/bin/pip install --upgrade pip \
-    && /opt/venv-certora/bin/pip install certora-cli \
+    && /opt/venv-certora/bin/pip install certora-cli==7.9.4 \
     && ln -sf /opt/venv-certora/bin/certoraRun /usr/local/bin/certoraRun
 
 # Pre-download the CertoraProver JAR at build time so the image starts offline-ready.
