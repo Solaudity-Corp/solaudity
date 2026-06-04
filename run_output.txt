@@ -1,0 +1,50 @@
+
+X fix/bandit-findings Integration Solaudity-Corp/solaudity#120 · 26967717483
+Triggered via pull_request about 23 minutes ago
+
+JOBS
+X Docker Build & Integration in 2m42s (ID 79574653965)
+  ✓ Set up job
+  ✓ Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+  ✓ Log in to GitHub Container Registry
+  ✓ Set up Docker Buildx
+  ✓ Build backend image
+  ✓ Build frontend image
+  ✓ Start services
+  - Health check backend
+  - Health check frontend
+  ✓ Trivy scan frontend (JSON)
+  ✓ Trivy scan backend (JSON)
+  ✓ Generate summary
+  ✓ Cleanup
+  X Check results
+  ✓ Comment PR with summary
+  ✓ Post Trivy scan backend (JSON)
+  ✓ Post Trivy scan frontend (JSON)
+  ✓ Post Build frontend image
+  ✓ Post Build backend image
+  ✓ Post Set up Docker Buildx
+  ✓ Post Log in to GitHub Container Registry
+  ✓ Post Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+  ✓ Complete job
+
+ANNOTATIONS
+! Node.js 20 actions are deprecated. The following actions are running on Node.js 20 and may not work as expected: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809, docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9. Actions will be forced to run with Node.js 24 by default starting June 16th, 2026. Node.js 20 will be removed from the runner on September 16th, 2026. Please check if updated versions of these actions are available that support Node.js 24. To opt into Node.js 24 now, set the FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true environment variable on the runner or in your workflow file. Once Node.js 24 becomes the default, you can temporarily opt out by setting ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Docker Build & Integration: .github#2
+
+! PR comment skipped — summary file is empty
+Docker Build & Integration: .github#13
+
+X Process completed with exit code 1.
+Docker Build & Integration: .github#37
+
+X Process completed with exit code 1.
+Docker Build & Integration: .github#10
+
+
+ARTIFACTS
+Solaudity-Corp~solaudity~QT4P9U.dockerbuild
+Solaudity-Corp~solaudity~M2QXJ4.dockerbuild
+
+To see what failed, try: gh run view 26967717483 --log-failed
+View this run on GitHub: https://github.com/Solaudity-Corp/solaudity/actions/runs/26967717483
