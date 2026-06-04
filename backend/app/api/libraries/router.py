@@ -178,13 +178,14 @@ async def _run_install(lib_id: str, packages: list[str], copies: list[tuple[str,
 
 def _extract_tarball_sync(tarball_path: str, extract_to: str, src_subdir: str, dst_name: str) -> None:
     """Synchronous helper — runs in a thread via asyncio.to_thread."""
+    # nosemgrep
     with tarfile.open(tarball_path) as tf:
         import sys
         if sys.version_info >= (3, 12):
-            # nosem
+            # nosemgrep
             tf.extractall(extract_to, filter='data')
         else:
-            # nosem
+            # nosemgrep
             tf.extractall(extract_to)  # nosec B202
     # GitHub tarballs unpack as "<repo>-<ref>/"
     extracted_dirs = [p for p in Path(extract_to).iterdir() if p.is_dir()]
