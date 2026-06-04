@@ -72,7 +72,7 @@ RUN mkdir -p /usr/local/sol-libs \
          mkdir -p /usr/local/sol-libs/$SET/node_modules/ds-test ; \
          cp -r /tmp/ds-test-master/src/. /usr/local/sol-libs/$SET/node_modules/ds-test/ ; \
          cp -r /tmp/solady-main/. /usr/local/sol-libs/$SET/node_modules/@solady/ ; \
-         cp -r /tmp/solady-main/. /usr/local/sol-libs/$SET/node_modules/solady/ ; \
+         cp -r /tmp/solady-main/src/. /usr/local/sol-libs/$SET/node_modules/solady/ ; \
        done \
     && rm -rf /tmp/ds-test-master /tmp/solady-main \
     && chmod -R 777 /usr/local/sol-libs
