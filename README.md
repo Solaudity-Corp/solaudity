@@ -111,7 +111,7 @@ graph TD
 
 1.  **Clone the repository**
     ```bash
-    git clone https://github.com/yourusername/solaudity.git
+    git clone https://github.com/Solaudity-Corp/solaudity.git
     cd solaudity
     ```
 

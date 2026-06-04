@@ -177,7 +177,8 @@ RUN apt-get update \
          -H "User-Agent: solaudity-dockerfile" \
          "https://api.github.com/repos/crytic/echidna/releases/latest" \
          -o /tmp/echidna_rel.json \
-    && URL=$(python3 -c "import json,sys; d=json.load(open('/tmp/echidna_rel.json')); a=d.get('assets',[]); u=next((x['browser_download_url'] for x in a if 'linux' in x['name'].lower() and not any(b in x['name'].lower() for b in ['macos','darwin','windows']) and any(x['name'].lower().endswith(e) for e in ['.tar.gz','.zip'])),None) or next((x['browser_download_url'] for x in a if not any(b in x['name'].lower() for b in ['macos','darwin','windows']) and any(x['name'].lower().endswith(e) for e in ['.tar.gz','.zip'])),None); print(u) if u else sys.exit(1)") \
+    && ARCH=$(uname -m) \
+    && URL=$(python3 -c "import json,sys,os; d=json.load(open('/tmp/echidna_rel.json')); a=d.get('assets',[]); arch=os.environ.get('ARCH','x86_64'); arm=arch in ('aarch64','arm64'); u=next((x['browser_download_url'] for x in a if 'linux' in x['name'].lower() and ('aarch64' in x['name'].lower() or 'arm64' in x['name'].lower()) and any(x['name'].lower().endswith(e) for e in ['.tar.gz','.zip'])),None) if arm else next((x['browser_download_url'] for x in a if 'linux' in x['name'].lower() and not any(b in x['name'].lower() for b in ['aarch64','arm64','macos','darwin','windows']) and any(x['name'].lower().endswith(e) for e in ['.tar.gz','.zip'])),None); print(u) if u else sys.exit(1)" ARCH="$ARCH") \
     && echo "Downloading echidna: $URL" \
     && curl -fsSL --max-time 300 "$URL" -o /tmp/echidna_dl \
     && mkdir -p /tmp/echidna_ex \
