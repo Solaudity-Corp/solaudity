@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM python:3.13-slim-trixie
+FROM python:3.13-slim-bookworm
 
 WORKDIR /app
 
@@ -12,7 +12,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONPATH=/app
 
 # Enable amd64 multi-arch so solc-select's x86_64 binaries run via QEMU on ARM64 hosts.
-# Installing heimdall from aircag/heimdall-rs (linux amd64/arm64)
+# Installing heimdall from upstream Jon-Becker/heimdall-rs v0.9.3 (linux amd64/arm64)
 RUN dpkg --add-architecture amd64 \
     && apt-get update \
     && apt-get full-upgrade -y \
@@ -22,9 +22,9 @@ RUN dpkg --add-architecture amd64 \
     && rm -rf /var/lib/apt/lists/* \
     && ARCH=$(uname -m) \
     && if [ "$ARCH" = "aarch64" ]; then \
-         curl -L "https://github.com/aircag/heimdall-rs/releases/download/v0.9.2-test/heimdall-linux-arm64" --output /usr/local/bin/heimdall; \
+         curl -L "https://github.com/Jon-Becker/heimdall-rs/releases/download/0.9.3/heimdall-linux-arm64" --output /usr/local/bin/heimdall; \
        else \
-         curl -L "https://github.com/aircag/heimdall-rs/releases/download/v0.9.2-test/heimdall-linux-amd64" --output /usr/local/bin/heimdall; \
+         curl -L "https://github.com/Jon-Becker/heimdall-rs/releases/download/0.9.3/heimdall-linux-amd64" --output /usr/local/bin/heimdall; \
        fi \
     && chmod +x /usr/local/bin/heimdall
 

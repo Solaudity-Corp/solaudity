@@ -2,13 +2,12 @@
 
 # ── Stage: Python 3.11 source ─────────────────────────────────────────────────
 # mythril 0.24.8 is incompatible with Python 3.13.
-# Trixie has no python3.11 apt package, so we copy the interpreter + stdlib from
-# the official 3.11 Bookworm image.  glibc on Trixie (2.41) is newer than
-# Bookworm (2.36) — backwards-compatible, so the binary runs fine.
+# Bookworm has no python3.11 apt package, so we copy the interpreter + stdlib from
+# the official 3.11 Bookworm image to our 3.13 Bookworm runtime stage.
 FROM python:3.11-slim-bookworm AS python311
 
 # ── Main stage ────────────────────────────────────────────────────────────────
-FROM python:3.13-slim-trixie
+FROM python:3.13-slim-bookworm
 
 WORKDIR /app
 
@@ -28,6 +27,7 @@ RUN dpkg --add-architecture amd64 \
     && apt-get full-upgrade -y \
     && apt-get install -y --no-install-recommends curl ca-certificates libc6:amd64 \
        libgmp-dev libssl-dev libffi-dev build-essential pkg-config cmake \
+       z3 default-jre-headless unzip \
     && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get update \
     && apt-get install -y --no-install-recommends nodejs \
@@ -37,20 +37,22 @@ RUN dpkg --add-architecture amd64 \
 
 # Install surya CLI with patched transitive dependencies (overrides in package.json)
 COPY surya/ /opt/surya/
-RUN cd /opt/surya \
-    && npm ci --omit=dev \
-    && npm cache clean --force
+RUN --mount=type=cache,target=/root/.npm \
+    cd /opt/surya \
+    && npm ci --omit=dev
 ENV PATH="/opt/surya/node_modules/.bin:${PATH}"
 
 # Pre-install all major OpenZeppelin versions so surya can resolve any import.
 # Each version is installed in a temp dir, then merged with cp -n (no-clobber)
 # so v5 files take precedence, v4 fills deprecated files, v3/v2 fill the rest.
 # NOTE: must be outside /data — that path is a host volume mount at runtime.
-RUN mkdir -p /usr/local/sol-libs/node_modules \
-    && npm install --prefix /tmp/oz2 @openzeppelin/contracts@2 @openzeppelin/contracts-upgradeable@2 || true \
-    && npm install --prefix /tmp/oz3 @openzeppelin/contracts@3 @openzeppelin/contracts-upgradeable@3 \
-    && npm install --prefix /tmp/oz4 @openzeppelin/contracts@4 @openzeppelin/contracts-upgradeable@4 \
-    && npm install --prefix /tmp/oz5 @openzeppelin/contracts@5 @openzeppelin/contracts-upgradeable@5 \
+RUN --mount=type=cache,target=/root/.npm \
+    mkdir -p /usr/local/sol-libs/node_modules \
+    && { (npm install --prefix /tmp/oz2 @openzeppelin/contracts@2 @openzeppelin/contracts-upgradeable@2 || true) \
+       & npm install --prefix /tmp/oz3 @openzeppelin/contracts@3 @openzeppelin/contracts-upgradeable@3 \
+       & npm install --prefix /tmp/oz4 @openzeppelin/contracts@4 @openzeppelin/contracts-upgradeable@4 \
+       & npm install --prefix /tmp/oz5 @openzeppelin/contracts@5 @openzeppelin/contracts-upgradeable@5 \
+       & wait; } \
     && cp -rn /tmp/oz5/node_modules/@openzeppelin /usr/local/sol-libs/node_modules/ \
     && cp -rn /tmp/oz4/node_modules/@openzeppelin /usr/local/sol-libs/node_modules/ \
     && cp -rn /tmp/oz3/node_modules/@openzeppelin /usr/local/sol-libs/node_modules/ \
@@ -69,22 +71,24 @@ RUN mkdir -p /usr/local/sol-libs/node_modules \
     && rm -rf /tmp/solady-main
 
 
-# Installing heimdall — amd64 from upstream, arm64 from fork (aircag/heimdall-rs)
+# Installing heimdall — amd64 and arm64 from upstream Jon-Becker/heimdall-rs v0.9.3
 RUN ARCH=$(uname -m) \
     && if [ "$ARCH" = "aarch64" ]; then \
-         curl -L "https://github.com/aircag/heimdall-rs/releases/download/v0.9.2-test/heimdall-linux-arm64" --output /usr/local/bin/heimdall; \
+         curl -L "https://github.com/Jon-Becker/heimdall-rs/releases/download/0.9.3/heimdall-linux-arm64" --output /usr/local/bin/heimdall; \
        else \
-         curl -L "https://github.com/Jon-Becker/heimdall-rs/releases/download/0.9.2/heimdall-linux-amd64" --output /usr/local/bin/heimdall; \
+         curl -L "https://github.com/Jon-Becker/heimdall-rs/releases/download/0.9.3/heimdall-linux-amd64" --output /usr/local/bin/heimdall; \
        fi \
     && chmod +x /usr/local/bin/heimdall
 
 COPY requirements.txt .
-RUN pip install --upgrade pip setuptools wheel "jaraco.context>=6.1.1" \
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --upgrade pip setuptools wheel "jaraco.context>=6.1.1" \
     && pip install -r requirements.txt
 
 # Slither and Mythril require conflicting eth-abi versions, so each gets its
 # own venv. The CLI binaries are symlinked into PATH so subprocess calls work.
-RUN python3 -m venv /opt/venv-slither \
+RUN --mount=type=cache,target=/root/.cache/pip \
+    python3 -m venv /opt/venv-slither \
     && /opt/venv-slither/bin/pip install --upgrade pip \
     && /opt/venv-slither/bin/pip install slither-analyzer==0.11.5 \
     && ln -sf /opt/venv-slither/bin/slither /usr/local/bin/slither \
@@ -116,30 +120,19 @@ RUN /opt/venv-slither/bin/solc-select install 0.8.30 0.8.28 0.8.20 0.8.17 0.8.0 
     && chmod -R 777 /opt/solc-home/.solc-select
 
 # 4naly3er — TypeScript static analyser (Node.js is already present from the surya step)
-RUN curl -sL https://github.com/Picodes/4naly3er/archive/refs/heads/main.tar.gz \
+RUN --mount=type=cache,target=/opt/solc-home/.npm \
+    curl -sL https://github.com/Picodes/4naly3er/archive/refs/heads/main.tar.gz \
        | tar xz -C /tmp/ \
     && mv /tmp/4naly3er-main /opt/4naly3er \
     && cd /opt/4naly3er \
-    && npm install --legacy-peer-deps \
-    && npm cache clean --force
+    && npm install --legacy-peer-deps
 COPY 4naly3er-run-json.ts /opt/4naly3er/run_json.ts
 
-# z3 SMT solver — required by solc's CHC engine (SMTChecker)
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends z3 \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
-
 # ── Certora Prover (local JVM mode) ──────────────────────────────────────────
-# Installs OpenJDK (required to run the CertoraProver JAR) and certora-cli in
-# its own venv so it cannot conflict with the main requirements.
 # certora-cli bundles the CertoraProver JAR and runs it locally via --local.
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends default-jre-headless \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
-
-RUN python3 -m venv /opt/venv-certora \
+# z3, default-jre-headless: installed in the main apt block above.
+RUN --mount=type=cache,target=/opt/solc-home/.cache/pip \
+    python3 -m venv /opt/venv-certora \
     && /opt/venv-certora/bin/pip install --upgrade pip \
     && /opt/venv-certora/bin/pip install certora-cli \
     && ln -sf /opt/venv-certora/bin/certoraRun /usr/local/bin/certoraRun
@@ -167,13 +160,8 @@ RUN mkdir -p /tmp/certora-warmup \
 # KEVM is installed on-demand at runtime via the Tools panel (same pattern as Mythril).
 
 # Echidna — property-based smart contract fuzzer (Trail of Bits)
-# Queries the GitHub API via curl (not Python urllib) to get the latest release,
-# then downloads the Linux binary. unzip is added in case the asset is a zip.
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends unzip \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/* \
-    && curl -fsSL --max-time 60 \
+# Queries the GitHub API via curl to get the latest release; unzip installed in main apt block.
+RUN curl -fsSL --max-time 60 \
          -H "User-Agent: solaudity-dockerfile" \
          "https://api.github.com/repos/crytic/echidna/releases/latest" \
          -o /tmp/echidna_rel.json \
