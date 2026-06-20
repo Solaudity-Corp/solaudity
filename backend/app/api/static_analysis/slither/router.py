@@ -244,7 +244,9 @@ def _run_slither(file_path: Path, tmpdir: Path, preset: SlitherPreset = SlitherP
     remaps_flags = ["--solc-remaps", remaps] if remaps else []
     # Allow solc to read from node_modules (remapped paths resolve there)
     allow_flags = ["--solc-args", f"--allow-paths {node_modules}"] if node_modules.exists() else []
-    cmd = ["slither", str(file_path), "--json", str(json_out)] + remaps_flags + allow_flags + extra_flags
+    # Exclude library files from findings (OZ, ds-test, solady…) to suppress false positives
+    filter_flags = ["--filter-paths", "node_modules"]
+    cmd = ["slither", str(file_path), "--json", str(json_out)] + remaps_flags + allow_flags + filter_flags + extra_flags
 
     logger.warning(
         "SLITHER CMD: %s | cwd=%s | file_exists=%s | HOME=%s",

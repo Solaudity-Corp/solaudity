@@ -1,9 +1,10 @@
 """
-Unit tests for the Slither solver helpers:
-  - _expand_constraints : parsing pragma solidity specs
-  - _satisfies          : checking a version against constraints
-  - _select_oz_libs     : choosing the right OZ node_modules set
-  - _build_solc_remaps  : building solc remapping strings
+Unit tests for the static-analysis helpers:
+  - _expand_constraints : parsing pragma solidity specs  (slither router)
+  - _satisfies          : checking a version against constraints  (slither router)
+  - select_oz_libs      : choosing the right OZ node_modules set  (_shared)
+  - build_remappings    : building solc remapping list  (_shared)
+  - _build_solc_remaps  : slither-specific wrapper with remappings.txt support
 """
 from __future__ import annotations
 
@@ -17,12 +18,15 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
-from app.api.static_analysis.slither.router import (
+from app.api.static_analysis._shared import (
     _SOL_LIBS_BASE,
+    build_remappings,
+    select_oz_libs,
+)
+from app.api.static_analysis.slither.router import (
     _build_solc_remaps,
     _expand_constraints,
     _satisfies,
-    _select_oz_libs,
 )
 
 FIXTURES = Path(__file__).parent / "fixtures" / "sol"
@@ -114,53 +118,126 @@ class TestSelectOzLibs:
 
     def test_solc_076_selects_v3(self):
         with _mock_exists(self.ALL_SETS):
-            result = _select_oz_libs("/opt/solc-home/.solc-select/artifacts/solc-0.7.6")
+            result = select_oz_libs("/opt/solc-home/.solc-select/artifacts/solc-0.7.6")
         assert result == _SOL_LIBS_BASE / "nm-v3" / "node_modules"
 
     def test_solc_0817_selects_v4(self):
         with _mock_exists(self.ALL_SETS):
-            result = _select_oz_libs("/opt/solc-home/.solc-select/artifacts/solc-0.8.17")
+            result = select_oz_libs("/opt/solc-home/.solc-select/artifacts/solc-0.8.17")
         assert result == _SOL_LIBS_BASE / "nm-v4" / "node_modules"
 
     def test_solc_0820_selects_v5_legacy(self):
         with _mock_exists(self.ALL_SETS):
-            result = _select_oz_libs("/opt/solc-home/.solc-select/artifacts/solc-0.8.20")
+            result = select_oz_libs("/opt/solc-home/.solc-select/artifacts/solc-0.8.20")
         assert result == _SOL_LIBS_BASE / "nm-v5-legacy" / "node_modules"
 
     def test_solc_0823_selects_v5_legacy(self):
         with _mock_exists(self.ALL_SETS):
-            result = _select_oz_libs("/opt/solc-home/.solc-select/artifacts/solc-0.8.23")
+            result = select_oz_libs("/opt/solc-home/.solc-select/artifacts/solc-0.8.23")
         assert result == _SOL_LIBS_BASE / "nm-v5-legacy" / "node_modules"
 
     def test_solc_0824_selects_v5_modern(self):
         with _mock_exists(self.ALL_SETS):
-            result = _select_oz_libs("/opt/solc-home/.solc-select/artifacts/solc-0.8.24")
+            result = select_oz_libs("/opt/solc-home/.solc-select/artifacts/solc-0.8.24")
         assert result == _SOL_LIBS_BASE / "nm-v5-modern" / "node_modules"
 
     def test_solc_0828_selects_v5_modern(self):
         with _mock_exists(self.ALL_SETS):
-            result = _select_oz_libs("/opt/solc-home/.solc-select/artifacts/solc-0.8.28")
+            result = select_oz_libs("/opt/solc-home/.solc-select/artifacts/solc-0.8.28")
         assert result == _SOL_LIBS_BASE / "nm-v5-modern" / "node_modules"
 
     def test_none_binary_falls_back_to_v4(self):
         with _mock_exists(self.ALL_SETS):
-            result = _select_oz_libs(None)
+            result = select_oz_libs(None)
         assert result == _SOL_LIBS_BASE / "nm-v4" / "node_modules"
 
     def test_fallback_when_preferred_missing(self):
         # nm-v5-legacy absent → should fall back to nm-v4
         with _mock_exists(["nm-v4", "nm-v5-modern"]):
-            result = _select_oz_libs("/opt/solc-home/.solc-select/artifacts/solc-0.8.20")
+            result = select_oz_libs("/opt/solc-home/.solc-select/artifacts/solc-0.8.20")
         assert result == _SOL_LIBS_BASE / "nm-v4" / "node_modules"
 
     def test_returns_none_when_nothing_installed(self):
         with _mock_exists([]):
-            result = _select_oz_libs("/opt/solc-home/.solc-select/artifacts/solc-0.8.20")
+            result = select_oz_libs("/opt/solc-home/.solc-select/artifacts/solc-0.8.20")
         assert result is None
 
 
 # ---------------------------------------------------------------------------
-# _build_solc_remaps
+# build_remappings  (shared module — returns list[str])
+# ---------------------------------------------------------------------------
+
+class TestBuildRemappings:
+    def test_empty_when_no_node_modules(self, tmp_path):
+        assert build_remappings(tmp_path / "node_modules") == []
+
+    def test_plain_package(self, tmp_path):
+        nm = tmp_path / "node_modules"
+        (nm / "ds-test").mkdir(parents=True)
+        result = build_remappings(nm)
+        assert any(r.startswith("ds-test/=") for r in result)
+
+    def test_scoped_package_has_scope_and_alias(self, tmp_path):
+        nm = tmp_path / "node_modules"
+        (nm / "@openzeppelin" / "contracts").mkdir(parents=True)
+        (nm / "@openzeppelin" / "contracts-upgradeable").mkdir(parents=True)
+        result = build_remappings(nm)
+        names = [r.split("/=")[0] for r in result]
+        assert "@openzeppelin" in names
+        assert "openzeppelin-contracts" in names
+        assert "openzeppelin-contracts-upgradeable" in names
+
+    def test_forge_bare_import_alias(self, tmp_path):
+        # Simulates the Usual.sol case: bare 'openzeppelin-contracts/' import
+        nm = tmp_path / "node_modules"
+        (nm / "@openzeppelin" / "contracts").mkdir(parents=True)
+        result = build_remappings(nm)
+        bare = next((r for r in result if r.startswith("openzeppelin-contracts/=")), None)
+        assert bare is not None
+        assert "@openzeppelin/contracts" in bare
+
+    def test_foundry_style_oz_remapping(self, tmp_path):
+        # @openzeppelin/ must point to contracts/ subdir so that Foundry-style
+        # imports ("@openzeppelin/access/Ownable.sol") resolve correctly.
+        nm = tmp_path / "node_modules"
+        (nm / "@openzeppelin" / "contracts").mkdir(parents=True)
+        result = build_remappings(nm)
+        oz_short = next((r for r in result if r.startswith("@openzeppelin/=") ), None)
+        assert oz_short is not None, "@openzeppelin/= remapping missing"
+        assert oz_short.endswith("/@openzeppelin/contracts/"), (
+            f"@openzeppelin/ should point to contracts/ subdir, got: {oz_short}"
+        )
+
+    def test_scope_subpkg_remapping_for_full_path_imports(self, tmp_path):
+        # @openzeppelin/contracts/= must also exist so that Hardhat-style imports
+        # ("@openzeppelin/contracts/access/Ownable.sol") resolve via longest-prefix match.
+        nm = tmp_path / "node_modules"
+        (nm / "@openzeppelin" / "contracts").mkdir(parents=True)
+        result = build_remappings(nm)
+        oz_full = next((r for r in result if r.startswith("@openzeppelin/contracts/=")), None)
+        assert oz_full is not None, "@openzeppelin/contracts/= remapping missing"
+        assert oz_full.endswith("/@openzeppelin/contracts/")
+
+    def test_scope_without_contracts_keeps_scope_root(self, tmp_path):
+        # Scoped packages without a "contracts" subdir (e.g. @solady) keep the
+        # original behavior of pointing to the scope root.
+        nm = tmp_path / "node_modules"
+        (nm / "@solady" / "src").mkdir(parents=True)
+        result = build_remappings(nm)
+        solady_short = next((r for r in result if r.startswith("@solady/=") ), None)
+        assert solady_short is not None
+        assert solady_short.endswith("/@solady/")
+
+    def test_returns_list_of_strings(self, tmp_path):
+        nm = tmp_path / "node_modules"
+        (nm / "solady").mkdir(parents=True)
+        result = build_remappings(nm)
+        assert isinstance(result, list)
+        assert all(isinstance(r, str) and "/=" in r for r in result)
+
+
+# ---------------------------------------------------------------------------
+# _build_solc_remaps  (slither-specific wrapper — returns space-joined str)
 # ---------------------------------------------------------------------------
 
 class TestBuildSolcRemaps:

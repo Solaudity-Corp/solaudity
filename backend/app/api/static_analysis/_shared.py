@@ -40,15 +40,30 @@ def build_remappings(node_modules: Path) -> list[str]:
         for entry in node_modules.iterdir():
             if not entry.is_dir():
                 continue
-            parts.append(f"{entry.name}/={entry}/")
             if entry.name.startswith("@"):
                 scope = entry.name[1:]
                 try:
                     for subpkg in entry.iterdir():
                         if subpkg.is_dir():
+                            # @scope/pkg/ → pkg dir (more specific; handles full-path imports
+                            # like "@openzeppelin/contracts/access/Ownable.sol" via
+                            # longest-prefix matching in solc, beating the generic @scope/ below)
+                            parts.append(f"{entry.name}/{subpkg.name}/={subpkg}/")
+                            # scope-pkg/ → pkg dir (bare Forge-style alias)
                             parts.append(f"{scope}-{subpkg.name}/={subpkg}/")
                 except Exception:
                     pass
+                # @scope/ shorthand: if a "contracts" subdir exists, point there so that
+                # Foundry-style short imports ("@openzeppelin/access/Ownable.sol") resolve
+                # correctly. Hardhat-style full imports ("@openzeppelin/contracts/access/...")
+                # are handled by the more-specific "@scope/contracts/" remapping above.
+                contracts_pkg = entry / "contracts"
+                if contracts_pkg.is_dir():
+                    parts.append(f"{entry.name}/={contracts_pkg}/")
+                else:
+                    parts.append(f"{entry.name}/={entry}/")
+            else:
+                parts.append(f"{entry.name}/={entry}/")
     except Exception:
         pass
     return parts
