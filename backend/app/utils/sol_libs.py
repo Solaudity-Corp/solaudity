@@ -127,3 +127,69 @@ def select_oz_libs(solc_binary: str | None) -> Path | None:
         if p.exists():
             return p
     return None
+
+
+def build_remappings(node_modules: Path) -> list[str]:
+    """Build solc import remappings from node_modules, including bare Forge-style aliases."""
+    parts: list[str] = []
+    if not node_modules.exists():
+        return parts
+    try:
+        for entry in node_modules.iterdir():
+            if not entry.is_dir():
+                continue
+            if entry.name.startswith("@"):
+                scope = entry.name[1:]
+                try:
+                    for subpkg in entry.iterdir():
+                        if subpkg.is_dir():
+                            # @scope/pkg/ → pkg dir (more specific; handles full-path imports
+                            # like "@openzeppelin/contracts/access/Ownable.sol" via
+                            # longest-prefix matching in solc, beating the generic @scope/ below)
+                            parts.append(f"{entry.name}/{subpkg.name}/={subpkg}/")
+                            # scope-pkg/ → pkg dir (bare Forge-style alias)
+                            parts.append(f"{scope}-{subpkg.name}/={subpkg}/")
+                except Exception:
+                    pass
+                # @scope/ shorthand: point to the most useful subdirectory so that
+                # short-form imports resolve without knowing the full path.
+                # Priority: contracts/ (OZ pattern) > src/ (solady pattern) > scope root.
+                contracts_pkg = entry / "contracts"
+                src_pkg = entry / "src"
+                if contracts_pkg.is_dir():
+                    parts.append(f"{entry.name}/={contracts_pkg}/")
+                elif src_pkg.is_dir():
+                    parts.append(f"{entry.name}/={src_pkg}/")
+                else:
+                    parts.append(f"{entry.name}/={entry}/")
+            else:
+                parts.append(f"{entry.name}/={entry}/")
+    except Exception:
+        pass
+    return parts
+
+
+# ---------------------------------------------------------------------------
+# Compilation-error helpers — turn cryptic solc "Source not found" output into
+# an actionable message pointing the user at the Libraries panel.
+# ---------------------------------------------------------------------------
+_MISSING_SOURCE_RE = re.compile(r'Source "([^"]+)" not found')
+
+
+def extract_missing_imports(text: str | None) -> list[str]:
+    """Top-level import prefixes solc/4naly3er could not resolve (in order, de-duplicated)."""
+    if not text:
+        return []
+    prefixes = [path.split("/")[0] for path in _MISSING_SOURCE_RE.findall(text)]
+    return list(dict.fromkeys(prefixes))
+
+
+def format_missing_imports(text: str | None) -> str | None:
+    """Readable message for unresolved imports, or None if the text has no such error."""
+    missing = extract_missing_imports(text)
+    if not missing:
+        return None
+    return (
+        f"Missing imports: {', '.join(missing)}. "
+        "Install the required libraries in the Libraries panel, then re-run."
+    )

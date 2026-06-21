@@ -2,8 +2,8 @@
 Unit tests for the static-analysis helpers:
   - _expand_constraints : parsing pragma solidity specs  (slither router)
   - _satisfies          : checking a version against constraints  (slither router)
-  - select_oz_libs      : choosing the right OZ node_modules set  (_shared)
-  - build_remappings    : building solc remapping list  (_shared)
+  - select_oz_libs      : choosing the right OZ node_modules set  (utils.sol_libs)
+  - build_remappings    : building solc remapping list  (utils.sol_libs)
   - _build_solc_remaps  : slither-specific wrapper with remappings.txt support
 """
 from __future__ import annotations
@@ -18,7 +18,7 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
-from app.api.static_analysis._shared import (
+from app.utils.sol_libs import (
     _SOL_LIBS_BASE,
     build_remappings,
     select_oz_libs,
@@ -218,15 +218,24 @@ class TestBuildRemappings:
         assert oz_full is not None, "@openzeppelin/contracts/= remapping missing"
         assert oz_full.endswith("/@openzeppelin/contracts/")
 
-    def test_scope_without_contracts_keeps_scope_root(self, tmp_path):
-        # Scoped packages without a "contracts" subdir (e.g. @solady) keep the
-        # original behavior of pointing to the scope root.
+    def test_scope_with_src_points_to_src(self, tmp_path):
+        # Scoped packages with a "src" subdir but no "contracts" (e.g. @solady)
+        # point the short alias at src/ so "@solady/utils/X.sol" resolves.
         nm = tmp_path / "node_modules"
         (nm / "@solady" / "src").mkdir(parents=True)
         result = build_remappings(nm)
         solady_short = next((r for r in result if r.startswith("@solady/=") ), None)
         assert solady_short is not None
-        assert solady_short.endswith("/@solady/")
+        assert solady_short.endswith("/@solady/src/")
+
+    def test_scope_without_contracts_or_src_keeps_scope_root(self, tmp_path):
+        # Scoped packages with neither "contracts" nor "src" fall back to the scope root.
+        nm = tmp_path / "node_modules"
+        (nm / "@scope" / "lib").mkdir(parents=True)
+        result = build_remappings(nm)
+        short = next((r for r in result if r.startswith("@scope/=")), None)
+        assert short is not None
+        assert short.endswith("/@scope/")
 
     def test_returns_list_of_strings(self, tmp_path):
         nm = tmp_path / "node_modules"

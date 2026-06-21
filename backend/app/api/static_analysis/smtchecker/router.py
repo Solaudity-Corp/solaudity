@@ -17,7 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel import Session, select
 
 from app.api.auth.auth import get_current_user
-from app.api.static_analysis._shared import select_oz_libs, build_remappings
+from app.utils.sol_libs import select_oz_libs, build_remappings
 from app.api.static_analysis.smtchecker.schemas import (
     SMTCheckerFindingRead,
     SMTCheckerRunDetail,

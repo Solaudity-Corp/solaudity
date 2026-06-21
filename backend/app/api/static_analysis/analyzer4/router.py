@@ -32,7 +32,11 @@ from app.models.analyzer4 import (
     Analyzer4Status,
 )
 from app.models.user import User
-from app.utils.sol_libs import expand_pragma_constraints, select_oz_libs
+from app.utils.sol_libs import (
+    expand_pragma_constraints,
+    format_missing_imports,
+    select_oz_libs,
+)
 
 router = APIRouter(
     prefix="/static-analysis/analyzer4",
@@ -236,13 +240,17 @@ def trigger_run(
 
         if raw_json is not None:
             if not raw_json.get("success", False):
-                error_message = raw_json.get("error", "unknown error")
+                err = raw_json.get("error", "unknown error")
+                error_message = format_missing_imports(err) or err
             else:
                 findings = _parse_findings(raw_json, run)
                 for f in findings:
                     session.add(f)
         else:
-            error_message = f"exit {exit_code}: {(stderr or '').strip()[:1500] or '(no output)'}"
+            output = (stderr or "").strip()
+            error_message = format_missing_imports(output) or (
+                f"exit {exit_code}: {output[:1500] or '(no output)'}"
+            )
 
         counts = {t: 0 for t in ["H", "M", "L", "NC", "GAS"]}
         for f in findings:
