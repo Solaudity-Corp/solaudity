@@ -17,7 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlmodel import Session, select
 
 from app.api.auth.auth import get_current_user
-from app.utils.sol_libs import select_oz_libs, build_remappings, format_missing_imports
+from app.utils.sol_libs import select_oz_libs, build_remappings, summarize_compile_error
 from app.api.static_analysis.slither.schemas import (
     SlitherFindingRead,
     SlitherRunDetail,
@@ -450,22 +450,17 @@ def trigger_run(
 
         if raw_json is not None:
             if not raw_json.get("success", False) and raw_json.get("error"):
-                raw_err = raw_json["error"]
-                # Surface unresolved-import errors readably (e.g. missing libraries),
-                # falling back to slither's raw error otherwise.
-                error_message = format_missing_imports(raw_err) or raw_err
+                # Readable summary: missing-library hint or the real solc
+                # diagnostic — never the leading wall of remapping flags.
+                error_message = summarize_compile_error(raw_json["error"], exit_code)
 
             findings = _parse_findings(raw_json, run)
             for f in findings:
                 session.add(f)
 
         else:
-            # raw_json is None — show a readable missing-imports message if we can
-            # extract one, otherwise whatever slither actually printed.
-            output = (stderr or "").strip()
-            error_message = format_missing_imports(output) or (
-                f"exit {exit_code}: {output[:1500] or '(no output)'}"
-            )
+            # raw_json is None — slither crashed before producing JSON.
+            error_message = summarize_compile_error(stderr, exit_code)
 
         # Tally counts
         counts: dict[str, int] = {

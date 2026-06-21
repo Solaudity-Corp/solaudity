@@ -193,3 +193,49 @@ def format_missing_imports(text: str | None) -> str | None:
         f"Missing imports: {', '.join(missing)}. "
         "Install the required libraries in the Libraries panel, then re-run."
     )
+
+
+# Markers that precede the real compiler diagnostics in slither/crytic output.
+# Slither prefixes failures with the full `solc <hundreds of remappings> <file>`
+# command line; the useful "Error: ..." / "Warning: ..." block comes *after*.
+_DIAG_MARKERS = ("Compilation warnings/errors:", "Invalid solc compilation")
+_ERR_KEYWORDS = re.compile(r"\b(?:\w*Error|Warning):")
+
+
+def extract_solc_diagnostic(text: str | None, max_len: int = 1200) -> str | None:
+    """Pull the actual solc error/warning out of slither's verbose output.
+
+    Returns the diagnostic tail (e.g. "Error: Stack too deep ... --> File:line")
+    rather than the leading wall of `--solc-remaps` flags, or None if `text` is
+    empty.
+    """
+    if not text:
+        return None
+    cut = -1
+    for marker in _DIAG_MARKERS:
+        idx = text.rfind(marker)
+        if idx != -1:
+            cut = max(cut, idx + len(marker))
+    if cut == -1:
+        # No marker — start at the first compiler-error keyword, else the tail.
+        km = _ERR_KEYWORDS.search(text)
+        cut = km.start() if km else max(0, len(text) - max_len)
+    return text[cut:].strip()[:max_len].strip() or None
+
+
+def summarize_compile_error(stderr: str | None, exit_code: int | None = None) -> str:
+    """Human-readable one-liner for a failed compile.
+
+    Order of preference: missing-library hint > real solc diagnostic > raw
+    snippet > bare exit code. Never returns the leading remapping noise.
+    """
+    missing = format_missing_imports(stderr)
+    if missing:
+        return missing
+    diag = extract_solc_diagnostic(stderr)
+    if diag:
+        return diag
+    snippet = (stderr or "").strip()[:500]
+    if snippet:
+        return snippet
+    return f"exit {exit_code}: (no output)" if exit_code is not None else "(compilation failed, no output)"
