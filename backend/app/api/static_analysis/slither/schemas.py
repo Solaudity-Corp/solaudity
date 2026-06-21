@@ -61,3 +61,6 @@ class SlitherRunRead(BaseModel):
 
 class SlitherRunDetail(SlitherRunRead):
     findings: list[SlitherFindingRead] = []
+    # True when the compile failed with solc "Stack too deep" — the UI offers a
+    # deeper (--via-ir) re-run. Derived from error_message, not persisted.
+    stack_too_deep: bool = False

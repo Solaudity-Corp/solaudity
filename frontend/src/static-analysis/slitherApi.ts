@@ -77,6 +77,8 @@ export interface SlitherRun {
 
 export interface SlitherRunDetail extends SlitherRun {
   findings: SlitherFinding[]
+  // True when the compile failed with solc "Stack too deep" — offer a --via-ir re-run.
+  stack_too_deep?: boolean
 }
 
 // ---------------------------------------------------------------------------
@@ -87,9 +89,11 @@ export async function triggerRun(
   auditId: string,
   contractId: string,
   preset: SlitherPreset = 'all',
+  viaIr = false,
 ): Promise<SlitherRunDetail> {
+  const query = `preset=${preset}${viaIr ? '&via_ir=true' : ''}`
   const res = await apiFetch(
-    `${BASE}/audits/${auditId}/contracts/${contractId}/run?preset=${preset}`,
+    `${BASE}/audits/${auditId}/contracts/${contractId}/run?${query}`,
     { method: 'POST' },
   )
   return res.json()

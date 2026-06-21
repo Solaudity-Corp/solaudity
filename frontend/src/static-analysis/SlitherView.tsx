@@ -4,7 +4,7 @@ import { Box, Flex } from 'styled-system/jsx'
 import { Play, Loader, Trash2, ChevronDown, ChevronRight, ChevronLeft, AlertTriangle, Info, Zap, Shield, Code2, File, Folder, FolderOpen } from 'lucide-react'
 import { useSidebarResize } from '../components/useSidebarResize'
 import * as api from './slitherApi'
-import type { SlitherPreset, SlitherRun, SlitherFinding, SlitherImpact } from './slitherApi'
+import type { SlitherPreset, SlitherRun, SlitherRunDetail, SlitherFinding, SlitherImpact } from './slitherApi'
 import * as scopeApi from '../scope/api'
 
 // ---------------------------------------------------------------------------
@@ -362,12 +362,13 @@ export function SlitherView({ auditId }: SlitherViewProps) {
 
   const [activePreset, setActivePreset] = useState<SlitherPreset>('all')
   const [running, setRunning] = useState(false)
+  const [deepRunning, setDeepRunning] = useState(false)
   const [runError, setRunError] = useState<string | null>(null)
 
   const [runs, setRuns] = useState<SlitherRun[]>([])
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null)
   const [loadingRun, setLoadingRun] = useState(false)
-  const [runDetail, setRunDetail] = useState<{ run: SlitherRun; findings: SlitherFinding[] } | null>(null)
+  const [runDetail, setRunDetail] = useState<{ run: SlitherRunDetail; findings: SlitherFinding[] } | null>(null)
 
   const [filterImpact, setFilterImpact] = useState<SlitherImpact | 'all'>('all')
 
@@ -411,18 +412,20 @@ export function SlitherView({ auditId }: SlitherViewProps) {
     return () => { active = false }
   }, [selectedRunId])
 
-  const handleRun = useCallback(async () => {
+  const handleRun = useCallback(async (viaIr = false) => {
     if (!selectedContractId || running) return
     setRunning(true)
+    setDeepRunning(viaIr)
     setRunError(null)
     try {
-      const detail = await api.triggerRun(auditId, selectedContractId, activePreset)
+      const detail = await api.triggerRun(auditId, selectedContractId, activePreset, viaIr)
       setRuns(prev => [detail, ...prev])
       setSelectedRunId(detail.id)
     } catch (e) {
       setRunError((e as Error).message)
     } finally {
       setRunning(false)
+      setDeepRunning(false)
     }
   }, [auditId, selectedContractId, activePreset, running])
 
@@ -442,6 +445,9 @@ export function SlitherView({ auditId }: SlitherViewProps) {
   const impactOrder: SlitherImpact[] = ['High', 'Medium', 'Low', 'Informational', 'Optimization']
   const sorted = [...filtered].sort((a, b) => impactOrder.indexOf(a.impact) - impactOrder.indexOf(b.impact))
   const activePresetDef = PRESETS.find(p => p.id === activePreset)!
+  // When the selected run failed with "stack too deep", the Run button becomes a
+  // deeper (--via-ir) re-run.
+  const stackTooDeep = !!runDetail?.run.stack_too_deep
 
   return (
     <Box style={{ width: '100%' }}>
@@ -610,8 +616,11 @@ export function SlitherView({ auditId }: SlitherViewProps) {
               </span>
             </Flex>
             <button
-              onClick={handleRun}
+              onClick={() => handleRun(stackTooDeep)}
               disabled={running || !selectedContractId}
+              title={stackTooDeep
+                ? 'Recompile with the IR pipeline + optimizer (--via-ir). Resolves "stack too deep" but is slower.'
+                : undefined}
               style={{
                 flexShrink: 0, display: 'flex', alignItems: 'center', gap: 5,
                 padding: '5px 14px', borderRadius: 7, fontSize: 11, fontWeight: 600,
@@ -624,9 +633,14 @@ export function SlitherView({ auditId }: SlitherViewProps) {
               }}
             >
               {running
-                ? <><Loader size={11} style={{ animation: 'spin 1s linear infinite' }} /> Running…</>
-                : <><Play size={11} /> Run</>}
+                ? <><Loader size={11} style={{ animation: 'spin 1s linear infinite' }} /> {deepRunning ? 'Deep compile…' : 'Running…'}</>
+                : stackTooDeep
+                  ? <><Play size={11} /> Re-run deeper</>
+                  : <><Play size={11} /> Run</>}
             </button>
+            {stackTooDeep && !running && (
+              <span style={{ fontSize: 11, color: c.medium, fontFamily: c.mono }}>⚠ slower (via-IR)</span>
+            )}
             {runError && <span style={{ fontSize: 11, color: c.high, fontFamily: c.mono }}>{runError}</span>}
           </Flex>
 

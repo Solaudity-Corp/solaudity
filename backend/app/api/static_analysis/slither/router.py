@@ -203,7 +203,13 @@ def _slither_version() -> str | None:
         return None
 
 
-def _run_slither(file_path: Path, tmpdir: Path, preset: SlitherPreset = SlitherPreset.all, timeout: int = 120) -> tuple[int, dict | None, str]:
+def _run_slither(
+    file_path: Path,
+    tmpdir: Path,
+    preset: SlitherPreset = SlitherPreset.all,
+    timeout: int = 120,
+    via_ir: bool = False,
+) -> tuple[int, dict | None, str]:
     """
     Run `slither <file> --json - [preset flags]` inside tmpdir.
 
@@ -242,8 +248,15 @@ def _run_slither(file_path: Path, tmpdir: Path, preset: SlitherPreset = SlitherP
     node_modules = tmpdir / "node_modules"
     remaps = _build_solc_remaps(node_modules, tmpdir)
     remaps_flags = ["--solc-remaps", remaps] if remaps else []
-    # Allow solc to read from node_modules (remapped paths resolve there)
-    allow_flags = ["--solc-args", f"--allow-paths {node_modules}"] if node_modules.exists() else []
+    # Pass-through solc args: allow reading node_modules (remapped paths resolve
+    # there) and, on a "deep" re-run, the IR pipeline + optimizer that resolves
+    # "stack too deep" errors the legacy codegen can't.
+    solc_args: list[str] = []
+    if node_modules.exists():
+        solc_args.append(f"--allow-paths {node_modules}")
+    if via_ir:
+        solc_args.append("--via-ir --optimize")
+    allow_flags = ["--solc-args", " ".join(solc_args)] if solc_args else []
     # Exclude library files from findings (OZ, ds-test, solady…) to suppress false positives
     filter_flags = ["--filter-paths", "node_modules"]
     cmd = ["slither", str(file_path), "--json", str(json_out)] + remaps_flags + allow_flags + filter_flags + extra_flags
@@ -368,6 +381,11 @@ def _build_file_in_tempdir(sc: ScopeContract, session: Session) -> tuple[Path, P
     return tmpdir, dst
 
 
+def _is_stack_too_deep(error_message: str | None) -> bool:
+    """Whether a failed run hit solc's 'Stack too deep' — eligible for a --via-ir re-run."""
+    return bool(error_message and "stack too deep" in error_message.lower())
+
+
 def _parse_findings(
     raw_json: dict,
     run: SlitherRun,
@@ -416,6 +434,7 @@ def trigger_run(
     audit_id: UUID,
     scope_contract_id: UUID,
     preset: SlitherPreset = Query(SlitherPreset.all),
+    via_ir: bool = Query(False, description="Compile with --via-ir --optimize (slower; resolves 'stack too deep')"),
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ) -> SlitherRunDetail:
@@ -440,7 +459,11 @@ def trigger_run(
     tmpdir: Path | None = None
     try:
         tmpdir, file_path = _build_file_in_tempdir(sc, session)
-        exit_code, raw_json, stderr = _run_slither(file_path, tmpdir, preset)
+        exit_code, raw_json, stderr = _run_slither(
+            file_path, tmpdir, preset,
+            timeout=300 if via_ir else 120,
+            via_ir=via_ir,
+        )
 
         finished_at = datetime.now(timezone.utc)
         duration_ms = int((finished_at - started_at).total_seconds() * 1000)
@@ -487,7 +510,11 @@ def trigger_run(
         session.refresh(run)
 
         finding_reads = [SlitherFindingRead.model_validate(f) for f in findings]
-        return SlitherRunDetail(**SlitherRunRead.model_validate(run).model_dump(), findings=finding_reads)
+        return SlitherRunDetail(
+            **SlitherRunRead.model_validate(run).model_dump(),
+            findings=finding_reads,
+            stack_too_deep=_is_stack_too_deep(run.error_message),
+        )
 
     except HTTPException:
         # Mark the run as error before re-raising
@@ -568,7 +595,11 @@ def get_run(
     ).all()
 
     finding_reads = [SlitherFindingRead.model_validate(f) for f in findings]
-    return SlitherRunDetail(**SlitherRunRead.model_validate(run).model_dump(), findings=finding_reads)
+    return SlitherRunDetail(
+        **SlitherRunRead.model_validate(run).model_dump(),
+        findings=finding_reads,
+        stack_too_deep=_is_stack_too_deep(run.error_message),
+    )
 
 
 @router.get(
