@@ -2,12 +2,13 @@
 
 # ── Stage: Python 3.11 source ─────────────────────────────────────────────────
 # mythril 0.24.8 is incompatible with Python 3.13.
-# Bookworm has no python3.11 apt package, so we copy the interpreter + stdlib from
-# the official 3.11 Bookworm image to our 3.13 Bookworm runtime stage.
+# Trixie has no python3.11 apt package, so we copy the interpreter + stdlib from
+# the official 3.11 Bookworm image.  glibc on Trixie (2.41) is newer than
+# Bookworm (2.36) — backwards-compatible, so the binary runs fine.
 FROM python:3.11-slim-bookworm AS python311
 
 # ── Main stage ────────────────────────────────────────────────────────────────
-FROM python:3.13-slim-bookworm
+FROM python:3.13-slim-trixie
 
 WORKDIR /app
 
@@ -26,8 +27,7 @@ RUN dpkg --add-architecture amd64 \
     && apt-get update \
     && apt-get full-upgrade -y \
     && apt-get install -y --no-install-recommends curl ca-certificates libc6:amd64 \
-       libgmp-dev libssl-dev libffi-dev build-essential pkg-config cmake \
-       z3 default-jre-headless unzip \
+       libgmp-dev libssl-dev libffi-dev build-essential pkg-config cmake rsync \
     && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get update \
     && apt-get install -y --no-install-recommends nodejs \
@@ -37,58 +37,63 @@ RUN dpkg --add-architecture amd64 \
 
 # Install surya CLI with patched transitive dependencies (overrides in package.json)
 COPY surya/ /opt/surya/
-RUN --mount=type=cache,target=/root/.npm \
-    cd /opt/surya \
-    && npm ci --omit=dev
+RUN cd /opt/surya \
+    && npm ci --omit=dev \
+    && npm cache clean --force
 ENV PATH="/opt/surya/node_modules/.bin:${PATH}"
 
-# Pre-install all major OpenZeppelin versions so surya can resolve any import.
-# Each version is installed in a temp dir, then merged with cp -n (no-clobber)
-# so v5 files take precedence, v4 fills deprecated files, v3/v2 fill the rest.
+# Pre-install OpenZeppelin in four separate node_modules sets, one per solc range.
+# The backend selects the right set at runtime based on the contract's pragma:
+#   nm-v3        → OZ v3  (solc 0.6.x / 0.7.x)
+#   nm-v4        → OZ v4  (solc 0.8.0  – 0.8.19)
+#   nm-v5-legacy → OZ 5.0.2 (solc 0.8.20 – 0.8.23, no transient storage)
+#   nm-v5-modern → OZ v5 latest (solc ≥ 0.8.24, uses transient ^0.8.24)
+# Each set also bundles ds-test and solady so it is self-contained.
 # NOTE: must be outside /data — that path is a host volume mount at runtime.
-RUN --mount=type=cache,target=/root/.npm \
-    mkdir -p /usr/local/sol-libs/node_modules \
-    && { (npm install --prefix /tmp/oz2 @openzeppelin/contracts@2 @openzeppelin/contracts-upgradeable@2 || true) \
-       & npm install --prefix /tmp/oz3 @openzeppelin/contracts@3 @openzeppelin/contracts-upgradeable@3 \
-       & npm install --prefix /tmp/oz4 @openzeppelin/contracts@4 @openzeppelin/contracts-upgradeable@4 \
-       & npm install --prefix /tmp/oz5 @openzeppelin/contracts@5 @openzeppelin/contracts-upgradeable@5 \
-       & wait; } \
-    && cp -rn /tmp/oz5/node_modules/@openzeppelin /usr/local/sol-libs/node_modules/ \
-    && cp -rn /tmp/oz4/node_modules/@openzeppelin /usr/local/sol-libs/node_modules/ \
-    && cp -rn /tmp/oz3/node_modules/@openzeppelin /usr/local/sol-libs/node_modules/ \
-    && (cp -rn /tmp/oz2/node_modules/@openzeppelin /usr/local/sol-libs/node_modules/ 2>/dev/null || true) \
-    && rm -rf /tmp/oz2 /tmp/oz3 /tmp/oz4 /tmp/oz5 \
-    && chmod -R 777 /usr/local/sol-libs \
-    && mkdir -p /usr/local/sol-libs/node_modules/ds-test \
+RUN mkdir -p /usr/local/sol-libs \
+    && npm install --prefix /tmp/oz3    @openzeppelin/contracts@3     @openzeppelin/contracts-upgradeable@3 \
+    && npm install --prefix /tmp/oz4    @openzeppelin/contracts@4     @openzeppelin/contracts-upgradeable@4 \
+    && npm install --prefix /tmp/oz5leg @openzeppelin/contracts@5.0.2 @openzeppelin/contracts-upgradeable@5.0.2 \
+    && npm install --prefix /tmp/oz5mod @openzeppelin/contracts@5     @openzeppelin/contracts-upgradeable@5 \
+    && mkdir -p /usr/local/sol-libs/nm-v3/node_modules \
+    && mkdir -p /usr/local/sol-libs/nm-v4/node_modules \
+    && mkdir -p /usr/local/sol-libs/nm-v5-legacy/node_modules \
+    && mkdir -p /usr/local/sol-libs/nm-v5-modern/node_modules \
+    && cp -r /tmp/oz3/node_modules/@openzeppelin    /usr/local/sol-libs/nm-v3/node_modules/ \
+    && cp -r /tmp/oz4/node_modules/@openzeppelin    /usr/local/sol-libs/nm-v4/node_modules/ \
+    && cp -r /tmp/oz5leg/node_modules/@openzeppelin /usr/local/sol-libs/nm-v5-legacy/node_modules/ \
+    && cp -r /tmp/oz5mod/node_modules/@openzeppelin /usr/local/sol-libs/nm-v5-modern/node_modules/ \
+    && rm -rf /tmp/oz3 /tmp/oz4 /tmp/oz5leg /tmp/oz5mod \
     && curl -sL https://github.com/dapphub/ds-test/archive/refs/heads/master.tar.gz \
        | tar xz -C /tmp/ \
-    && cp -r /tmp/ds-test-master/src/. /usr/local/sol-libs/node_modules/ds-test/ \
-    && rm -rf /tmp/ds-test-master \
     && curl -sL https://github.com/Vectorized/solady/archive/refs/heads/main.tar.gz \
        | tar xz -C /tmp/ \
-    && cp -r /tmp/solady-main/. /usr/local/sol-libs/node_modules/@solady/ \
-    && cp -r /tmp/solady-main/. /usr/local/sol-libs/node_modules/solady/ \
-    && rm -rf /tmp/solady-main
+    && for SET in nm-v3 nm-v4 nm-v5-legacy nm-v5-modern; do \
+         mkdir -p /usr/local/sol-libs/$SET/node_modules/ds-test ; \
+         cp -r /tmp/ds-test-master/src/. /usr/local/sol-libs/$SET/node_modules/ds-test/ ; \
+         cp -r /tmp/solady-main/. /usr/local/sol-libs/$SET/node_modules/@solady/ ; \
+         cp -r /tmp/solady-main/src/. /usr/local/sol-libs/$SET/node_modules/solady/ ; \
+       done \
+    && rm -rf /tmp/ds-test-master /tmp/solady-main \
+    && chmod -R 777 /usr/local/sol-libs
 
 
-# Installing heimdall — amd64 and arm64 from upstream Jon-Becker/heimdall-rs v0.9.3
+# Installing heimdall — amd64 from upstream, arm64 from fork (aircag/heimdall-rs)
 RUN ARCH=$(uname -m) \
     && if [ "$ARCH" = "aarch64" ]; then \
-         curl -L "https://github.com/Jon-Becker/heimdall-rs/releases/download/0.9.3/heimdall-linux-arm64" --output /usr/local/bin/heimdall; \
+         curl -L "https://github.com/aircag/heimdall-rs/releases/download/v0.9.2-test/heimdall-linux-arm64" --output /usr/local/bin/heimdall; \
        else \
-         curl -L "https://github.com/Jon-Becker/heimdall-rs/releases/download/0.9.3/heimdall-linux-amd64" --output /usr/local/bin/heimdall; \
+         curl -L "https://github.com/Jon-Becker/heimdall-rs/releases/download/0.9.2/heimdall-linux-amd64" --output /usr/local/bin/heimdall; \
        fi \
     && chmod +x /usr/local/bin/heimdall
 
 COPY requirements.txt .
-RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --upgrade pip setuptools wheel "jaraco.context>=6.1.1" \
+RUN pip install --upgrade pip setuptools wheel "jaraco.context>=6.1.1" \
     && pip install -r requirements.txt
 
 # Slither and Mythril require conflicting eth-abi versions, so each gets its
 # own venv. The CLI binaries are symlinked into PATH so subprocess calls work.
-RUN --mount=type=cache,target=/root/.cache/pip \
-    python3 -m venv /opt/venv-slither \
+RUN python3 -m venv /opt/venv-slither \
     && /opt/venv-slither/bin/pip install --upgrade pip \
     && /opt/venv-slither/bin/pip install slither-analyzer==0.11.5 \
     && ln -sf /opt/venv-slither/bin/slither /usr/local/bin/slither \
@@ -98,8 +103,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 
 # Pre-create the mythril venv directory (world-writable) so the runtime installer
 # can populate it regardless of which user the container runs as.
-# /opt/venv-mythril/bin is added to PATH below so 'myth' is found once installed —
-# no symlink into /usr/local/bin is needed (which would require root at runtime).
+# /opt/venv-mythril/bin is added to PATH below so 'myth' is found once installed.
 RUN mkdir -p /opt/venv-mythril && chmod 777 /opt/venv-mythril
 
 
@@ -114,27 +118,53 @@ ENV HOME=/opt/solc-home
 ENV PATH="/opt/venv-mythril/bin:${PATH}"
 
 # Pre-install common solc versions so Slither can compile without network access at runtime.
-# solc-select lives inside the slither venv (not on system PATH) since we moved slither out of requirements.txt.
-RUN /opt/venv-slither/bin/solc-select install 0.8.30 0.8.28 0.8.20 0.8.17 0.8.0 0.7.6 0.6.12 \
-    && /opt/venv-slither/bin/solc-select use 0.8.28 \
+# Download binaries directly rather than using `solc-select install` to avoid QEMU verification
+# hangs on ARM64 hosts: solc-select's install step tries to run the downloaded x86_64 binary
+# to confirm it works, which hangs/fails when QEMU isn't available inside the build container.
+# On ARM64, we fetch the native linux-aarch64 build where available (≥0.8.11) and fall back
+# to linux-amd64 for older versions (0.7.x / 0.6.x have no arm64 release).
+RUN ARCH=$(uname -m) \
+    && if [ "$ARCH" = "aarch64" ]; then NATIVE_ARCH="linux-aarch64"; else NATIVE_ARCH="linux-amd64"; fi \
+    && mkdir -p /opt/solc-home/.solc-select/artifacts \
+    && for VERSION in 0.8.30 0.8.28 0.8.20 0.8.17 0.8.0 0.7.6 0.6.12; do \
+         ARTIFACT="/opt/solc-home/.solc-select/artifacts/solc-${VERSION}"; \
+         if ! curl -fsSL --max-time 120 \
+              "https://github.com/ethereum/solidity/releases/download/v${VERSION}/solc-${NATIVE_ARCH}" \
+              -o "$ARTIFACT" 2>/dev/null; then \
+           curl -fsSL --max-time 120 \
+              "https://github.com/ethereum/solidity/releases/download/v${VERSION}/solc-linux-amd64" \
+              -o "$ARTIFACT"; \
+         fi; \
+         chmod +x "$ARTIFACT"; \
+       done \
+    && echo "0.8.28" > /opt/solc-home/.solc-select/global-version \
     && chmod -R 777 /opt/solc-home/.solc-select
 
 # 4naly3er — TypeScript static analyser (Node.js is already present from the surya step)
-RUN --mount=type=cache,target=/opt/solc-home/.npm \
-    curl -sL https://github.com/Picodes/4naly3er/archive/refs/heads/main.tar.gz \
+RUN curl -sL https://github.com/Picodes/4naly3er/archive/refs/heads/main.tar.gz \
        | tar xz -C /tmp/ \
     && mv /tmp/4naly3er-main /opt/4naly3er \
     && cd /opt/4naly3er \
-    && npm install --legacy-peer-deps
+    && npm install --legacy-peer-deps \
+    && npm cache clean --force
 COPY 4naly3er-run-json.ts /opt/4naly3er/run_json.ts
 
+# z3 SMT solver — required by solc's CHC engine (SMTChecker)
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends z3 \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
 # ── Certora Prover (local JVM mode) ──────────────────────────────────────────
+# Installs OpenJDK (required to run the CertoraProver JAR) and certora-cli in
+# its own venv so it cannot conflict with the main requirements.
 # certora-cli bundles the CertoraProver JAR and runs it locally via --local.
-# z3, default-jre-headless: installed in the main apt block above.
-# Note: Certora JARs contain many nested Java dependencies that may trigger
-# high-severity vulnerabilities in Trivy. These are excluded in CI.
-RUN --mount=type=cache,target=/opt/solc-home/.cache/pip \
-    python3 -m venv /opt/venv-certora \
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends default-jre-headless \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN python3 -m venv /opt/venv-certora \
     && /opt/venv-certora/bin/pip install --upgrade pip \
     && /opt/venv-certora/bin/pip install certora-cli \
     && ln -sf /opt/venv-certora/bin/certoraRun /usr/local/bin/certoraRun
@@ -162,13 +192,17 @@ RUN mkdir -p /tmp/certora-warmup \
 # KEVM is installed on-demand at runtime via the Tools panel (same pattern as Mythril).
 
 # Echidna — property-based smart contract fuzzer (Trail of Bits)
-# Queries the GitHub API via curl to get the latest release; unzip installed in main apt block.
-RUN curl -fsSL --max-time 60 \
+# Queries the GitHub API via curl (not Python urllib) to get the latest release,
+# then downloads the Linux binary. unzip is added in case the asset is a zip.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends unzip \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* \
+    && curl -fsSL --max-time 60 \
          -H "User-Agent: solaudity-dockerfile" \
          "https://api.github.com/repos/crytic/echidna/releases/latest" \
          -o /tmp/echidna_rel.json \
-    && ARCH=$(uname -m) \
-    && URL=$(python3 -c "import json,sys,os; d=json.load(open('/tmp/echidna_rel.json')); a=d.get('assets',[]); arch=os.environ.get('ARCH','x86_64'); arm=arch in ('aarch64','arm64'); u=next((x['browser_download_url'] for x in a if 'linux' in x['name'].lower() and ('aarch64' in x['name'].lower() or 'arm64' in x['name'].lower()) and any(x['name'].lower().endswith(e) for e in ['.tar.gz','.zip'])),None) if arm else next((x['browser_download_url'] for x in a if 'linux' in x['name'].lower() and not any(b in x['name'].lower() for b in ['aarch64','arm64','macos','darwin','windows']) and any(x['name'].lower().endswith(e) for e in ['.tar.gz','.zip'])),None); print(u) if u else sys.exit(1)" ARCH="$ARCH") \
+    && URL=$(python3 -c "import json,sys; d=json.load(open('/tmp/echidna_rel.json')); a=d.get('assets',[]); u=next((x['browser_download_url'] for x in a if 'linux' in x['name'].lower() and not any(b in x['name'].lower() for b in ['macos','darwin','windows']) and any(x['name'].lower().endswith(e) for e in ['.tar.gz','.zip'])),None) or next((x['browser_download_url'] for x in a if not any(b in x['name'].lower() for b in ['macos','darwin','windows']) and any(x['name'].lower().endswith(e) for e in ['.tar.gz','.zip'])),None); print(u) if u else sys.exit(1)") \
     && echo "Downloading echidna: $URL" \
     && curl -fsSL --max-time 300 "$URL" -o /tmp/echidna_dl \
     && mkdir -p /tmp/echidna_ex \

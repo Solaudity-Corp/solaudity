@@ -17,6 +17,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, s
 from sqlmodel import Session, select
 
 from app.api.auth.auth import get_current_user
+from app.utils.sol_libs import select_oz_libs, build_remappings
 from app.api.static_analysis.mythril.schemas import (
     MythrilIssueRead,
     MythrilRunDetail,
@@ -197,10 +198,6 @@ def _build_file_in_tempdir(sc: ScopeContract, session: Session) -> tuple[Path, P
             detail=f"Source file not found on disk: {sc.storage_key}",
         )
 
-    sol_libs = Path("/usr/local/sol-libs/node_modules")
-    if sol_libs.exists():
-        (tmpdir / "node_modules").symlink_to(sol_libs)
-
     return tmpdir, dst
 
 
@@ -212,13 +209,7 @@ def _build_solc_json(file_path: Path, node_modules: Path) -> Path | None:
     """
     if not node_modules.exists():
         return None
-    remappings: list[str] = []
-    try:
-        for entry in node_modules.iterdir():
-            if entry.is_dir():
-                remappings.append(f"{entry.name}/={entry}/")
-    except Exception:
-        pass
+    remappings = build_remappings(node_modules)
     if not remappings:
         return None
     solc_json_path = file_path.parent / "_mythril_remappings.json"
@@ -260,7 +251,11 @@ def _run_mythril(
             (solc_dir / "global-version").write_text(global_ver.read_text())
     env["HOME"] = str(request_home)
 
+    oz_libs = select_oz_libs(solc_binary)
     node_modules = tmpdir / "node_modules"
+    if oz_libs and not node_modules.exists():
+        node_modules.symlink_to(oz_libs)
+
     solc_json = _build_solc_json(file_path, node_modules)
 
     cmd = [

@@ -16,7 +16,37 @@ from app.models.user import User
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-SOL_LIBS = Path("/usr/local/sol-libs/node_modules")
+SOL_LIBS_BASE = Path("/usr/local/sol-libs")
+
+# The analysis tools don't all read from the same node_modules. The static
+# analyzers (slither, mythril, certora, kevm, smtchecker, 4naly3er) each select
+# one *versioned* set based on the contract's solc pragma, while the integrated
+# terminal and Echidna read the *flat* set. A panel-installed library must land
+# in every one of these or it stays invisible to whichever tool needs it.
+VERSIONED_SETS = ("nm-v3", "nm-v4", "nm-v5-legacy", "nm-v5-modern")
+
+
+def _target_node_modules() -> list[Path]:
+    """All node_modules dirs a library must be copied into to reach every tool."""
+    dirs = [SOL_LIBS_BASE / s / "node_modules" for s in VERSIONED_SETS]
+    dirs.append(SOL_LIBS_BASE / "node_modules")  # flat set — terminal & Echidna
+    return dirs
+
+
+def _copy_into_all_sets(src: Path, dst_rel: str) -> bool:
+    """Copy a resolved source dir into every consumer node_modules.
+
+    Returns True if at least one copy was made (i.e. ``src`` existed).
+    """
+    if not src.exists():
+        return False
+    for nm in _target_node_modules():
+        dst = nm / dst_rel
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        if dst.exists():
+            shutil.rmtree(str(dst))
+        shutil.copytree(str(src), str(dst))
+    return True
 
 # In-memory install status (downloading | error).
 # "downloaded" is always inferred from the filesystem so it survives restarts.
@@ -53,10 +83,13 @@ CATALOGUE: list[dict] = [
     {
         "id": "solmate",
         "display_name": "Solmate",
-        "description": "Modern, opinionated Solidity utilities by transmissions11",
+        "description": "Modern, opinionated Solidity utilities by transmissions11 (aliased @solmate/ and solmate/)",
         "packages": ["solmate"],
-        "copies": [("solmate", "solmate")],
-        "check_path": "solmate",
+        # solmate ships its contracts under src/; expose that tree both as
+        # @solmate/ (the alias most repos use, e.g.
+        # "@solmate/utils/SafeTransferLib.sol") and bare solmate/.
+        "copies": [("solmate/src", "@solmate"), ("solmate/src", "solmate")],
+        "check_path": "@solmate",
     },
     {
         "id": "erc721a",
@@ -75,16 +108,75 @@ CATALOGUE: list[dict] = [
         "check_path": "hardhat",
     },
     {
-        "id": "uniswap",
-        "display_name": "Uniswap V2 / V3",
-        "description": "Uniswap core + periphery contracts (V2 & V3)",
-        "packages": ["@uniswap/v2-core", "@uniswap/v3-core", "@uniswap/v3-periphery"],
+        "id": "uniswap-v2",
+        "display_name": "Uniswap V2 (core + periphery)",
+        "description": "Uniswap V2 core & periphery — full @uniswap/ names plus @v2-core/, @v2-periphery/ aliases",
+        "packages": ["@uniswap/v2-core", "@uniswap/v2-periphery"],
+        # Each package is exposed twice: under its full npm name (so internal
+        # cross-imports like "@uniswap/v2-core/contracts/..." resolve) and under
+        # the short Foundry alias the ecosystem commonly uses.
         "copies": [
             ("@uniswap/v2-core", "@uniswap/v2-core"),
-            ("@uniswap/v3-core", "@uniswap/v3-core"),
-            ("@uniswap/v3-periphery", "@uniswap/v3-periphery"),
+            ("@uniswap/v2-core/contracts", "@v2-core"),
+            ("@uniswap/v2-core/contracts", "v2-core"),
+            ("@uniswap/v2-periphery", "@uniswap/v2-periphery"),
+            ("@uniswap/v2-periphery/contracts", "@v2-periphery"),
+            ("@uniswap/v2-periphery/contracts", "v2-periphery"),
         ],
         "check_path": "@uniswap/v2-core",
+    },
+    {
+        "id": "uniswap-v3",
+        "display_name": "Uniswap V3 (core + periphery)",
+        "description": "Uniswap V3 core & periphery — full @uniswap/ names plus @v3-core/, @v3-periphery/ aliases",
+        "packages": ["@uniswap/v3-core", "@uniswap/v3-periphery"],
+        "copies": [
+            ("@uniswap/v3-core", "@uniswap/v3-core"),
+            ("@uniswap/v3-core/contracts", "@v3-core"),
+            ("@uniswap/v3-core/contracts", "v3-core"),
+            ("@uniswap/v3-periphery", "@uniswap/v3-periphery"),
+            ("@uniswap/v3-periphery/contracts", "@v3-periphery"),
+            ("@uniswap/v3-periphery/contracts", "v3-periphery"),
+        ],
+        "check_path": "@v3-periphery",
+    },
+    {
+        "id": "uniswap-v4",
+        "display_name": "Uniswap V4 (core + periphery)",
+        "description": "Uniswap V4 core & periphery — @v4-core/, @v4-periphery/ aliases (periphery also needs Permit2)",
+        "packages": ["@uniswap/v4-core", "@uniswap/v4-periphery"],
+        "copies": [
+            ("@uniswap/v4-core", "@uniswap/v4-core"),
+            ("@uniswap/v4-core/src", "@v4-core"),
+            ("@uniswap/v4-core/src", "v4-core"),
+            ("@uniswap/v4-periphery", "@uniswap/v4-periphery"),
+            ("@uniswap/v4-periphery/src", "@v4-periphery"),
+            ("@uniswap/v4-periphery/src", "v4-periphery"),
+        ],
+        "check_path": "@v4-core",
+    },
+    {
+        "id": "uniswap-universal-router",
+        "display_name": "Uniswap Universal Router",
+        "description": "Uniswap Universal Router — @universal-router/ alias (also needs Permit2 + Uniswap V2/V3)",
+        "packages": ["@uniswap/universal-router"],
+        "copies": [
+            ("@uniswap/universal-router", "@uniswap/universal-router"),
+            ("@uniswap/universal-router/contracts", "@universal-router"),
+            ("@uniswap/universal-router/contracts", "universal-router"),
+        ],
+        "check_path": "@universal-router",
+    },
+    {
+        "id": "permit2",
+        "display_name": "Permit2",
+        "description": "Uniswap Permit2 — signature-based token approvals (from GitHub; dep of Uniswap V4 periphery & Universal Router)",
+        "packages": [],   # not on npm — installed via GitHub tarball
+        "copies": [],
+        "check_path": "permit2",
+        "tarball_url": "https://github.com/Uniswap/permit2/archive/refs/heads/main.tar.gz",
+        "tarball_src": ".",        # whole repo so "permit2/src/..." imports resolve
+        "tarball_dst": "permit2",
     },
     {
         "id": "chainlink",
@@ -111,6 +203,41 @@ CATALOGUE: list[dict] = [
         "check_path": "@prb/math",
     },
     {
+        "id": "prb-test",
+        "display_name": "PRB Test",
+        "description": "PRBTest assertion library (complements PRB Math)",
+        "packages": ["@prb/test"],
+        "copies": [("@prb/test", "@prb/test")],
+        "check_path": "@prb/test",
+    },
+    {
+        "id": "account-abstraction",
+        "display_name": "Account Abstraction (ERC-4337)",
+        "description": "eth-infinitism ERC-4337 account-abstraction contracts",
+        "packages": ["@account-abstraction/contracts"],
+        "copies": [("@account-abstraction/contracts", "@account-abstraction/contracts")],
+        "check_path": "@account-abstraction/contracts",
+    },
+    {
+        "id": "safe-contracts",
+        "display_name": "Safe Contracts",
+        "description": "Safe (Gnosis Safe) smart-account contracts",
+        "packages": ["@safe-global/safe-contracts"],
+        "copies": [
+            ("@safe-global/safe-contracts", "@safe-global/safe-contracts"),
+            ("@safe-global/safe-contracts/contracts", "safe-contracts"),
+        ],
+        "check_path": "@safe-global/safe-contracts",
+    },
+    {
+        "id": "layerzero",
+        "display_name": "LayerZero (solidity-examples)",
+        "description": "LayerZero omnichain messaging — solidity-examples contracts",
+        "packages": ["@layerzerolabs/solidity-examples"],
+        "copies": [("@layerzerolabs/solidity-examples", "@layerzerolabs/solidity-examples")],
+        "check_path": "@layerzerolabs/solidity-examples",
+    },
+    {
         "id": "ds-test",
         "display_name": "ds-test",
         "description": "DappSys base test contract — used by Foundry test suites",
@@ -130,7 +257,13 @@ _CATALOGUE_BY_ID = {lib["id"]: lib for lib in CATALOGUE}
 # ---------------------------------------------------------------------------
 
 def _is_installed(lib: dict) -> bool:
-    return (SOL_LIBS / lib["check_path"]).exists()
+    # Considered installed only when present in every versioned set the static
+    # analyzers may select — that's also what the Docker image guarantees for
+    # the pre-baked libs (OZ, solady, ds-test).
+    return all(
+        (SOL_LIBS_BASE / s / "node_modules" / lib["check_path"]).exists()
+        for s in VERSIONED_SETS
+    )
 
 
 def _get_status(lib_id: str, lib: dict) -> str:
@@ -156,17 +289,16 @@ async def _run_install(lib_id: str, packages: list[str], copies: list[tuple[str,
         if proc.returncode != 0:
             raise RuntimeError(stderr_bytes.decode(errors="replace"))
 
-        SOL_LIBS.mkdir(parents=True, exist_ok=True)
         src_root = Path(tmpdir) / "node_modules"
+        copied = False
         for src_rel, dst_rel in copies:
-            src = src_root / src_rel
-            dst = SOL_LIBS / dst_rel
-            if src.exists():
-                # ensure parent dir exists (for scoped packages like @chainlink/contracts)
-                dst.parent.mkdir(parents=True, exist_ok=True)
-                if dst.exists():
-                    shutil.rmtree(str(dst))
-                shutil.copytree(str(src), str(dst))
+            if _copy_into_all_sets(src_root / src_rel, dst_rel):
+                copied = True
+        if copies and not copied:
+            raise RuntimeError(
+                "npm install succeeded but none of the expected package paths were "
+                f"found: {', '.join(src for src, _ in copies)}"
+            )
 
         _status.pop(lib_id, None)  # success → infer from filesystem
     except Exception:
@@ -193,11 +325,8 @@ def _extract_tarball_sync(tarball_path: str, extract_to: str, src_subdir: str, d
         raise RuntimeError("Tarball contained no directories")
     repo_dir = extracted_dirs[0]
     src = repo_dir / src_subdir
-    dst = SOL_LIBS / dst_name
-    if dst.exists():
-        shutil.rmtree(str(dst))
-    dst.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(str(src), str(dst))
+    if not _copy_into_all_sets(src, dst_name):
+        raise RuntimeError(f"Tarball is missing expected subdirectory: {src_subdir}")
 
 
 async def _run_install_tarball(lib_id: str, tarball_url: str, src_subdir: str, dst_name: str) -> None:
@@ -207,7 +336,6 @@ async def _run_install_tarball(lib_id: str, tarball_url: str, src_subdir: str, d
     try:
         tmpdir.mkdir(parents=True, exist_ok=True)
         await asyncio.to_thread(urllib.request.urlretrieve, tarball_url, tarball_path)
-        SOL_LIBS.mkdir(parents=True, exist_ok=True)
         await asyncio.to_thread(_extract_tarball_sync, tarball_path, str(tmpdir), src_subdir, dst_name)
         _status.pop(lib_id, None)
     except Exception:

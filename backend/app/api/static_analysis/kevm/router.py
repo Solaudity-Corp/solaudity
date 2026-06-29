@@ -17,6 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel import Session, select
 
 from app.api.auth.auth import get_current_user
+from app.utils.sol_libs import select_oz_libs, build_remappings
 from app.api.static_analysis.kevm.schemas import (
     KEVMFindingRead,
     KEVMRunDetail,
@@ -35,7 +36,6 @@ router = APIRouter(
 )
 
 _CONTRACTS_STORAGE_DIR = Path(os.getenv("CONTRACTS_STORAGE_DIR", "/data/contracts"))
-_SOL_LIBS_DIR = "/usr/local/sol-libs/node_modules"
 _SOLC_ARTIFACTS_DIR = Path(os.getenv("SOLC_SELECT_ARTIFACTS_FOLDER", "/opt/solc-home/.solc-select/artifacts"))
 _SOLC_SELECT_BIN = "/opt/venv-slither/bin/solc-select"
 
@@ -135,9 +135,9 @@ def _build_tempdir(audit_id: UUID, target_sc: ScopeContract, session: Session) -
             target_content = src.read_text(errors="replace")
             target_rel = str(rel)
 
-    sol_libs = Path(_SOL_LIBS_DIR)
-    if sol_libs.exists():
-        (tmpdir / "node_modules").symlink_to(sol_libs)
+    oz_libs = select_oz_libs(_get_solc_bin(target_content) if target_content else None)
+    if oz_libs:
+        (tmpdir / "node_modules").symlink_to(oz_libs)
 
     return tmpdir, target_content, target_rel
 
@@ -169,18 +169,13 @@ def _compile_creation_bytecode(target_rel: str, tmpdir: Path, contract_content: 
         "language": "Solidity",
         "sources": {target_rel: {"urls": [str(tmpdir / target_rel)]}},
         "settings": {
-            "remappings": [
-                f"@openzeppelin/={_SOL_LIBS_DIR}/@openzeppelin/",
-                f"@solady/={_SOL_LIBS_DIR}/@solady/",
-                f"solady/={_SOL_LIBS_DIR}/solady/",
-                f"ds-test/={_SOL_LIBS_DIR}/ds-test/",
-            ],
+            "remappings": build_remappings(tmpdir / "node_modules"),
             "outputSelection": {"*": {"*": ["evm.bytecode.object"]}},
         },
     }
     try:
         result = subprocess.run(
-            [solc_bin, "--standard-json", "--allow-paths", f"{tmpdir},{_SOL_LIBS_DIR}"],
+            [solc_bin, "--standard-json", "--allow-paths", f"{tmpdir},{(tmpdir / 'node_modules').resolve()}"],
             input=json.dumps(sol_input),
             capture_output=True, text=True, timeout=120, cwd=str(tmpdir),
         )
