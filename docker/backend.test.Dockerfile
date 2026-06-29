@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM python:3.13-slim-trixie
+FROM python:3.13-slim-bookworm
 
 WORKDIR /app
 
@@ -12,19 +12,25 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONPATH=/app
 
 # Enable amd64 multi-arch so solc-select's x86_64 binaries run via QEMU on ARM64 hosts.
-# Installing heimdall from aircag/heimdall-rs (linux amd64/arm64)
+# Installing heimdall from upstream Jon-Becker/heimdall-rs v0.9.3 (linux amd64/arm64)
+# bookworm ships glibc 2.36; the upstream heimdall binary requires GLIBC_2.39 (trixie).
 RUN dpkg --add-architecture amd64 \
+    && echo "deb http://deb.debian.org/debian trixie main" > /etc/apt/sources.list.d/trixie.list \
+    && printf 'Package: *\nPin: release a=trixie\nPin-Priority: 100\n\nPackage: libc6 libc6:amd64 libc-bin libc6-dev libc6-dev:amd64 libc-dev-bin libgcc-s1 libgcc-s1:amd64\nPin: release a=trixie\nPin-Priority: 600\n' \
+       > /etc/apt/preferences.d/99trixie-libc \
     && apt-get update \
+    && apt-get install -y -t trixie libc6 libc6:amd64 libc-bin libc6-dev libc6-dev:amd64 libc-dev-bin libgcc-s1 libgcc-s1:amd64 \
+    && rm /etc/apt/sources.list.d/trixie.list /etc/apt/preferences.d/99trixie-libc \
     && apt-get full-upgrade -y \
-    && apt-get install -y --no-install-recommends curl ca-certificates libc6:amd64 \
+    && apt-get install -y --no-install-recommends curl ca-certificates \
     && apt-get autoremove -y \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* \
     && ARCH=$(uname -m) \
     && if [ "$ARCH" = "aarch64" ]; then \
-         curl -L "https://github.com/aircag/heimdall-rs/releases/download/v0.9.2-test/heimdall-linux-arm64" --output /usr/local/bin/heimdall; \
+         curl -L "https://github.com/Jon-Becker/heimdall-rs/releases/download/0.9.3/heimdall-linux-arm64" --output /usr/local/bin/heimdall; \
        else \
-         curl -L "https://github.com/aircag/heimdall-rs/releases/download/v0.9.2-test/heimdall-linux-amd64" --output /usr/local/bin/heimdall; \
+         curl -L "https://github.com/Jon-Becker/heimdall-rs/releases/download/0.9.3/heimdall-linux-amd64" --output /usr/local/bin/heimdall; \
        fi \
     && chmod +x /usr/local/bin/heimdall
 

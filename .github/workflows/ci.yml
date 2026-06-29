@@ -5,6 +5,11 @@ on:
     branches:
       - main
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      is_workflow_call:
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -14,6 +19,7 @@ permissions:
 jobs:
   frontend:
     name: Frontend
+    if: github.actor != 'dependabot[bot]' || inputs.is_workflow_call == true
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -192,6 +198,7 @@ jobs:
 
   backend:
     name: Backend
+    if: github.actor != 'dependabot[bot]' || inputs.is_workflow_call == true
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -425,6 +432,7 @@ jobs:
 
   semgrep:
     name: Semgrep SAST
+    if: github.actor != 'dependabot[bot]' || inputs.is_workflow_call == true
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd

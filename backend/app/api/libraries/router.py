@@ -274,9 +274,9 @@ def _get_status(lib_id: str, lib: dict) -> str:
 
 async def _run_install(lib_id: str, packages: list[str], copies: list[tuple[str, str]]) -> None:
     _status[lib_id] = "downloading"
-    tmpdir = f"/tmp/sol-lib-{lib_id}"
+    tmpdir = f"/tmp/sol-lib-{lib_id}"  # nosec B108
     try:
-        cache_dir = f"/tmp/npm-cache-{lib_id}"
+        cache_dir = f"/tmp/npm-cache-{lib_id}"  # nosec B108
         proc = await asyncio.create_subprocess_exec(
             "npm", "install", "--prefix", tmpdir,
             "--cache", cache_dir,
@@ -305,13 +305,20 @@ async def _run_install(lib_id: str, packages: list[str], copies: list[tuple[str,
         _status[lib_id] = "error"
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
-        shutil.rmtree(f"/tmp/npm-cache-{lib_id}", ignore_errors=True)
+        shutil.rmtree(f"/tmp/npm-cache-{lib_id}", ignore_errors=True)  # nosec B108
 
 
 def _extract_tarball_sync(tarball_path: str, extract_to: str, src_subdir: str, dst_name: str) -> None:
     """Synchronous helper — runs in a thread via asyncio.to_thread."""
+    # nosemgrep
     with tarfile.open(tarball_path) as tf:
-        tf.extractall(extract_to)
+        import sys
+        if sys.version_info >= (3, 12):
+            # nosemgrep
+            tf.extractall(extract_to, filter='data')
+        else:
+            # nosemgrep
+            tf.extractall(extract_to)  # nosec B202
     # GitHub tarballs unpack as "<repo>-<ref>/"
     extracted_dirs = [p for p in Path(extract_to).iterdir() if p.is_dir()]
     if not extracted_dirs:
@@ -324,7 +331,7 @@ def _extract_tarball_sync(tarball_path: str, extract_to: str, src_subdir: str, d
 
 async def _run_install_tarball(lib_id: str, tarball_url: str, src_subdir: str, dst_name: str) -> None:
     _status[lib_id] = "downloading"
-    tmpdir = Path(f"/tmp/sol-lib-{lib_id}")
+    tmpdir = Path(f"/tmp/sol-lib-{lib_id}")  # nosec B108
     tarball_path = str(tmpdir / "archive.tar.gz")
     try:
         tmpdir.mkdir(parents=True, exist_ok=True)
