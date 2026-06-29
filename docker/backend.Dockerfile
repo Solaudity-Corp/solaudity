@@ -118,9 +118,26 @@ ENV HOME=/opt/solc-home
 ENV PATH="/opt/venv-mythril/bin:${PATH}"
 
 # Pre-install common solc versions so Slither can compile without network access at runtime.
-# solc-select lives inside the slither venv (not on system PATH) since we moved slither out of requirements.txt.
-RUN /opt/venv-slither/bin/solc-select install 0.8.30 0.8.28 0.8.20 0.8.17 0.8.0 0.7.6 0.6.12 \
-    && /opt/venv-slither/bin/solc-select use 0.8.28 \
+# Download binaries directly rather than using `solc-select install` to avoid QEMU verification
+# hangs on ARM64 hosts: solc-select's install step tries to run the downloaded x86_64 binary
+# to confirm it works, which hangs/fails when QEMU isn't available inside the build container.
+# On ARM64, we fetch the native linux-aarch64 build where available (≥0.8.11) and fall back
+# to linux-amd64 for older versions (0.7.x / 0.6.x have no arm64 release).
+RUN ARCH=$(uname -m) \
+    && if [ "$ARCH" = "aarch64" ]; then NATIVE_ARCH="linux-aarch64"; else NATIVE_ARCH="linux-amd64"; fi \
+    && mkdir -p /opt/solc-home/.solc-select/artifacts \
+    && for VERSION in 0.8.30 0.8.28 0.8.20 0.8.17 0.8.0 0.7.6 0.6.12; do \
+         ARTIFACT="/opt/solc-home/.solc-select/artifacts/solc-${VERSION}"; \
+         if ! curl -fsSL --max-time 120 \
+              "https://github.com/ethereum/solidity/releases/download/v${VERSION}/solc-${NATIVE_ARCH}" \
+              -o "$ARTIFACT" 2>/dev/null; then \
+           curl -fsSL --max-time 120 \
+              "https://github.com/ethereum/solidity/releases/download/v${VERSION}/solc-linux-amd64" \
+              -o "$ARTIFACT"; \
+         fi; \
+         chmod +x "$ARTIFACT"; \
+       done \
+    && echo "0.8.28" > /opt/solc-home/.solc-select/global-version \
     && chmod -R 777 /opt/solc-home/.solc-select
 
 # 4naly3er — TypeScript static analyser (Node.js is already present from the surya step)
