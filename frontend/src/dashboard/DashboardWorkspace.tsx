@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { CheckCircle2, Clock, FileWarning, Presentation, ShieldAlert, Star, Activity } from 'lucide-react'
+import { CheckCircle2, Clock, Presentation, Star, ArchiveIcon } from 'lucide-react'
 import { css } from 'styled-system/css'
 import { Box, Flex, Grid, Stack } from 'styled-system/jsx'
 import { type MenuSection } from '../components/NavBar'
@@ -79,39 +79,58 @@ function StatusBadge({ status }: { status: string }) {
     return <Badge colorPalette="purple">Draft</Badge>
 }
 
-// Custom CSS Donut Chart for Dark Theme Glassmorphism
-function RiskSummaryChart() {
+interface AuditCounts {
+    draft: number
+    in_progress: number
+    completed: number
+    archived: number
+}
+
+function AuditStatusChart({ counts, total }: { counts: AuditCounts, total: number }) {
     const chartRadius = 40
     const circumference = 2 * Math.PI * chartRadius
 
-    // Mock Data for Risk Severity
-    const risks = [
-        { label: 'Critical', value: 3, color: '#e5484d', dashoffset: 0 },
-        { label: 'High', value: 8, color: '#f76b15', dashoffset: circumference * 0.15 },
-        { label: 'Medium', value: 12, color: '#f5d90a', dashoffset: circumference * 0.45 },
-        { label: 'Low', value: 20, color: '#30a46c', dashoffset: circumference * 0.70 },
+    const segments = [
+        { label: 'In Progress', value: counts.in_progress, color: '#f5d90a' },
+        { label: 'Completed',   value: counts.completed,   color: '#30a46c' },
+        { label: 'Draft',       value: counts.draft,       color: '#7c8aff' },
+        { label: 'Archived',    value: counts.archived,    color: '#666672' },
     ]
+
+    // Build arc offsets: each segment starts where the previous ended
+    let cumulativeFraction = 0
+    const arcs = segments.map((seg) => {
+        const fraction = total > 0 ? seg.value / total : 0
+        const dashArray = fraction * circumference
+        const dashOffset = circumference - cumulativeFraction * circumference
+        cumulativeFraction += fraction
+        return { ...seg, dashArray, dashOffset }
+    })
 
     return (
         <Flex direction="column" align="center" justify="center" h="full" gap="6">
             <Box className={css({ position: 'relative', w: '160px', h: '160px' })}>
                 <svg width="100%" height="100%" viewBox="0 0 100 100">
                     <circle cx="50" cy="50" r={chartRadius} fill="transparent" stroke="rgba(255,255,255,0.05)" strokeWidth="12" />
-                    {risks.map((risk) => (
-                        <circle
-                            key={risk.label}
-                            cx="50"
-                            cy="50"
-                            r={chartRadius}
-                            fill="transparent"
-                            stroke={risk.color}
-                            strokeWidth="12"
-                            strokeDasharray={circumference}
-                            strokeDashoffset={risk.dashoffset}
-                            strokeLinecap="round"
-                            className={css({ transition: 'all 1s ease-out', transformOrigin: 'center', transform: 'rotate(-90deg)' })}
-                        />
-                    ))}
+                    {total === 0 ? (
+                        <circle cx="50" cy="50" r={chartRadius} fill="transparent" stroke="rgba(255,255,255,0.08)" strokeWidth="12" />
+                    ) : (
+                        arcs.map((arc) => arc.value > 0 && (
+                            <circle
+                                key={arc.label}
+                                cx="50"
+                                cy="50"
+                                r={chartRadius}
+                                fill="transparent"
+                                stroke={arc.color}
+                                strokeWidth="12"
+                                strokeDasharray={`${arc.dashArray} ${circumference - arc.dashArray}`}
+                                strokeDashoffset={arc.dashOffset}
+                                strokeLinecap="butt"
+                                style={{ transformOrigin: 'center', transform: 'rotate(-90deg)', transition: 'all 1s ease-out' }}
+                            />
+                        ))
+                    )}
                 </svg>
                 <Flex
                     direction="column"
@@ -119,16 +138,16 @@ function RiskSummaryChart() {
                     justify="center"
                     className={css({ position: 'absolute', inset: 0 })}
                 >
-                    <Box className={css({ fontSize: '2xl', fontWeight: 'bold', color: 'white' })}>43</Box>
-                    <Box className={css({ fontSize: 'xs', color: 'rgba(255,255,255,0.5)' })}>Total Findings</Box>
+                    <Box className={css({ fontSize: '2xl', fontWeight: 'bold', color: 'white' })}>{total}</Box>
+                    <Box className={css({ fontSize: 'xs', color: 'rgba(255,255,255,0.5)' })}>Total Audits</Box>
                 </Flex>
             </Box>
             <Grid columns={2} gap="4" w="full" px="4">
-                {risks.map(risk => (
-                    <Flex key={risk.label} align="center" gap="2">
-                        <Box className={css({ w: '3', h: '3', borderRadius: 'full' })} style={{ backgroundColor: risk.color }} />
-                        <Box className={css({ fontSize: 'sm', color: 'rgba(255,255,255,0.8)' })}>{risk.label}</Box>
-                        <Box className={css({ ml: 'auto', fontSize: 'sm', fontWeight: 'bold', color: 'white' })}>{risk.value}</Box>
+                {segments.map(seg => (
+                    <Flex key={seg.label} align="center" gap="2">
+                        <Box className={css({ w: '3', h: '3', borderRadius: 'full', flexShrink: 0 })} style={{ backgroundColor: seg.color }} />
+                        <Box className={css({ fontSize: 'sm', color: 'rgba(255,255,255,0.8)' })}>{seg.label}</Box>
+                        <Box className={css({ ml: 'auto', fontSize: 'sm', fontWeight: 'bold', color: 'white' })}>{seg.value}</Box>
                     </Flex>
                 ))}
             </Grid>
@@ -193,7 +212,7 @@ export function DashboardWorkspace({ onNavigate }: DashboardWorkspaceProps) {
                     value={total}
                     icon={<Presentation size={20} />}
                     color="#858489"
-                    description="All active and draft audits."
+                    description="All audits in your workspace."
                 />
                 <StatCard
                     title="In Progress"
@@ -210,11 +229,11 @@ export function DashboardWorkspace({ onNavigate }: DashboardWorkspaceProps) {
                     description="Finalized audit reports."
                 />
                 <StatCard
-                    title="Critical Findings"
-                    value="3"
-                    icon={<ShieldAlert size={20} />}
-                    color="#e5484d"
-                    description="High severity vulnerabilities found."
+                    title="Archived"
+                    value={counts.archived}
+                    icon={<ArchiveIcon size={20} />}
+                    color="#666672"
+                    description="Archived audits."
                 />
             </Grid>
 
@@ -283,7 +302,7 @@ export function DashboardWorkspace({ onNavigate }: DashboardWorkspaceProps) {
                     </Card.Body>
                 </Card.Root>
 
-                {/* RISK CHART */}
+                {/* AUDIT STATUS CHART */}
                 <Card.Root
                     variant="outline"
                     className={css({
@@ -295,117 +314,67 @@ export function DashboardWorkspace({ onNavigate }: DashboardWorkspaceProps) {
                 >
                     <Card.Header className={css({ borderBottom: '1px solid rgba(255,255,255,0.05)', pb: '4' })}>
                         <Card.Title className={css({ color: 'rgba(231, 228, 239, 0.91)', fontSize: 'lg', fontWeight: '700' })}>
-                            Risk Summary
+                            Audit Status
                         </Card.Title>
                     </Card.Header>
                     <Card.Body className={css({ p: '6' })}>
-                        <RiskSummaryChart />
+                        <AuditStatusChart counts={counts} total={total} />
                     </Card.Body>
                 </Card.Root>
 
             </Grid>
 
+            {/* BOTTOM ROW — PINNED AUDITS (full width) */}
+            <Card.Root
+                variant="outline"
+                className={css({
+                    borderRadius: '18px',
+                    borderColor: 'rgba(185, 185, 189, 0.14)',
+                    bg: 'rgba(24, 24, 29, 0.82)',
+                    boxShadow: '0 12px 28px rgba(0, 0, 0, 0.3)',
+                })}
+            >
+                <Card.Header className={css({ borderBottom: '1px solid rgba(255,255,255,0.05)', pb: '4' })}>
+                    <Flex align="center" gap="2">
+                        <Star size={16} className={css({ color: '#f5d90a' })} fill="#f5d90a" />
+                        <Card.Title className={css({ color: 'rgba(231, 228, 239, 0.91)', fontSize: 'lg', fontWeight: '700' })}>
+                            Pinned Audits
+                        </Card.Title>
+                    </Flex>
+                </Card.Header>
+                <Card.Body className={css({ p: 0 })}>
+                    {pinnedItems.length === 0 ? (
+                        <Box className={css({ p: '6', textAlign: 'center', color: 'rgba(255,255,255,0.4)', fontSize: 'sm' })}>
+                            No pinned audits. Click the star on an audit to pin it here.
+                        </Box>
+                    ) : (
+                        <Grid columns={{ base: 1, md: 2, lg: 3 }} gap="0">
+                            {pinnedItems.map((audit, idx) => (
+                                <Flex
+                                    key={audit.id}
+                                    justify="space-between"
+                                    align="center"
+                                    onClick={(e) => {
+                                        e.preventDefault()
+                                        window.history.pushState(null, '', `/scope/${audit.id}`)
+                                        window.dispatchEvent(new PopStateEvent('popstate'))
+                                    }}
+                                    className={css({
+                                        p: '4',
+                                        borderBottom: idx < pinnedItems.length - 1 ? '1px solid rgba(255,255,255,0.03)' : 'none',
+                                        cursor: 'pointer',
+                                        _hover: { bg: 'rgba(255,255,255,0.02)' }
+                                    })}
+                                >
+                                    <Box className={css({ color: 'white', fontWeight: '500' })}>{audit.title}</Box>
+                                    <StatusBadge status={audit.status} />
+                                </Flex>
+                            ))}
+                        </Grid>
+                    )}
+                </Card.Body>
+            </Card.Root>
 
-            {/* BOTTOM ROW (PINNED + ACTIVITY) */}
-            <Grid columns={{ base: 1, lg: 2 }} gap="5" alignItems="stretch">
-
-                {/* PINNED AUDITS */}
-                <Card.Root
-                    variant="outline"
-                    className={css({
-                        borderRadius: '18px',
-                        borderColor: 'rgba(185, 185, 189, 0.14)',
-                        bg: 'rgba(24, 24, 29, 0.82)',
-                        boxShadow: '0 12px 28px rgba(0, 0, 0, 0.3)',
-                    })}
-                >
-                    <Card.Header className={css({ borderBottom: '1px solid rgba(255,255,255,0.05)', pb: '4' })}>
-                        <Flex align="center" gap="2">
-                            <Star size={16} className={css({ color: '#f5d90a' })} fill="#f5d90a" />
-                            <Card.Title className={css({ color: 'rgba(231, 228, 239, 0.91)', fontSize: 'lg', fontWeight: '700' })}>
-                                Pinned Audits
-                            </Card.Title>
-                        </Flex>
-                    </Card.Header>
-                    <Card.Body className={css({ p: 0 })}>
-                        {pinnedItems.length === 0 ? (
-                            <Box className={css({ p: '6', textAlign: 'center', color: 'rgba(255,255,255,0.4)', fontSize: 'sm' })}>
-                                No pinned audits. Click the star on an audit to pin it here.
-                            </Box>
-                        ) : (
-                            <Stack gap="0">
-                                {pinnedItems.map((audit, idx) => (
-                                    <Flex
-                                        key={audit.id}
-                                        justify="space-between"
-                                        align="center"
-                                        onClick={(e) => {
-                                            e.preventDefault()
-                                            window.history.pushState(null, '', `/scope/${audit.id}`)
-                                            window.dispatchEvent(new PopStateEvent('popstate'))
-                                        }}
-                                        className={css({
-                                            p: '4',
-                                            borderBottom: idx !== pinnedItems.length - 1 ? '1px solid rgba(255,255,255,0.03)' : 'none',
-                                            cursor: 'pointer',
-                                            _hover: { bg: 'rgba(255,255,255,0.02)' }
-                                        })}
-                                    >
-                                        <Box className={css({ color: 'white', fontWeight: '500' })}>{audit.title}</Box>
-                                        <StatusBadge status={audit.status} />
-                                    </Flex>
-                                ))}
-                            </Stack>
-                        )}
-                    </Card.Body>
-                </Card.Root>
-
-                {/* RECENT ACTIVITY */}
-                <Card.Root
-                    variant="outline"
-                    className={css({
-                        borderRadius: '18px',
-                        borderColor: 'rgba(185, 185, 189, 0.14)',
-                        bg: 'rgba(24, 24, 29, 0.82)',
-                        boxShadow: '0 12px 28px rgba(0, 0, 0, 0.3)',
-                    })}
-                >
-                    <Card.Header className={css({ borderBottom: '1px solid rgba(255,255,255,0.05)', pb: '4' })}>
-                        <Flex align="center" gap="2">
-                            <Activity size={16} className={css({ color: 'rgba(255,255,255,0.7)' })} />
-                            <Card.Title className={css({ color: 'rgba(231, 228, 239, 0.91)', fontSize: 'lg', fontWeight: '700' })}>
-                                Recent Activity
-                            </Card.Title>
-                        </Flex>
-                    </Card.Header>
-                    <Card.Body className={css({ p: '5' })}>
-                        <Stack gap="4">
-                            <Flex gap="3">
-                                <Box className={css({ mt: '1', color: '#30a46c' })}><CheckCircle2 size={16} /></Box>
-                                <Box>
-                                    <Box className={css({ color: 'white', fontSize: 'sm' })}>Uniswap V4 Audit completed.</Box>
-                                    <Box className={css({ color: 'rgba(255,255,255,0.4)', fontSize: 'xs' })}>2 hours ago</Box>
-                                </Box>
-                            </Flex>
-                            <Flex gap="3">
-                                <Box className={css({ mt: '1', color: '#e5484d' })}><FileWarning size={16} /></Box>
-                                <Box>
-                                    <Box className={css({ color: 'white', fontSize: 'sm' })}>Found 2 Critical vulnerabilities in Aave Staking.</Box>
-                                    <Box className={css({ color: 'rgba(255,255,255,0.4)', fontSize: 'xs' })}>5 hours ago</Box>
-                                </Box>
-                            </Flex>
-                            <Flex gap="3">
-                                <Box className={css({ mt: '1', color: 'rgba(255,255,255,0.6)' })}><Presentation size={16} /></Box>
-                                <Box>
-                                    <Box className={css({ color: 'white', fontSize: 'sm' })}>Created new draft: Curve Finance Router</Box>
-                                    <Box className={css({ color: 'rgba(255,255,255,0.4)', fontSize: 'xs' })}>Yesterday</Box>
-                                </Box>
-                            </Flex>
-                        </Stack>
-                    </Card.Body>
-                </Card.Root>
-
-            </Grid>
         </Flex>
     )
 }
