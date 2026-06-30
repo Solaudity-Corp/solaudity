@@ -1,153 +1,79 @@
-# SolAudity
+# Solaudity
 
-**Intelligent Audit Management Platform for EVM Smart Contracts**
+Solaudity is a platform built to simplify how you manage smart contract audits. Instead of juggling multiple tools, terminals, and documents, everything you need during an audit is accessible directly from the interface: run analysis tools, browse contract code, track findings, and generate reports without leaving the app.
 
-Solaudity is a comprehensive solution designed to streamline the lifecycle of smart contract security audits. From scope definition to final reporting, it provides a structured environment for auditors to manage their missions effectively, leveraging automated tools and manual review workflows.
+The idea behind Solaudity is to structure an audit into five clear phases, so nothing gets skipped and the process stays organized from start to finish.
 
-<br>
+### Scope Definition
 
-## Goal
+This is where the audit begins. You define what is in scope: import contracts from GitHub, block explorers (Etherscan, Arbiscan, and others), or upload files manually. You also register the on-chain addresses related to the project and mark what is out of scope with a reason. By the end of this phase you have a clean picture of what you are auditing.
 
-The primary goal of Solaudity is to centralize and optimize the smart contract auditing process. It aims to:
--   **Simplify Scope Management**: Easily import contracts from various sources (GitHub, Etherscan, etc.).
--   **Automate Enumeration**: Quickly visualize contract structures and dependencies.
--   **Integrate Analysis Tools**: Seamless execution of static (Slither) and symbolic (Mythril) analysis.
--   **Leverage AI**: Extract audit metadata from free text using multi-provider LLM integration.
--   **Structure Manual Reviews**: Provide checklists and finding management to ensure thoroughness.
--   **Generate Reports**: Automatically produce professional Markdown and PDF reports.
+### Enumeration
 
-<br>
+Once the scope is defined, you start understanding the codebase. This phase gives you a structural view of the contracts: functions, state variables, events, inheritance, and call graphs. The goal is to know the code before you start looking for vulnerabilities.
 
-## Technical Stack
+### Static Analysis
 
-Built with modern, performance-oriented technologies.
+Here you run automated tools against the contracts directly from the interface. Static analysis catches a wide range of common vulnerabilities quickly and gives you a first layer of findings to review. You can validate results, dismiss false positives, and keep only what matters.
 
-| Component | Technology | Description |
-| :--- | :--- | :--- |
-| **Frontend** | ![React](https://img.shields.io/badge/React_19-20232A?style=flat&logo=react&logoColor=61DAFB) ![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=flat&logo=typescript&logoColor=white) | **Vite**, **PandaCSS**, **Ark UI**, **Lucide React** for a responsive and accessible UI. |
-| **Backend** | ![FastAPI](https://img.shields.io/badge/FastAPI-005571?style=flat&logo=fastapi) ![Python](https://img.shields.io/badge/Python-3776AB?style=flat&logo=python&logoColor=white) | High-performance Python API with **SQLModel** + **SQLite** and **Alembic** migrations. |
-| **AI** | ![OpenAI](https://img.shields.io/badge/OpenAI-412991?style=flat&logo=openai&logoColor=white) ![Gemini](https://img.shields.io/badge/Gemini-4285F4?style=flat&logo=google&logoColor=white) | Multi-provider LLM support: **OpenAI**, **Groq**, **XAI (Grok)**, **Google Gemini**. |
-| **Deployment** | ![Docker](https://img.shields.io/badge/Docker-2496ED?style=flat&logo=docker&logoColor=white) | Containerized environment with dev/prod profiles and Docker Compose. |
+### Dynamic Analysis
 
-<br>
+This phase goes deeper. You run tools that simulate execution, fuzz the contracts, or formally verify properties. It is slower but catches issues that static analysis misses, especially logic bugs and edge cases under specific conditions.
 
-## Key Features
+### Reporting
 
-### 1. Authentication & User Management
-- **JWT Authentication**: Secure registration and login with bcrypt password hashing.
-- **User Profile**: Update email, configure AI provider and API key, manage Etherscan API key.
-- **Data Isolation**: Users can only access their own audits and scope data.
+At the end of the audit you generate the report from everything collected during the previous phases. Findings, context, and conclusions are assembled into a structured document ready to deliver.
 
-### 2. Audit Management
-- **Full CRUD**: Create, list, update, pin/unpin, mark-opened, and delete audit missions.
-- **Dashboard**: Real-time statistics cards with live audit data aggregation.
-- **Filtering**: Search by title, filter by status, chain, network, or pinned state.
-- **AI Metadata Extraction**: Paste free text and let an LLM auto-fill audit fields (title, description, chain, dates, etc.).
+---
 
-### 3. Scope Definition
-- **Sources**: Import contracts from multiple origins:
-  - `GitHub` repositories (clone by branch or commit)
-  - Block explorers: `Etherscan`, `Arbiscan`, `Polygonscan`, `BSCScan`, `BaseScan`, `Optimism`
-  - `Bug Bounty` platforms
-  - Manual `.sol` file uploads
-- **Contracts**: Upload, view source, toggle in-scope/out-of-scope with reason tracking.
-- **Addresses**: Register on-chain addresses with type classification (deployment, proxy, implementation, role, token, external). Auto-checks verification status and fetches bytecode via Etherscan API.
+## Installation
 
-### 4. Enumeration & Visualization *(planned)*
-- **Parsing**: Structural analysis of contracts (Functions, Events, State Variables) via Slither.
-- **Dependency Graph**: Visual representation of contract interactions.
-- **Filtering**: Advanced search and filtering by visibility, modifiers, etc.
-
-### 5. Automated Analysis *(planned)*
-- **Static Analysis**: Run Slither automatically.
-- **Symbolic Execution**: Run Mythril for deeper checks.
-- **Validation**: Review findings and mark false positives.
-
-### 6. Manual Review & Reporting *(planned)*
-- **Checklists**: Follow standard audit methodologies.
-- **Findings**: Create, tag, and associate findings with specific code.
-- **Reports**: Generate publication-ready Markdown and PDF reports.
-
-<br><br>
-
-## Workflow
-
-```mermaid
-graph TD
-    %% Styles
-    classDef step fill:#161618,stroke:#3a3a3e,stroke-width:1px,color:#fff,rx:4,ry:4,text-align:center;
-    classDef done fill:#161618,stroke:#22c55e,stroke-width:1.5px,color:#fff,rx:4,ry:4,text-align:center;
-    classDef planned fill:#161618,stroke:#3a3a3e,stroke-width:1px,stroke-dasharray:5 5,color:#888,rx:4,ry:4,text-align:center;
-    classDef startend fill:#b9b9b9,stroke:none,color:#121214,rx:10,ry:10;
-
-    %% Flow
-    Start([Start]):::startend --> S1
-
-    S1["<strong>Draft & Scope</strong><hr style='margin:5px -10px;border-top:1px solid #3a3a3e;opacity:0.5;'/><span style='font-size:0.9em'>- GitHub / Etherscan<br/>- Manual Upload<br/>- Out-of-Scope config</span>"]:::done
-    S1 --> S2
-
-    S2["<strong>Enumeration</strong><hr style='margin:5px -10px;border-top:1px solid #3a3a3e;opacity:0.5;'/><span style='font-size:0.9em'>- AST Parsing<br/>- Dependency Graph<br/>- Function visibility</span>"]:::planned
-    S2 --> S3
-
-    S3["<strong>Automated Analysis</strong><hr style='margin:5px -10px;border-top:1px solid #3a3a3e;opacity:0.5;'/><span style='font-size:0.9em'>- Slither (Static)<br/>- Mythril (Symbolic)<br/>- False Positive filtering</span>"]:::planned
-    S3 --> S4
-
-    S4["<strong>Manual Review</strong><hr style='margin:5px -10px;border-top:1px solid #3a3a3e;opacity:0.5;'/><span style='font-size:0.9em'>- Audit Checklist<br/>- Finding Association<br/>- Vulnerability Tagging</span>"]:::planned
-    S4 --> S5
-
-    S5([Reporting]):::startend
-```
-
-> **Legend**: Solid green border = implemented | Dashed gray border = planned
-
-<br><br>
-
-## Getting Started
-
-### Prerequisites
-*   [Docker](https://www.docker.com/) and Docker Compose installed.
-
-### Installation
-
-1.  **Clone the repository**
-    ```bash
-    git clone https://github.com/Solaudity-Corp/solaudity.git
-    cd solaudity
-    ```
-
-2.  **Start in Development Mode**
-    Runs the backend and frontend with live reload.
-    ```bash
-    ./start.sh dev
-    ```
-    -   Frontend: [http://localhost:5173](http://localhost:5173)
-    -   Backend: [http://localhost:8001](http://localhost:8001)
-
-3.  **Start in Production Mode**
-    ```bash
-    ./start.sh prod
-    ```
-
-### Stopping / Cleanup
+**Requirements:** Docker and Docker Compose. That is it.
 
 ```bash
-./stop.sh              # Stop all containers
-./delete.sh            # Remove all containers, volumes, and images
+git clone https://github.com/Solaudity-Corp/solaudity.git
+cd solaudity
+./start.sh dev    # development mode with live reload
+./start.sh prod   # production mode
 ```
 
-<br>
+Once running:
+- Frontend: http://localhost:5173
+- Backend: http://localhost:8001
+
+The first build takes a while because it downloads all the analysis tools. After that, starting the app is fast.
+
+**API keys**
+
+Two optional keys unlock additional features. You set them in your user profile after logging in, no need to configure anything before starting.
+
+- **Etherscan API key**: required to import contracts directly from block explorers (Etherscan, Arbiscan, Polygonscan, etc.)
+- **AI provider key**: required to use the AI metadata extraction feature, which reads free-text audit briefs and fills in audit fields automatically. Supported providers: OpenAI, Groq, XAI, Gemini.
+
+**Important notice**
+
+Do not expose Solaudity to the public internet. Even though the app has an authentication system, it is designed for internal use only. By default it gives authenticated users access to bash-level functionality through the analysis tools, which is intentional for an audit workstation but dangerous on a publicly reachable server.
+
+---
 
 ## Testing
 
-Run tests via the interactive test runner:
-
 ```bash
-./test.sh              # Interactive menu
-./test.sh frontend     # Frontend unit tests (Vitest in Docker)
-./test.sh backend      # Backend unit tests (Pytest in Docker)
-./test.sh all          # Both unit test suites
-./test.sh smoke        # Post-upgrade integration tests (full stack)
-./test.sh full         # Unit + smoke tests
+./test.sh              # interactive menu
+./test.sh unit         # backend and frontend unit tests
+./test.sh api-security # API surface and authentication tests
+./test.sh appsec       # unit tests plus API security tests
+./test.sh smoke        # full integration test: builds images, starts the stack, exercises all APIs, then tears everything down
+./test.sh full         # runs everything
 ```
 
-The smoke tests build production images, spin up the full stack, and exercise every API surface (auth, CRUD, scope management, error handling, frontend serving).
+Before running tests, make sure Docker is running and ports 8001 and 5173 are free.
+
+---
+
+## Stop and Cleanup
+
+```bash
+./stop.sh      # stop all containers
+./delete.sh    # full reset: removes containers, volumes, and images
+```

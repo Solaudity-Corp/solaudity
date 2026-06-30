@@ -118,27 +118,36 @@ ENV HOME=/opt/solc-home
 ENV PATH="/opt/venv-mythril/bin:${PATH}"
 
 # Pre-install common solc versions so Slither can compile without network access at runtime.
-# Download binaries directly rather than using `solc-select install` to avoid QEMU verification
-# hangs on ARM64 hosts: solc-select's install step tries to run the downloaded x86_64 binary
-# to confirm it works, which hangs/fails when QEMU isn't available inside the build container.
-# On ARM64, we fetch the native linux-aarch64 build where available (≥0.8.11) and fall back
-# to linux-amd64 for older versions (0.7.x / 0.6.x have no arm64 release).
-RUN ARCH=$(uname -m) \
-    && if [ "$ARCH" = "aarch64" ]; then NATIVE_ARCH="linux-aarch64"; else NATIVE_ARCH="linux-amd64"; fi \
-    && mkdir -p /opt/solc-home/.solc-select/artifacts \
-    && for VERSION in 0.8.30 0.8.28 0.8.20 0.8.17 0.8.0 0.7.6 0.6.12; do \
-         ARTIFACT="/opt/solc-home/.solc-select/artifacts/solc-${VERSION}"; \
-         if ! curl -fsSL --max-time 120 \
-              "https://github.com/ethereum/solidity/releases/download/v${VERSION}/solc-${NATIVE_ARCH}" \
-              -o "$ARTIFACT" 2>/dev/null; then \
-           curl -fsSL --max-time 120 \
-              "https://github.com/ethereum/solidity/releases/download/v${VERSION}/solc-linux-amd64" \
-              -o "$ARTIFACT"; \
-         fi; \
-         chmod +x "$ARTIFACT"; \
-       done \
-    && echo "0.8.28" > /opt/solc-home/.solc-select/global-version \
-    && chmod -R 777 /opt/solc-home/.solc-select
+# Downloads from binaries.soliditylang.org (the same source used by solc-select internally).
+# The list.json for each platform maps version → exact filename (includes commit hash), so we
+# fetch that first, then download each binary without running it — avoiding QEMU hangs on ARM64.
+RUN <<'EOF'
+set -e
+ARCH=$(uname -m)
+if [ "$ARCH" = "aarch64" ]; then NATIVE_PLAT="linux-aarch64"; else NATIVE_PLAT="linux-amd64"; fi
+mkdir -p /opt/solc-home/.solc-select/artifacts
+curl -fsSL https://binaries.soliditylang.org/linux-amd64/list.json -o /tmp/solc-amd64.json
+curl -fsSL https://binaries.soliditylang.org/linux-aarch64/list.json -o /tmp/solc-arm64.json 2>/dev/null || true
+for VERSION in 0.8.30 0.8.28 0.8.20 0.8.17 0.8.0 0.7.6 0.6.12; do
+    ARTIFACT="/opt/solc-home/.solc-select/artifacts/solc-${VERSION}"
+    ARM_FNAME=""
+    if [ "$NATIVE_PLAT" = "linux-aarch64" ] && [ -f /tmp/solc-arm64.json ]; then
+        ARM_FNAME=$(python3 -c "import json; print(json.load(open('/tmp/solc-arm64.json')).get('releases',{}).get('${VERSION}',''))" 2>/dev/null) || ARM_FNAME=""
+    fi
+    if [ -n "$ARM_FNAME" ]; then
+        echo "solc-${VERSION}: linux-aarch64 (native)"
+        curl -fsSL --max-time 120 "https://binaries.soliditylang.org/linux-aarch64/${ARM_FNAME}" -o "$ARTIFACT"
+    else
+        AMD_FNAME=$(python3 -c "import json; print(json.load(open('/tmp/solc-amd64.json'))['releases']['${VERSION}'])")
+        echo "solc-${VERSION}: linux-amd64"
+        curl -fsSL --max-time 120 "https://binaries.soliditylang.org/linux-amd64/${AMD_FNAME}" -o "$ARTIFACT"
+    fi
+    chmod +x "$ARTIFACT"
+done
+rm -f /tmp/solc-amd64.json /tmp/solc-arm64.json
+echo "0.8.28" > /opt/solc-home/.solc-select/global-version
+chmod -R 777 /opt/solc-home/.solc-select
+EOF
 
 # 4naly3er — TypeScript static analyser (Node.js is already present from the surya step)
 RUN curl -sL https://github.com/Picodes/4naly3er/archive/refs/heads/main.tar.gz \

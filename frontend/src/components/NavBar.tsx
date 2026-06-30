@@ -9,7 +9,7 @@ import { SvgLogo } from './SvgLogo'
 import { SideNav } from './SideNav'
 import type { SubPanel } from './SideNav'
 
-export type MenuSection = 'dashboard' | 'audits' | 'reports' | 'activity'
+export type MenuSection = 'dashboard' | 'audits' | 'reports'
 
 export interface JourneyItem {
   label: string
@@ -35,7 +35,6 @@ interface NavBarProps {
 const links: Array<{ label: string; section: MenuSection }> = [
   { label: 'Audits', section: 'audits' },
   { label: 'Reports', section: 'reports' },
-  { label: 'Activity', section: 'activity' },
 ]
 
 // ── Color helpers ──────────────────────────────────────────────────────────────

@@ -56,6 +56,7 @@ export function EnumWorkspace({ auditId, onNavigate, onOpenProfile }: EnumWorksp
           { label: 'Enum', isCurrent: true, accentColor: 'rgba(88, 214, 171, 0.28)' },
           { label: 'Static Analysis', onClick: () => onNavigate(`/static-analysis/${auditId}`), accentColor: 'rgba(180, 140, 255, 0.28)' },
           { label: 'Dynamic Analysis', onClick: () => onNavigate(`/dynamic-analysis/${auditId}`), accentColor: 'rgba(245, 200, 60, 0.28)' },
+          { label: 'Reports', onClick: () => onNavigate(`/reports/${auditId}`), accentColor: 'rgba(255, 90, 80, 0.28)' },
         ]}
         onOpenNotes={() => setNotesOpen(true)}
       />
