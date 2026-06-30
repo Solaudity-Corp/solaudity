@@ -184,12 +184,12 @@ export function StaticAnalysisWorkspace({ auditId, onNavigate, onOpenProfile }: 
         <SlideButton
           reversed
           text="Goto Enum"
-          theme="blue"
+          theme="violet"
           onComplete={() => onNavigate(`/enum/${auditId}`)}
         />
         <SlideButton
           text="Goto Dynamic Analysis"
-          theme="blue"
+          theme="violet"
           onComplete={() => onNavigate(`/dynamic-analysis/${auditId}`)}
         />
       </Flex>

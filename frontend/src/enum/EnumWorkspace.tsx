@@ -201,12 +201,12 @@ export function EnumWorkspace({ auditId, onNavigate, onOpenProfile }: EnumWorksp
         <SlideButton
           reversed
           text="Goto Scope"
-          theme="blue"
+          theme="green"
           onComplete={() => onNavigate(`/scope/${auditId}`)}
         />
         <SlideButton
           text="Goto Static Analysis"
-          theme="blue"
+          theme="green"
           onComplete={() => onNavigate(`/static-analysis/${auditId}`)}
         />
       </Flex>

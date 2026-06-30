@@ -723,12 +723,12 @@ export function DynamicAnalysisWorkspace({ auditId, onNavigate, onOpenProfile }:
         <SlideButton
           reversed
           text="Goto Static Analysis"
-          theme="blue"
+          theme="yellow"
           onComplete={() => onNavigate(`/static-analysis/${auditId}`)}
         />
         <SlideButton
           text="Goto Reports"
-          theme="blue"
+          theme="yellow"
           onComplete={() => onNavigate(`/reports/${auditId}`)}
         />
       </Flex>
