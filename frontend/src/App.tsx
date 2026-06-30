@@ -22,8 +22,6 @@ function normalizePathname(pathname: string): AppPath {
   if (normalized === '/menu/dashboard') return '/menu/dashboard'
   if (normalized === '/menu/audits') return '/menu/audits'
   if (normalized === '/menu/reports') return '/menu/reports'
-  if (normalized === '/menu/activity') return '/menu/activity'
-
   if (normalized.startsWith('/scope/')) return pathname
   if (normalized.startsWith('/enum/')) return pathname
   if (normalized.startsWith('/static-analysis/')) return pathname
