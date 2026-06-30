@@ -491,12 +491,12 @@ export function ReportsWorkspace({ auditId, onNavigate, onOpenProfile }: Props) 
         <SlideButton
           reversed
           text="Goto Dynamic Analysis"
-          theme="yellow"
+          theme="blue"
           onComplete={() => onNavigate(`/dynamic-analysis/${auditId}`)}
         />
         <SlideButton
           text="Finish Audit"
-          theme="yellow"
+          theme="blue"
           onComplete={() => onNavigate('/menu/audits')}
         />
       </Flex>
