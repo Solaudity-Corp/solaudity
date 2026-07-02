@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Check, ChevronDown, Eye, EyeOff, RefreshCw, X } from 'lucide-react'
 import { css, cx } from 'styled-system/css'
 import { Box, Flex, Stack } from 'styled-system/jsx'
 import { type MenuPath } from './Menu'
 import { type MenuSection, NavBar } from './components/NavBar'
-import { Card, Input } from './components/ui'
+import { Card, Combobox, Input } from './components/ui'
+import { createListCollection } from './components/ui/combobox'
 import {
   AuthApiError,
   getCurrentUser,
@@ -64,6 +65,7 @@ export default function Profile({ onNavigateMenu, onOpenProfile }: ProfileProps)
   const [orModels, setOrModels] = useState<OpenRouterModel[]>([])
   const [isLoadingModels, setIsLoadingModels] = useState(false)
   const [modelsError, setModelsError] = useState<string | null>(null)
+  const [modelQuery, setModelQuery] = useState('')
 
   const [etherscanKeyDraft, setEtherscanKeyDraft] = useState('')
   const [showEtherscanKey, setShowEtherscanKey] = useState(false)
@@ -131,9 +133,37 @@ export default function Profile({ onNavigateMenu, onOpenProfile }: ProfileProps)
   const aiSettingsValid = aiSettingsDirty && (bothEmpty || bothFilled) && modelOk
   const etherscanKeyDirty = etherscanKeyDraft.trim() !== currentEtherscanKey
 
-  const freeModels = orModels.filter((m) => m.is_free)
-  const paidModels = orModels.filter((m) => !m.is_free)
-  const modelInList = orModels.some((m) => m.id === modelDraftTrim)
+  // Keep a stored/typed model visible even if it isn't in the fetched catalog.
+  const allModels = useMemo<OpenRouterModel[]>(() => {
+    if (modelDraftTrim && !orModels.some((m) => m.id === modelDraftTrim)) {
+      return [
+        { id: modelDraftTrim, name: modelDraftTrim, context_length: null, is_free: false },
+        ...orModels,
+      ]
+    }
+    return orModels
+  }, [orModels, modelDraftTrim])
+
+  const filteredModels = useMemo<OpenRouterModel[]>(() => {
+    const q = modelQuery.trim().toLowerCase()
+    if (!q) return allModels
+    return allModels.filter(
+      (m) => m.id.toLowerCase().includes(q) || m.name.toLowerCase().includes(q),
+    )
+  }, [allModels, modelQuery])
+
+  const modelCollection = useMemo(
+    () =>
+      createListCollection({
+        items: filteredModels,
+        itemToValue: (m) => m.id,
+        itemToString: (m) => m.name,
+      }),
+    [filteredModels],
+  )
+
+  const freeFilteredModels = filteredModels.filter((m) => m.is_free)
+  const paidFilteredModels = filteredModels.filter((m) => !m.is_free)
 
   const fetchOpenRouterModels = async () => {
     const key = apiKeyDraft.trim() || currentApiKey
@@ -551,53 +581,70 @@ export default function Profile({ onNavigateMenu, onOpenProfile }: ProfileProps)
                       <Box className={rowClass}>
                         <Box className={rowLabelClass}>Model</Box>
                         <Box className={fieldWithActionsClass}>
-                          <Box className={css({ position: 'relative', w: 'full' })}>
-                            <select
-                              value={modelDraft}
-                              onChange={(event) => {
-                                setModelDraft(event.target.value)
-                                setStatus(null)
-                              }}
-                              className={selectClass}
-                              disabled={isLoading || isSavingAiSettings || isLoadingModels}
-                            >
-                              <option value="">
-                                {isLoadingModels ? 'Loading models…' : 'Select a model'}
-                              </option>
-                              {freeModels.length > 0 && (
-                                <optgroup label="Free">
-                                  {freeModels.map((model) => (
-                                    <option key={model.id} value={model.id}>
-                                      {model.name}
-                                    </option>
-                                  ))}
-                                </optgroup>
-                              )}
-                              {paidModels.length > 0 && (
-                                <optgroup label="Paid">
-                                  {paidModels.map((model) => (
-                                    <option key={model.id} value={model.id}>
-                                      {model.name}
-                                    </option>
-                                  ))}
-                                </optgroup>
-                              )}
-                              {modelDraftTrim && !modelInList && (
-                                <option value={modelDraftTrim}>{modelDraftTrim}</option>
-                              )}
-                            </select>
-                            <ChevronDown
-                              size={14}
-                              className={css({
-                                position: 'absolute',
-                                right: '2.5',
-                                top: '50%',
-                                transform: 'translateY(-50%)',
-                                pointerEvents: 'none',
-                                color: 'rgba(201, 201, 208, 0.84)',
-                              })}
-                            />
-                          </Box>
+                          <Combobox.Root
+                            collection={modelCollection}
+                            value={modelDraftTrim ? [modelDraftTrim] : []}
+                            onValueChange={(details) => {
+                              setModelDraft(details.value[0] ?? '')
+                              setStatus(null)
+                            }}
+                            onInputValueChange={(details) => setModelQuery(details.inputValue)}
+                            openOnClick
+                            disabled={isLoading || isSavingAiSettings || isLoadingModels}
+                            className={css({ w: 'full' })}
+                          >
+                            <Combobox.Control>
+                              <Combobox.Input
+                                placeholder={isLoadingModels ? 'Loading models…' : 'Search a model…'}
+                                className={cx(inputClass, css({ w: 'full', pr: '9' }))}
+                              />
+                              <Combobox.Trigger>
+                                <ChevronDown size={14} />
+                              </Combobox.Trigger>
+                            </Combobox.Control>
+                            <Combobox.Positioner>
+                              <Combobox.Content>
+                                {freeFilteredModels.length > 0 && (
+                                  <Combobox.ItemGroup>
+                                    <Combobox.ItemGroupLabel>Free</Combobox.ItemGroupLabel>
+                                    {freeFilteredModels.map((model) => (
+                                      <Combobox.Item key={model.id} item={model}>
+                                        <Combobox.ItemText>{model.name}</Combobox.ItemText>
+                                        <Combobox.ItemIndicator>
+                                          <Check size={14} />
+                                        </Combobox.ItemIndicator>
+                                      </Combobox.Item>
+                                    ))}
+                                  </Combobox.ItemGroup>
+                                )}
+                                {paidFilteredModels.length > 0 && (
+                                  <Combobox.ItemGroup>
+                                    <Combobox.ItemGroupLabel>Paid</Combobox.ItemGroupLabel>
+                                    {paidFilteredModels.map((model) => (
+                                      <Combobox.Item key={model.id} item={model}>
+                                        <Combobox.ItemText>{model.name}</Combobox.ItemText>
+                                        <Combobox.ItemIndicator>
+                                          <Check size={14} />
+                                        </Combobox.ItemIndicator>
+                                      </Combobox.Item>
+                                    ))}
+                                  </Combobox.ItemGroup>
+                                )}
+                                {filteredModels.length === 0 && (
+                                  <Box
+                                    className={css({
+                                      px: '2',
+                                      py: '2',
+                                      fontSize: 'sm',
+                                      color: 'rgba(191, 191, 200, 0.6)',
+                                    })}
+                                  >
+                                    {isLoadingModels ? 'Loading…' : 'No model found'}
+                                  </Box>
+                                )}
+                              </Combobox.Content>
+                            </Combobox.Positioner>
+                          </Combobox.Root>
                           <Box className={actionGroupClass}>
                             <button
                               type="button"
