@@ -90,8 +90,12 @@ export async function triggerRun(
   contractId: string,
   preset: SlitherPreset = 'all',
   viaIr = false,
+  solcVersion?: string,
 ): Promise<SlitherRunDetail> {
-  const query = `preset=${preset}${viaIr ? '&via_ir=true' : ''}`
+  const query =
+    `preset=${preset}` +
+    (viaIr ? '&via_ir=true' : '') +
+    (solcVersion ? `&solc_version=${encodeURIComponent(solcVersion)}` : '')
   const res = await apiFetch(
     `${BASE}/audits/${auditId}/contracts/${contractId}/run?${query}`,
     { method: 'POST' },

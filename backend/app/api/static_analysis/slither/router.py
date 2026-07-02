@@ -156,13 +156,28 @@ def _satisfies(v: Ver, constraints: list[tuple[str, Ver]]) -> bool:
     return True
 
 
-def _resolve_solc_binary(file_path: Path) -> tuple[str | None, str | None]:
+def _resolve_solc_binary(
+    file_path: Path, override_version: str | None = None
+) -> tuple[str | None, str | None]:
     """
     Parse the pragma solidity spec and return (binary_path, error_message).
     - (path, None)  — found a compatible installed binary
     - (None, None)  — no pragma found, slither will use its default
     - (None, msg)   — pragma found but no compatible version is installed
+
+    When ``override_version`` is given (e.g. "0.8.26"), it takes precedence over the
+    pragma: the auto-resolver only ever picks the *highest* version satisfying the
+    target file's pragma, which breaks when a transitively-imported file pins an
+    exact lower version. Forcing the version lets the user resolve such conflicts.
     """
+    if override_version:
+        binary = _SOLC_ARTIFACTS / f"solc-{override_version}"
+        if binary.exists():
+            return str(binary), None
+        return None, (
+            f"solc {override_version} is not installed. "
+            f"Install it via the Sol Versions panel, then re-run."
+        )
     try:
         content = file_path.read_text(errors="ignore")
         m = re.search(r"pragma\s+solidity\s+([^;]+);", content)
@@ -209,6 +224,7 @@ def _run_slither(
     preset: SlitherPreset = SlitherPreset.all,
     timeout: int = 120,
     via_ir: bool = False,
+    solc_version: str | None = None,
 ) -> tuple[int, dict | None, str]:
     """
     Run `slither <file> --json - [preset flags]` inside tmpdir.
@@ -220,7 +236,7 @@ def _run_slither(
     extra_flags = _PRESET_FLAGS.get(preset, [])
     json_out = tmpdir / "_slither_out.json"
 
-    solc_binary, solc_err = _resolve_solc_binary(file_path)
+    solc_binary, solc_err = _resolve_solc_binary(file_path, solc_version)
     if solc_err:
         raise HTTPException(status_code=422, detail=solc_err)
 
@@ -382,8 +398,22 @@ def _build_file_in_tempdir(sc: ScopeContract, session: Session) -> tuple[Path, P
 
 
 def _is_stack_too_deep(error_message: str | None) -> bool:
-    """Whether a failed run hit solc's 'Stack too deep' — eligible for a --via-ir re-run."""
-    return bool(error_message and "stack too deep" in error_message.lower())
+    """Whether a failed compile is resolvable by the --via-ir pipeline.
+
+    Covers the classic 'Stack too deep' plus other legacy-codegen limitations
+    that solc flags with an explicit '--via-ir' hint (e.g. "Copying of type
+    struct ... to storage is not supported in legacy (only supported by the IR
+    pipeline)"). Such runs are eligible for the deeper --via-ir re-run.
+    """
+    if not error_message:
+        return False
+    low = error_message.lower()
+    return (
+        "stack too deep" in low
+        or "only supported by the ir pipeline" in low
+        or "--via-ir" in low
+        or "viair: true" in low
+    )
 
 
 def _parse_findings(
@@ -435,11 +465,18 @@ def trigger_run(
     scope_contract_id: UUID,
     preset: SlitherPreset = Query(SlitherPreset.all),
     via_ir: bool = Query(False, description="Compile with --via-ir --optimize (slower; resolves 'stack too deep')"),
+    solc_version: str | None = Query(
+        None,
+        description="Force a specific installed solc version (e.g. '0.8.26'); overrides pragma-based auto-resolution",
+    ),
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ) -> SlitherRunDetail:
     _ensure_audit(session, audit_id, current_user.id)
     sc = _ensure_contract(session, audit_id, scope_contract_id)
+
+    if solc_version is not None and not re.fullmatch(r"\d+\.\d+\.\d+", solc_version):
+        raise HTTPException(status_code=422, detail=f"Invalid solc version: {solc_version!r}")
 
     slither_ver = _slither_version()
 
@@ -463,6 +500,7 @@ def trigger_run(
             file_path, tmpdir, preset,
             timeout=300 if via_ir else 120,
             via_ir=via_ir,
+            solc_version=solc_version,
         )
 
         finished_at = datetime.now(timezone.utc)

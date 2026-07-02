@@ -6,6 +6,7 @@ import { useSidebarResize } from '../components/useSidebarResize'
 import * as api from './slitherApi'
 import type { SlitherPreset, SlitherRun, SlitherRunDetail, SlitherFinding, SlitherImpact } from './slitherApi'
 import * as scopeApi from '../scope/api'
+import { listSolcVersions } from '../solcVersions/solcVersionsApi'
 
 // ---------------------------------------------------------------------------
 // Colours
@@ -372,6 +373,21 @@ export function SlitherView({ auditId }: SlitherViewProps) {
 
   const [filterImpact, setFilterImpact] = useState<SlitherImpact | 'all'>('all')
 
+  // Installed solc versions ('' = auto-resolve from pragma)
+  const [solcVersion, setSolcVersion] = useState<string>('')
+  const [installedSolc, setInstalledSolc] = useState<string[]>([])
+
+  // Load installed solc versions for the override dropdown
+  useEffect(() => {
+    let active = true
+    listSolcVersions()
+      .then(vers => {
+        if (active) setInstalledSolc(vers.filter(v => v.status === 'installed').map(v => v.version))
+      })
+      .catch(() => {})
+    return () => { active = false }
+  }, [])
+
   // Load contracts
   useEffect(() => {
     let active = true
@@ -418,7 +434,7 @@ export function SlitherView({ auditId }: SlitherViewProps) {
     setDeepRunning(viaIr)
     setRunError(null)
     try {
-      const detail = await api.triggerRun(auditId, selectedContractId, activePreset, viaIr)
+      const detail = await api.triggerRun(auditId, selectedContractId, activePreset, viaIr, solcVersion || undefined)
       setRuns(prev => [detail, ...prev])
       setSelectedRunId(detail.id)
     } catch (e) {
@@ -427,7 +443,7 @@ export function SlitherView({ auditId }: SlitherViewProps) {
       setRunning(false)
       setDeepRunning(false)
     }
-  }, [auditId, selectedContractId, activePreset, running])
+  }, [auditId, selectedContractId, activePreset, running, solcVersion])
 
   const handleDeleteRun = useCallback(async (runId: string) => {
     try {
@@ -615,11 +631,27 @@ export function SlitherView({ auditId }: SlitherViewProps) {
                 {activePresetDef.detail}
               </span>
             </Flex>
+            <select
+              value={solcVersion}
+              onChange={e => setSolcVersion(e.target.value)}
+              title="solc version — Auto resolves from the contract's pragma. Force a specific version to fix transitive version conflicts (install versions in the Sol Versions panel)."
+              disabled={running}
+              style={{
+                flexShrink: 0, padding: '5px 8px', borderRadius: 7, fontSize: 11,
+                fontFamily: c.mono, color: c.muted, background: 'transparent',
+                border: `1px solid ${c.border}`, cursor: running ? 'not-allowed' : 'pointer',
+              }}
+            >
+              <option value="">solc: Auto</option>
+              {installedSolc.map(v => (
+                <option key={v} value={v}>solc: {v}</option>
+              ))}
+            </select>
             <button
               onClick={() => handleRun(stackTooDeep)}
               disabled={running || !selectedContractId}
               title={stackTooDeep
-                ? 'Recompile with the IR pipeline + optimizer (--via-ir). Resolves "stack too deep" but is slower.'
+                ? 'Recompile with the IR pipeline + optimizer (--via-ir). Resolves "stack too deep" and other legacy-codegen limitations, but is slower.'
                 : undefined}
               style={{
                 flexShrink: 0, display: 'flex', alignItems: 'center', gap: 5,

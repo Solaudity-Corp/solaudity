@@ -21,6 +21,8 @@ if str(BACKEND_ROOT) not in sys.path:
 from app.utils.sol_libs import (
     _SOL_LIBS_BASE,
     build_remappings,
+    extract_missing_imports,
+    format_missing_imports,
     select_oz_libs,
 )
 from app.api.static_analysis.slither.router import (
@@ -236,6 +238,72 @@ class TestBuildRemappings:
         short = next((r for r in result if r.startswith("@scope/=")), None)
         assert short is not None
         assert short.endswith("/@scope/")
+
+    def test_foundry_lib_remap_for_scoped_repo_with_src(self, tmp_path):
+        # Foundry-style "lib/solady/src/..." imports must resolve. The scoped @solady
+        # repo keeps its src/, so lib/solady/ → @solady/.
+        nm = tmp_path / "node_modules"
+        (nm / "@solady" / "src" / "utils").mkdir(parents=True)
+        result = build_remappings(nm)
+        lib_solady = next((r for r in result if r.startswith("lib/solady/=")), None)
+        assert lib_solady is not None, "lib/solady/= remapping missing"
+        assert lib_solady.endswith("/@solady/")
+
+    def test_foundry_lib_remap_alias_openzeppelin(self, tmp_path):
+        # The Foundry submodule dir "openzeppelin-contracts" differs from the npm
+        # scope "@openzeppelin"; the alias maps lib/openzeppelin-contracts/ → @openzeppelin/.
+        nm = tmp_path / "node_modules"
+        (nm / "@openzeppelin" / "contracts").mkdir(parents=True)
+        result = build_remappings(nm)
+        lib_oz = next((r for r in result if r.startswith("lib/openzeppelin-contracts/=")), None)
+        assert lib_oz is not None
+        assert lib_oz.endswith("/@openzeppelin/")
+
+    def test_foundry_lib_remap_bare_package(self, tmp_path):
+        # Bare package with its own src/ (e.g. forge-std) → lib/forge-std/.
+        nm = tmp_path / "node_modules"
+        (nm / "forge-std" / "src").mkdir(parents=True)
+        result = build_remappings(nm)
+        lib_fs = next((r for r in result if r.startswith("lib/forge-std/=")), None)
+        assert lib_fs is not None
+        assert lib_fs.endswith("/forge-std/")
+
+
+# ---------------------------------------------------------------------------
+# extract_missing_imports / format_missing_imports  (utils.sol_libs)
+# ---------------------------------------------------------------------------
+
+class TestExtractMissingImports:
+    def test_absolute_remapped_path_yields_package_not_empty(self):
+        # Regression: a remapped absolute path used to split to "" → "Missing imports: ."
+        stderr = (
+            'Error: Source "/tmp/slither_x/node_modules/solmate/src/tokens/ERC20.sol" '
+            'not found: File not found.'
+        )
+        assert extract_missing_imports(stderr) == ["solmate"]
+
+    def test_literal_scoped_import(self):
+        stderr = 'Source "@universal-router/UniversalRouter.sol" not found'
+        assert extract_missing_imports(stderr) == ["@universal-router"]
+
+    def test_foundry_lib_path_reports_package(self):
+        # "lib/solady/src/..." should report "solady", not the useless "lib".
+        stderr = 'Source "lib/solady/src/utils/Initializable.sol" not found'
+        assert extract_missing_imports(stderr) == ["solady"]
+
+    def test_no_missing_source_returns_empty(self):
+        # No "Source … not found" → empty list → format returns None so the caller
+        # can fall through to the real solc diagnostic.
+        assert extract_missing_imports("Error: Stack too deep.") == []
+        assert format_missing_imports("Error: Stack too deep.") is None
+
+    def test_dedupe_preserves_order(self):
+        stderr = (
+            'Source "solmate/src/A.sol" not found\n'
+            'Source "/x/node_modules/@openzeppelin/contracts/B.sol" not found\n'
+            'Source "solmate/src/C.sol" not found'
+        )
+        assert extract_missing_imports(stderr) == ["solmate", "@openzeppelin"]
 
     def test_returns_list_of_strings(self, tmp_path):
         nm = tmp_path / "node_modules"

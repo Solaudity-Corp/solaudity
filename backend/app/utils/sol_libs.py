@@ -129,6 +129,75 @@ def select_oz_libs(solc_binary: str | None) -> Path | None:
     return None
 
 
+# Foundry submodule dir names that differ from the installed (npm) package name.
+# Used to map `lib/<repo>/...` imports onto the right node_modules directory.
+_FOUNDRY_LIB_ALIASES = {
+    "openzeppelin-contracts": "@openzeppelin",
+    "openzeppelin-contracts-upgradeable": "@openzeppelin/contracts-upgradeable",
+}
+
+
+def _foundry_lib_remaps(node_modules: Path) -> list[str]:
+    """Remappings for Foundry-style `lib/<repo>/...` imports.
+
+    Foundry references dependencies by their git-submodule directory,
+    `lib/<repo>/<path-from-repo-root>` — where the path typically begins with
+    `src/` (solady, solmate, forge-std…) or `contracts/` (OpenZeppelin). We map
+    `lib/<repo>/` onto the installed directory that holds that tree.
+
+    Priority: explicit aliases > scoped full-repo (`@scope` containing `src/`) >
+    bare dir. The scoped repo wins because e.g. `@solady` keeps its `src/` while
+    the bare `solady` is flattened (no `src/`), so only `@solady` satisfies
+    `lib/solady/src/...`.
+    """
+    lib_map: dict[str, Path] = {}
+    try:
+        for entry in node_modules.iterdir():
+            if not entry.is_dir():
+                continue
+            if entry.name.startswith("@"):
+                scope = entry.name[1:]
+                if (entry / "src").is_dir():          # full repo → best for lib/<scope>/src/...
+                    lib_map[scope] = entry
+            else:
+                lib_map.setdefault(entry.name, entry)  # bare dir → lowest priority
+    except Exception:
+        return []
+    for foundry_name, rel in _FOUNDRY_LIB_ALIASES.items():
+        target = node_modules / rel
+        if target.exists():
+            lib_map[foundry_name] = target
+    return [f"lib/{name}/={path}/" for name, path in lib_map.items()]
+
+
+# Uniswap short aliases → the *canonical* package copy they duplicate.
+#
+# The Libraries catalogue installs each Uniswap package several times: the full
+# `@uniswap/<pkg>` plus stand-alone physical copies for the short aliases
+# (`@v4-core`, `v4-core`, …). When a contract imports a type via the short alias
+# while its dependency imports the same type via `@uniswap/<pkg>`, solc sees two
+# distinct files and treats them as *different* types — e.g. "PoolKey is not
+# implicitly convertible to PoolKey". Pointing every alias at the single
+# canonical copy makes both imports resolve to the same file, so the type is
+# unified. Safe because the copies are byte-identical (same package version).
+_UNISWAP_ALIAS_CANONICAL = {
+    "@v4-core": "@uniswap/v4-core/src",
+    "v4-core": "@uniswap/v4-core/src",
+    "@v4-periphery": "@uniswap/v4-periphery/src",
+    "v4-periphery": "@uniswap/v4-periphery/src",
+    "@v3-core": "@uniswap/v3-core/contracts",
+    "v3-core": "@uniswap/v3-core/contracts",
+    "@v3-periphery": "@uniswap/v3-periphery/contracts",
+    "v3-periphery": "@uniswap/v3-periphery/contracts",
+    "@v2-core": "@uniswap/v2-core/contracts",
+    "v2-core": "@uniswap/v2-core/contracts",
+    "@v2-periphery": "@uniswap/v2-periphery/contracts",
+    "v2-periphery": "@uniswap/v2-periphery/contracts",
+    "@universal-router": "@uniswap/universal-router/contracts",
+    "universal-router": "@uniswap/universal-router/contracts",
+}
+
+
 def build_remappings(node_modules: Path) -> list[str]:
     """Build solc import remappings from node_modules, including bare Forge-style aliases."""
     parts: list[str] = []
@@ -138,6 +207,16 @@ def build_remappings(node_modules: Path) -> list[str]:
         for entry in node_modules.iterdir():
             if not entry.is_dir():
                 continue
+            # Uniswap short alias → collapse onto the canonical @uniswap/ copy
+            # (only when that canonical copy is actually installed) so the same
+            # type isn't compiled twice from duplicate physical copies. A single
+            # prefix remap handles every sub-path via longest-prefix matching.
+            canonical_rel = _UNISWAP_ALIAS_CANONICAL.get(entry.name)
+            if canonical_rel:
+                canonical = node_modules / canonical_rel
+                if canonical.is_dir():
+                    parts.append(f"{entry.name}/={canonical}/")
+                    continue
             if entry.name.startswith("@"):
                 scope = entry.name[1:]
                 try:
@@ -166,6 +245,7 @@ def build_remappings(node_modules: Path) -> list[str]:
                 parts.append(f"{entry.name}/={entry}/")
     except Exception:
         pass
+    parts.extend(_foundry_lib_remaps(node_modules))
     return parts
 
 
@@ -176,11 +256,32 @@ def build_remappings(node_modules: Path) -> list[str]:
 _MISSING_SOURCE_RE = re.compile(r'Source "([^"]+)" not found')
 
 
+def _import_prefix(path: str) -> str:
+    """Reduce an unresolved source path to a human-meaningful package name.
+
+    solc reports the *post-remapping* path, which is often absolute
+    (e.g. "/tmp/slither_xxx/node_modules/solmate/src/tokens/ERC20.sol") — naively
+    taking the first "/"-segment would yield "" for those. Strip everything up to
+    the last "node_modules/", drop empty segments, and unwrap the Foundry "lib/"
+    prefix so "lib/solady/src/..." reports as "solady" rather than "lib".
+    """
+    marker = "node_modules/"
+    idx = path.rfind(marker)
+    if idx != -1:
+        path = path[idx + len(marker):]
+    segments = [s for s in path.split("/") if s]
+    if not segments:
+        return ""
+    if segments[0] == "lib" and len(segments) > 1:
+        return segments[1]
+    return segments[0]
+
+
 def extract_missing_imports(text: str | None) -> list[str]:
     """Top-level import prefixes solc/4naly3er could not resolve (in order, de-duplicated)."""
     if not text:
         return []
-    prefixes = [path.split("/")[0] for path in _MISSING_SOURCE_RE.findall(text)]
+    prefixes = [p for p in (_import_prefix(s) for s in _MISSING_SOURCE_RE.findall(text)) if p]
     return list(dict.fromkeys(prefixes))
 
 

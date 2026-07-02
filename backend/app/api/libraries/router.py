@@ -85,10 +85,19 @@ CATALOGUE: list[dict] = [
         "display_name": "Solmate",
         "description": "Modern, opinionated Solidity utilities by transmissions11 (aliased @solmate/ and solmate/)",
         "packages": ["solmate"],
-        # solmate ships its contracts under src/; expose that tree both as
-        # @solmate/ (the alias most repos use, e.g.
-        # "@solmate/utils/SafeTransferLib.sol") and bare solmate/.
-        "copies": [("solmate/src", "@solmate"), ("solmate/src", "solmate")],
+        # solmate ships its contracts under src/. Expose that tree three ways so
+        # every import convention resolves:
+        #   @solmate/utils/...      → flat under @solmate
+        #   solmate/utils/...       → flat under solmate (bare)
+        #   solmate/src/utils/...   → nested under solmate/src (what @universal-router uses)
+        # Order matters: the nested src/ copy MUST come after the flat solmate copy,
+        # because _copy_into_all_sets rmtree's the destination before copying — a later
+        # ("solmate/src","solmate") would otherwise wipe the src/ we just added.
+        "copies": [
+            ("solmate/src", "@solmate"),
+            ("solmate/src", "solmate"),
+            ("solmate/src", "solmate/src"),
+        ],
         "check_path": "@solmate",
     },
     {
@@ -177,6 +186,17 @@ CATALOGUE: list[dict] = [
         "tarball_url": "https://github.com/Uniswap/permit2/archive/refs/heads/main.tar.gz",
         "tarball_src": ".",        # whole repo so "permit2/src/..." imports resolve
         "tarball_dst": "permit2",
+    },
+    {
+        "id": "morpho-blue",
+        "display_name": "Morpho Blue",
+        "description": "Morpho Blue lending protocol (from GitHub; resolves morpho-blue/src/... and Foundry lib/morpho-blue/src/...)",
+        "packages": [],   # not on npm — installed via GitHub tarball
+        "copies": [],
+        "check_path": "morpho-blue",
+        "tarball_url": "https://github.com/morpho-org/morpho-blue/archive/refs/heads/main.tar.gz",
+        "tarball_src": ".",        # whole repo so "morpho-blue/src/..." imports resolve
+        "tarball_dst": "morpho-blue",
     },
     {
         "id": "chainlink",
