@@ -10,6 +10,8 @@ from app.api.ai.schemas import (
     ExtractAuditFieldsResponse,
     GenerateDocRequest,
     GenerateDocResponse,
+    OpenRouterModelsRequest,
+    OpenRouterModelsResponse,
 )
 from app.api.ai.vuln_schemas import (
     VulnScanListResponse,
@@ -73,6 +75,22 @@ def generate_doc_route(
         payload=payload,
         current_user=current_user,
         session=session,
+    )
+
+
+@router.post("/openrouter/models", response_model=OpenRouterModelsResponse)
+def list_openrouter_models_route(
+    payload: OpenRouterModelsRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """List models available on OpenRouter (free models first).
+
+    Uses the API key from the request body when provided (to preview models
+    before saving), otherwise falls back to the user's stored key.
+    """
+    return service.list_openrouter_models_for_user(
+        current_user=current_user,
+        api_key_override=payload.api_key,
     )
 
 

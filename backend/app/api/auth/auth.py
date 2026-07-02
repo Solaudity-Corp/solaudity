@@ -8,24 +8,26 @@ from sqlmodel import Session, select
 
 from app.database import get_session
 from app.models.user import User, UserCreate, UserRead, UserLogin
+from app.utils.ai_prompting import SUPPORTED_AI_PROVIDERS
 from app.utils.security import hash_password, verify_password, create_access_token, verify_access_token
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 # From where FastAPI looks for the token
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
-SUPPORTED_AI_PROVIDERS = {"claude", "openai", "groq", "xai", "gemini"}
 
 
 class UserAIConfigRead(BaseModel):
     ai_provider: str | None
     ai_api_key: str | None
+    ai_model: str | None
     has_api_key: bool
 
 
 class UserAIConfigUpdate(BaseModel):
     ai_provider: str | None = None
     ai_api_key: str | None = None
+    ai_model: str | None = None
 
 
 class UserAIProviderRead(BaseModel):
@@ -92,6 +94,24 @@ def _normalize_ai_api_key(ai_api_key: str | None) -> str | None:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="ai_api_key is too long. Maximum length is 512 characters.",
+        )
+
+    return normalized
+
+
+def _normalize_ai_model(ai_model: str | None) -> str | None:
+    """Trim and validate model slug length; returns None for empty/cleared values."""
+    if ai_model is None:
+        return None
+
+    normalized = ai_model.strip()
+    if not normalized:
+        return None
+
+    if len(normalized) > 120:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="ai_model is too long. Maximum length is 120 characters.",
         )
 
     return normalized
@@ -199,10 +219,12 @@ def set_user_ai_config(
     current_user: User,
     ai_provider: str | None,
     ai_api_key: str | None,
+    ai_model: str | None,
 ) -> User:
-    """Update provider and API key together with shared validation."""
+    """Update provider, API key and model together with shared validation."""
     current_user.ai_provider = _normalize_ai_provider(ai_provider)
     current_user.ai_api_key = _normalize_ai_api_key(ai_api_key)
+    current_user.ai_model = _normalize_ai_model(ai_model)
     return _save_user(session, current_user)
 
 
@@ -211,6 +233,7 @@ def get_user_ai_config(current_user: User) -> UserAIConfigRead:
     return UserAIConfigRead(
         ai_provider=current_user.ai_provider,
         ai_api_key=current_user.ai_api_key,
+        ai_model=current_user.ai_model,
         has_api_key=bool(current_user.ai_api_key),
     )
 
@@ -371,21 +394,24 @@ def update_user_ai_config(
     """
     has_provider = "ai_provider" in payload.model_fields_set
     has_api_key = "ai_api_key" in payload.model_fields_set
+    has_model = "ai_model" in payload.model_fields_set
 
-    if not has_provider and not has_api_key:
+    if not has_provider and not has_api_key and not has_model:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Provide at least one field: ai_provider and/or ai_api_key.",
+            detail="Provide at least one field: ai_provider, ai_api_key and/or ai_model.",
         )
 
     next_provider = payload.ai_provider if has_provider else get_user_ai_provider(current_user)
     next_api_key = payload.ai_api_key if has_api_key else get_user_api_key(current_user)
+    next_model = payload.ai_model if has_model else current_user.ai_model
 
     updated_user = set_user_ai_config(
         session=session,
         current_user=current_user,
         ai_provider=next_provider,
         ai_api_key=next_api_key,
+        ai_model=next_model,
     )
     return get_user_ai_config(updated_user)
 
