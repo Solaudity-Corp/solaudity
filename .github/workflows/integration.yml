@@ -81,7 +81,7 @@ jobs:
       - name: Trivy scan frontend (JSON)
         id: trivy-frontend-json
         if: steps.build-frontend.outcome == 'success'
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
         with:
           image-ref: docker-frontend:latest
           format: json
@@ -95,7 +95,7 @@ jobs:
       - name: Trivy scan backend (JSON)
         id: trivy-backend-json
         if: steps.build-backend.outcome == 'success'
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
         with:
           image-ref: docker-backend:latest
           format: json
