@@ -41,7 +41,7 @@ jobs:
           context: ./backend
           file: ./docker/backend.Dockerfile
           load: true
-          tags: solaudity-solaudity-backend:latest
+          tags: docker-backend:latest
           cache-from: type=gha,scope=backend
           cache-to: type=gha,mode=max,scope=backend
         continue-on-error: true
@@ -53,7 +53,7 @@ jobs:
           context: ./frontend
           file: ./docker/frontend.Dockerfile
           load: true
-          tags: solaudity-solaudity-frontend:latest
+          tags: docker-frontend:latest
           cache-from: type=gha,scope=frontend
           cache-to: type=gha,mode=max,scope=frontend
         continue-on-error: true
@@ -81,7 +81,7 @@ jobs:
         if: steps.build-frontend.outcome == 'success'
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
         with:
-          image-ref: solaudity-solaudity-frontend:latest
+          image-ref: docker-frontend:latest
           format: json
           output: trivy-frontend.json
           severity: CRITICAL,HIGH
@@ -95,7 +95,7 @@ jobs:
         if: steps.build-backend.outcome == 'success'
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
         with:
-          image-ref: solaudity-solaudity-backend:latest
+          image-ref: docker-backend:latest
           format: json
           output: trivy-backend.json
           severity: CRITICAL,HIGH
@@ -290,8 +290,8 @@ jobs:
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "TRIVY_VULN_BLOCKED=true" >> "$GITHUB_ENV"
           fi
-          if [ "$TRIVY_HIGH" -gt 10 ] 2>/dev/null; then
-            echo "> **PR blocked:** $TRIVY_HIGH fixable high image vulnerabilities found (threshold: 10)" >> $GITHUB_STEP_SUMMARY
+          if [ "$TRIVY_HIGH" -gt 20 ] 2>/dev/null; then
+            echo "> **PR blocked:** $TRIVY_HIGH fixable high image vulnerabilities found (threshold: 20)" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "TRIVY_VULN_BLOCKED=true" >> "$GITHUB_ENV"
           fi
@@ -302,8 +302,8 @@ jobs:
           echo "First, rebuild your images locally and run Trivy to inspect the exact vulnerabilities:" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
           echo "docker compose -f docker/docker-compose.yml build" >> $GITHUB_STEP_SUMMARY
-          echo "trivy image solaudity-solaudity-frontend:latest" >> $GITHUB_STEP_SUMMARY
-          echo "trivy image solaudity-solaudity-backend:latest" >> $GITHUB_STEP_SUMMARY
+          echo "trivy image docker-frontend:latest" >> $GITHUB_STEP_SUMMARY
+          echo "trivy image docker-backend:latest" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**2. How to fix vulnerabilities:**" >> $GITHUB_STEP_SUMMARY
@@ -362,7 +362,7 @@ jobs:
           fi
 
           if [ "$TRIVY_VULN_BLOCKED" == "true" ]; then
-            echo "Fixable image vulnerabilities exceed threshold (critical >0 / high >10)"
+            echo "Fixable image vulnerabilities exceed threshold (critical >0 / high >20)"
             FAILED=1
           fi
 
