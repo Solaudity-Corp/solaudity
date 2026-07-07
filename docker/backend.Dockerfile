@@ -5,10 +5,10 @@
 # Trixie has no python3.11 apt package, so we copy the interpreter + stdlib from
 # the official 3.11 Bookworm image.  glibc on Trixie (2.41) is newer than
 # Bookworm (2.36) — backwards-compatible, so the binary runs fine.
-FROM python:3.11-slim-bookworm AS python311
+FROM python:3.14-slim-bookworm AS python311
 
 # ── Main stage ────────────────────────────────────────────────────────────────
-FROM python:3.13-slim-trixie
+FROM python:3.14-slim-trixie
 
 WORKDIR /app
 
