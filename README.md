@@ -98,11 +98,11 @@ Ensure Docker is running and ports `8001` and `5173` are free before running the
 | Command | Scope | Description |
 | :--- | :--- | :--- |
 | `./test.sh` | Interactive Menu | Launches an interactive CLI helper to select and run tests. |
-| `./test.sh unit` | Unit Tests | Executes the backend and frontend unit test suites. |
-| `./test.sh api-security` | API Security | Verifies API authorization, access controls, and authentication routes. |
-| `./test.sh appsec` | Appsec Suite | Runs both the unit tests and the API security tests. |
-| `./test.sh smoke` | Smoke Test | Performs a full end-to-end integration test: builds images, starts the stack, exercises all API endpoints, and cleans up. |
-| `./test.sh full` | Complete Run | Runs all available tests sequentially. |
+| `./test.sh 1` | Unit Tests | Executes the backend and frontend unit test suites. |
+| `./test.sh 2` | API Security | Verifies API authorization, access controls, and authentication routes. |
+| `./test.sh 3` | Appsec Suite | Runs both the unit tests and the API security tests. |
+| `./test.sh 4` | Smoke Test | Performs a full end-to-end integration test: builds images, starts the stack, exercises all API endpoints, and cleans up. |
+| `./test.sh 5` | Complete Run | Runs all available tests sequentially. |
 
 ---
 
