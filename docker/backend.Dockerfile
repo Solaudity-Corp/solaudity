@@ -6,7 +6,6 @@
 # the official 3.11 Bookworm image.  glibc on Trixie (2.41) is newer than
 # Bookworm (2.36) — backwards-compatible, so the binary runs fine.
 FROM python:3.11-slim-bookworm AS python311
-RUN pip install --upgrade pip setuptools wheel "jaraco.context>=6.1.1"
 
 # ── Main stage ────────────────────────────────────────────────────────────────
 FROM python:3.13-slim-trixie
@@ -122,31 +121,33 @@ ENV PATH="/opt/venv-mythril/bin:${PATH}"
 # Downloads from binaries.soliditylang.org (the same source used by solc-select internally).
 # The list.json for each platform maps version → exact filename (includes commit hash), so we
 # fetch that first, then download each binary without running it — avoiding QEMU hangs on ARM64.
-RUN set -e; \
-    ARCH=$(uname -m); \
-    if [ "$ARCH" = "aarch64" ]; then NATIVE_PLAT="linux-aarch64"; else NATIVE_PLAT="linux-amd64"; fi; \
-    mkdir -p /opt/solc-home/.solc-select/artifacts; \
-    curl -fsSL https://binaries.soliditylang.org/linux-amd64/list.json -o /tmp/solc-amd64.json; \
-    curl -fsSL https://binaries.soliditylang.org/linux-aarch64/list.json -o /tmp/solc-arm64.json 2>/dev/null || true; \
-    for VERSION in 0.8.30 0.8.28 0.8.20 0.8.17 0.8.0 0.7.6 0.6.12; do \
-        ARTIFACT="/opt/solc-home/.solc-select/artifacts/solc-${VERSION}"; \
-        ARM_FNAME=""; \
-        if [ "$NATIVE_PLAT" = "linux-aarch64" ] && [ -f /tmp/solc-arm64.json ]; then \
-            ARM_FNAME=$(python3 -c "import json; print(json.load(open('/tmp/solc-arm64.json')).get('releases',{}).get('${VERSION}',''))" 2>/dev/null) || ARM_FNAME=""; \
-        fi; \
-        if [ -n "$ARM_FNAME" ]; then \
-            echo "solc-${VERSION}: linux-aarch64 (native)"; \
-            curl -fsSL --max-time 120 "https://binaries.soliditylang.org/linux-aarch64/${ARM_FNAME}" -o "$ARTIFACT"; \
-        else \
-            AMD_FNAME=$(python3 -c "import json; print(json.load(open('/tmp/solc-amd64.json'))['releases']['${VERSION}'])"); \
-            echo "solc-${VERSION}: linux-amd64"; \
-            curl -fsSL --max-time 120 "https://binaries.soliditylang.org/linux-amd64/${AMD_FNAME}" -o "$ARTIFACT"; \
-        fi; \
-        chmod +x "$ARTIFACT"; \
-    done; \
-    rm -f /tmp/solc-amd64.json /tmp/solc-arm64.json; \
-    echo "0.8.28" > /opt/solc-home/.solc-select/global-version; \
-    chmod -R 777 /opt/solc-home/.solc-select
+RUN <<'EOF'
+set -e
+ARCH=$(uname -m)
+if [ "$ARCH" = "aarch64" ]; then NATIVE_PLAT="linux-aarch64"; else NATIVE_PLAT="linux-amd64"; fi
+mkdir -p /opt/solc-home/.solc-select/artifacts
+curl -fsSL https://binaries.soliditylang.org/linux-amd64/list.json -o /tmp/solc-amd64.json
+curl -fsSL https://binaries.soliditylang.org/linux-aarch64/list.json -o /tmp/solc-arm64.json 2>/dev/null || true
+for VERSION in 0.8.30 0.8.28 0.8.20 0.8.17 0.8.0 0.7.6 0.6.12; do
+    ARTIFACT="/opt/solc-home/.solc-select/artifacts/solc-${VERSION}"
+    ARM_FNAME=""
+    if [ "$NATIVE_PLAT" = "linux-aarch64" ] && [ -f /tmp/solc-arm64.json ]; then
+        ARM_FNAME=$(python3 -c "import json; print(json.load(open('/tmp/solc-arm64.json')).get('releases',{}).get('${VERSION}',''))" 2>/dev/null) || ARM_FNAME=""
+    fi
+    if [ -n "$ARM_FNAME" ]; then
+        echo "solc-${VERSION}: linux-aarch64 (native)"
+        curl -fsSL --max-time 120 "https://binaries.soliditylang.org/linux-aarch64/${ARM_FNAME}" -o "$ARTIFACT"
+    else
+        AMD_FNAME=$(python3 -c "import json; print(json.load(open('/tmp/solc-amd64.json'))['releases']['${VERSION}'])")
+        echo "solc-${VERSION}: linux-amd64"
+        curl -fsSL --max-time 120 "https://binaries.soliditylang.org/linux-amd64/${AMD_FNAME}" -o "$ARTIFACT"
+    fi
+    chmod +x "$ARTIFACT"
+done
+rm -f /tmp/solc-amd64.json /tmp/solc-arm64.json
+echo "0.8.28" > /opt/solc-home/.solc-select/global-version
+chmod -R 777 /opt/solc-home/.solc-select
+EOF
 
 # 4naly3er — TypeScript static analyser (Node.js is already present from the surya step)
 RUN curl -sL https://github.com/Picodes/4naly3er/archive/refs/heads/main.tar.gz \
