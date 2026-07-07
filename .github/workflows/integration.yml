@@ -41,7 +41,7 @@ jobs:
           context: ./backend
           file: ./docker/backend.Dockerfile
           load: true
-          tags: docker-backend:latest
+          tags: solaudity-solaudity-backend:latest
           cache-from: type=gha,scope=backend
           cache-to: type=gha,mode=max,scope=backend
         continue-on-error: true
@@ -53,7 +53,7 @@ jobs:
           context: ./frontend
           file: ./docker/frontend.Dockerfile
           load: true
-          tags: docker-frontend:latest
+          tags: solaudity-solaudity-frontend:latest
           cache-from: type=gha,scope=frontend
           cache-to: type=gha,mode=max,scope=frontend
         continue-on-error: true
@@ -81,7 +81,7 @@ jobs:
         if: steps.build-frontend.outcome == 'success'
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
         with:
-          image-ref: docker-frontend:latest
+          image-ref: solaudity-solaudity-frontend:latest
           format: json
           output: trivy-frontend.json
           severity: CRITICAL,HIGH
@@ -95,7 +95,7 @@ jobs:
         if: steps.build-backend.outcome == 'success'
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
         with:
-          image-ref: docker-backend:latest
+          image-ref: solaudity-solaudity-backend:latest
           format: json
           output: trivy-backend.json
           severity: CRITICAL,HIGH
@@ -302,8 +302,8 @@ jobs:
           echo "First, rebuild your images locally and run Trivy to inspect the exact vulnerabilities:" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
           echo "docker compose -f docker/docker-compose.yml build" >> $GITHUB_STEP_SUMMARY
-          echo "trivy image docker-frontend:latest" >> $GITHUB_STEP_SUMMARY
-          echo "trivy image docker-backend:latest" >> $GITHUB_STEP_SUMMARY
+          echo "trivy image solaudity-solaudity-frontend:latest" >> $GITHUB_STEP_SUMMARY
+          echo "trivy image solaudity-solaudity-backend:latest" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**2. How to fix vulnerabilities:**" >> $GITHUB_STEP_SUMMARY
