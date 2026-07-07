@@ -1,0 +1,17 @@
+# CODEOWNERS — auto-request review from owners when matching files change.
+# Requires "Require review from Code Owners" in the branch ruleset to be enforced.
+# Verify each handle is correct before committing.
+
+# Default owners for everything in the repo
+*                       @aircag @Petouha @elfamosoworker
+
+# Security-sensitive surfaces — extra care on review
+/.github/               @aircag @elfamosoworker
+/backend/app/api/auth/  @aircag @elfamosoworker
+SECURITY.md             @aircag @elfamosoworker
+
+# Backend (Python)
+/backend/               @aircag @Petouha @elfamosoworker
+
+# Frontend (TypeScript/React)
+/frontend/              @Petouha @elfamosoworker
