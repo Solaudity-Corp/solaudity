@@ -9,7 +9,7 @@ RUN --mount=type=cache,target=/root/.npm npm ci
 COPY . .
 RUN npm run build
 
-FROM nginx:1.28.3-alpine-slim AS runtime
+FROM nginx:1.31.2-alpine-slim AS runtime
 
 # The official nginx image pins nginx=<exact-release> in /etc/apk/world, so a plain
 # `apk upgrade` silently leaves it at the release baked into the base image even when
