@@ -28,7 +28,7 @@ RUN dpkg --add-architecture amd64 \
     && apt-get full-upgrade -y \
     && apt-get install -y --no-install-recommends curl ca-certificates libc6:amd64 \
        libgmp-dev libssl-dev libffi-dev build-essential pkg-config cmake rsync \
-    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
     && apt-get update \
     && apt-get install -y --no-install-recommends nodejs \
     && apt-get autoremove -y \
@@ -158,6 +158,11 @@ RUN curl -sL https://github.com/Picodes/4naly3er/archive/refs/heads/main.tar.gz 
     && npm cache clean --force
 COPY 4naly3er-run-json.ts /opt/4naly3er/run_json.ts
 
+# Remove build-only packages once all native extensions and Node tooling are in place.
+RUN apt-get purge -y --auto-remove build-essential pkg-config cmake libgmp-dev libssl-dev libffi-dev rsync \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
 # z3 SMT solver — required by solc's CHC engine (SMTChecker)
 RUN apt-get update \
     && apt-get install -y --no-install-recommends z3 \
@@ -203,25 +208,25 @@ RUN mkdir -p /tmp/certora-warmup \
 # Echidna — property-based smart contract fuzzer (Trail of Bits)
 # Queries the GitHub API via curl (not Python urllib) to get the latest release,
 # then downloads the Linux binary. unzip is added in case the asset is a zip.
+ARG ECHIDNA_VERSION=2.3.2
 RUN apt-get update \
     && apt-get install -y --no-install-recommends unzip \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* \
-    && curl -fsSL --max-time 60 \
-         -H "User-Agent: solaudity-dockerfile" \
-         "https://api.github.com/repos/crytic/echidna/releases/latest" \
-         -o /tmp/echidna_rel.json \
-    && URL=$(python3 -c "import json,sys; d=json.load(open('/tmp/echidna_rel.json')); a=d.get('assets',[]); u=next((x['browser_download_url'] for x in a if 'linux' in x['name'].lower() and not any(b in x['name'].lower() for b in ['macos','darwin','windows']) and any(x['name'].lower().endswith(e) for e in ['.tar.gz','.zip'])),None) or next((x['browser_download_url'] for x in a if not any(b in x['name'].lower() for b in ['macos','darwin','windows']) and any(x['name'].lower().endswith(e) for e in ['.tar.gz','.zip'])),None); print(u) if u else sys.exit(1)") \
-    && echo "Downloading echidna: $URL" \
+    && ARCH="$(dpkg --print-architecture)" \
+    && case "$ARCH" in \
+         amd64) FILE="echidna-${ECHIDNA_VERSION}-x86_64-linux.tar.gz" ;; \
+         arm64) FILE="echidna-${ECHIDNA_VERSION}-aarch64-linux.tar.gz" ;; \
+         *) echo "Unsupported architecture: $ARCH"; exit 1 ;; \
+       esac \
+    && URL="https://github.com/crytic/echidna/releases/download/v${ECHIDNA_VERSION}/${FILE}" \
+    && echo "Downloading echidna for $ARCH: $URL" \
     && curl -fsSL --max-time 300 "$URL" -o /tmp/echidna_dl \
     && mkdir -p /tmp/echidna_ex \
-    && (echo "$URL" | grep -qE '\.zip$' \
-        && unzip -o /tmp/echidna_dl -d /tmp/echidna_ex/ \
-        || tar -xf /tmp/echidna_dl -C /tmp/echidna_ex/) \
-    && find /tmp/echidna_ex -name echidna -type f | head -1 \
-       | xargs -I{} install -m 755 {} /usr/local/bin/echidna \
+    && tar -xzf /tmp/echidna_dl -C /tmp/echidna_ex \
+    && install -m 755 /tmp/echidna_ex/echidna /usr/local/bin/echidna \
     && echidna --version \
-    && rm -rf /tmp/echidna_dl /tmp/echidna_ex /tmp/echidna_rel.json
+    && rm -rf /tmp/echidna_dl /tmp/echidna_ex
 
 # Medusa — Go-based corpus fuzzer (Trail of Bits)
 RUN curl -fsSL --max-time 60 \
