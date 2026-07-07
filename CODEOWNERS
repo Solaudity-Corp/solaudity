@@ -3,15 +3,15 @@
 # Verify each handle is correct before committing.
 
 # Default owners for everything in the repo
-*                       @aircag @Petouha @elfamosoworker
+*                       @aircag @Petouha @elfamosoworker @solaudity
 
 # Security-sensitive surfaces — extra care on review
-/.github/               @aircag @elfamosoworker
-/backend/app/api/auth/  @aircag @elfamosoworker
-SECURITY.md             @aircag @elfamosoworker
+/.github/               @aircag @Petouha @elfamosoworker @solaudity
+/backend/app/api/auth/  @aircag @Petouha @elfamosoworker @solaudity
+SECURITY.md             @aircag @Petouha @elfamosoworker @solaudity
 
 # Backend (Python)
-/backend/               @aircag @Petouha @elfamosoworker
+/backend/               @aircag @Petouha @elfamosoworker @solaudity
 
 # Frontend (TypeScript/React)
-/frontend/              @Petouha @elfamosoworker
+/frontend/              @aircag @Petouha @elfamosoworker @solaudity
