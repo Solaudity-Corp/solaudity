@@ -41,6 +41,7 @@ jobs:
           context: ./backend
           file: ./docker/backend.Dockerfile
           load: true
+          pull: true
           tags: docker-backend:latest
           cache-from: type=gha,scope=backend
           cache-to: type=gha,mode=max,scope=backend
@@ -53,6 +54,7 @@ jobs:
           context: ./frontend
           file: ./docker/frontend.Dockerfile
           load: true
+          pull: true
           tags: docker-frontend:latest
           cache-from: type=gha,scope=frontend
           cache-to: type=gha,mode=max,scope=frontend
@@ -290,8 +292,8 @@ jobs:
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "TRIVY_VULN_BLOCKED=true" >> "$GITHUB_ENV"
           fi
-          if [ "$TRIVY_HIGH" -gt 20 ] 2>/dev/null; then
-            echo "> **PR blocked:** $TRIVY_HIGH fixable high image vulnerabilities found (threshold: 20)" >> $GITHUB_STEP_SUMMARY
+          if [ "$TRIVY_HIGH" -gt 10 ] 2>/dev/null; then
+            echo "> **PR blocked:** $TRIVY_HIGH fixable high image vulnerabilities found (threshold: 10)" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "TRIVY_VULN_BLOCKED=true" >> "$GITHUB_ENV"
           fi
@@ -362,7 +364,7 @@ jobs:
           fi
 
           if [ "$TRIVY_VULN_BLOCKED" == "true" ]; then
-            echo "Fixable image vulnerabilities exceed threshold (critical >0 / high >20)"
+            echo "Fixable image vulnerabilities exceed threshold (critical >0 / high >10)"
             FAILED=1
           fi
 
