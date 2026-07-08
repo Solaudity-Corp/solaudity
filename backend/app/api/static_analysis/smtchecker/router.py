@@ -17,6 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel import Session, select
 
 from app.api.auth.auth import get_current_user
+from app.utils.sol_libs import select_oz_libs, build_remappings
 from app.api.static_analysis.smtchecker.schemas import (
     SMTCheckerFindingRead,
     SMTCheckerRunDetail,
@@ -88,9 +89,6 @@ def _ensure_contract(session: Session, audit_id: UUID, scope_contract_id: UUID) 
     return sc
 
 
-_SOL_LIBS_DIR = "/usr/local/sol-libs/node_modules"
-
-
 def _build_tempdir(audit_id: UUID, target_sc: ScopeContract, session: Session) -> tuple[Path, str, str]:
     """Copy all audit contracts into a temp dir, return (tmpdir, contract_content, target_rel_path)."""
     tmpdir = Path(tempfile.mkdtemp(prefix="smtchecker_"))
@@ -116,9 +114,9 @@ def _build_tempdir(audit_id: UUID, target_sc: ScopeContract, session: Session) -
             target_content = src.read_text(errors="replace")
             target_rel = str(rel)
 
-    sol_libs = Path(_SOL_LIBS_DIR)
-    if sol_libs.exists():
-        (tmpdir / "node_modules").symlink_to(sol_libs)
+    oz_libs = select_oz_libs(_get_solc_bin(target_content) if target_content else None)
+    if oz_libs:
+        (tmpdir / "node_modules").symlink_to(oz_libs)
 
     return tmpdir, target_content, target_rel
 
@@ -130,12 +128,7 @@ def _build_solc_input(target_rel: str, tmpdir: Path, engine: str) -> dict:
             target_rel: {"urls": [str(tmpdir / target_rel)]},
         },
         "settings": {
-            "remappings": [
-                f"@openzeppelin/={_SOL_LIBS_DIR}/@openzeppelin/",
-                f"@solady/={_SOL_LIBS_DIR}/@solady/",
-                f"solady/={_SOL_LIBS_DIR}/solady/",
-                f"ds-test/={_SOL_LIBS_DIR}/ds-test/",
-            ],
+            "remappings": build_remappings(tmpdir / "node_modules"),
             "modelChecker": {
                 "engine": engine,
                 "targets": [
@@ -196,7 +189,8 @@ def _run_smtchecker(
         raise HTTPException(status_code=501, detail="solc is not installed on this server")
 
     solc_input = _build_solc_input(target_filename, tmpdir, engine)
-    allow_paths = f"{tmpdir},{_SOL_LIBS_DIR}"
+    nm = tmpdir / "node_modules"
+    allow_paths = f"{tmpdir},{nm.resolve()}" if nm.is_symlink() else str(tmpdir)
 
     logger.warning("SMTCHECKER running engine=%s file=%s", engine, target_filename)
 

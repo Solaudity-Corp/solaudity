@@ -17,6 +17,7 @@ from app.database import get_session
 from app.models.audits import Audit
 from app.models.scope import ScopeContract
 from app.models.user import User
+from app.utils.sol_libs import expand_pragma_constraints, select_oz_libs
 
 router = APIRouter(
     prefix="/enum/surya",
@@ -123,15 +124,82 @@ def _build_temp_dir(
         shutil.copy2(src, dst)
         paths.append(dst)
 
-    # Symlink pre-installed Solidity libs so surya can resolve @openzeppelin etc.
-    sol_libs = Path("/usr/local/sol-libs/node_modules")
-    if sol_libs.exists():
-        (tmpdir / "node_modules").symlink_to(sol_libs)
+    # Build node_modules in tmpdir so surya can resolve @openzeppelin etc.
+    # We create a real directory (not a symlink to the whole tree) so we can
+    # add extra entries for Foundry-style bare imports like "openzeppelin-contracts/".
+    nm = tmpdir / "node_modules"
+    nm.mkdir(exist_ok=True)
+
+    sol_libs = _pick_oz_libs(paths)
+    if sol_libs and sol_libs.exists():
+        for entry in sol_libs.iterdir():
+            link = nm / entry.name
+            if not link.exists():
+                link.symlink_to(entry)
+        # Foundry remapping aliases: "openzeppelin-contracts/" → "@openzeppelin/contracts/"
+        for alias, pkg in _FOUNDRY_ALIASES.items():
+            real_path = sol_libs / pkg
+            alias_link = nm / alias
+            if real_path.exists() and not alias_link.exists():
+                alias_link.symlink_to(real_path)
+
+    # Foundry projects use bare imports like "src/Foo.sol" or "interfaces/IFoo.sol".
+    # Surya resolves non-relative imports through node_modules, so symlink every
+    # top-level project directory into node_modules/ so these paths resolve.
+    for top_dir in tmpdir.iterdir():
+        if top_dir.name == "node_modules" or not top_dir.is_dir():
+            continue
+        link = nm / top_dir.name
+        if not link.exists():
+            link.symlink_to(top_dir)
 
     return tmpdir, paths
 
 
 _PARSE_ERR_FILE_RE = re.compile(r"Error found while parsing file:\s*(\S+\.sol)")
+# Catches import errors AND surya JS crashes (TypeError when traversing
+# null nodes in the inheritance graph, ReferenceError for missing symbols, etc.)
+_SURYA_FATAL_RE = re.compile(
+    r"Import path not resolved to a file:\s*\S+"
+    r"|TypeError:"
+    r"|ReferenceError:"
+    r"|SyntaxError:"
+    r"|no 'node_modules' directory could be found"
+    r"|Error:"
+)
+
+
+def _pick_oz_libs(paths: list[Path]) -> Path | None:
+    """Select the OZ node_modules set that best matches the contracts' pragma statements.
+
+    Strategy: find the highest minimum-required solc version across all contracts
+    (e.g. ^0.8.24 requires ≥ 0.8.24) and use that to pick the OZ set.  This
+    ensures that a v5-only file like access/extensions/IAccessControlDefaultAdminRules.sol
+    is found when the contract was written for OZ v5.
+    """
+    best_min: tuple[int, int, int] | None = None
+    for p in paths:
+        try:
+            content = p.read_text(errors="ignore")
+            m = re.search(r"pragma\s+solidity\s+([^;]+);", content)
+            if not m:
+                continue
+            for op, ver in expand_pragma_constraints(m.group(1).strip()):
+                if op in (">=", "="):
+                    if best_min is None or ver > best_min:
+                        best_min = ver
+        except Exception:
+            continue
+
+    binary = f"solc-{best_min[0]}.{best_min[1]}.{best_min[2]}" if best_min else None
+    return select_oz_libs(binary)
+
+_FOUNDRY_ALIASES: dict[str, str] = {
+    "openzeppelin-contracts": "@openzeppelin/contracts",
+    "openzeppelin-contracts-upgradeable": "@openzeppelin/contracts-upgradeable",
+    "forge-std": "forge-std",
+    "solmate": "solmate",
+}
 
 
 def _run_surya(args: list[str], timeout: int = 60, cwd: str | None = None) -> str:
@@ -294,7 +362,26 @@ def get_ftrace(
         if not paths:
             raise HTTPException(status_code=404, detail="No contract files found in scope")
         fn_id = f"{contract_name}::{function}"
-        return _run_surya_on_files(["ftrace", "-i", fn_id, visibility], tmpdir, paths)
+        result = _run_surya_on_files(["ftrace", "-i", fn_id, visibility], tmpdir, paths)
+        if _SURYA_FATAL_RE.search(result):
+            # Surya crashed (unresolved import, TypeError in inheritance traversal, etc.)
+            # Retry with just the target contract so internal calls still trace.
+            rel = Path(sc.file_path)
+            if rel.is_absolute():
+                rel = Path(*rel.parts[1:])
+            target = tmpdir / rel
+            if target.exists():
+                fallback = _run_surya_on_files(["ftrace", "-i", fn_id, visibility], tmpdir, [target])
+                if fallback.strip() and not _SURYA_FATAL_RE.search(fallback):
+                    return fallback
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"Surya could not trace {fn_id}: the contract may use syntax or "
+                    "inheritance patterns that surya does not support."
+                ),
+            )
+        return result
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
 
@@ -378,6 +465,95 @@ def get_dependencies(
 # flatten — inline all imports
 # ---------------------------------------------------------------------------
 
+_IMPORT_PATH_RE = re.compile(r"""^\s*import\s+(?:[^"']*?)?["']([^"']+)["']""", re.MULTILINE)
+_PRAGMA_LINE_RE = re.compile(r"^\s*pragma\s+\S[^;]*;", re.MULTILINE)
+_SPDX_LINE_RE   = re.compile(r"^\s*//\s*SPDX-License-Identifier:.*$", re.MULTILINE)
+
+
+def _resolve_sol_import(import_path: str, current_file: Path, tmpdir: Path) -> Path | None:
+    """Resolve a Solidity import path to a real file under tmpdir or its node_modules."""
+    if import_path.startswith("./") or import_path.startswith("../"):
+        candidate = current_file.parent / import_path
+        if candidate.exists():
+            return candidate
+        # If current_file is inside a symlinked OZ dir, also try relative to the real path.
+        try:
+            real_candidate = current_file.resolve().parent / import_path
+            if real_candidate.exists():
+                return real_candidate
+        except Exception:
+            pass
+        return None
+
+    # Non-relative: resolve through node_modules then directly from tmpdir root.
+    for base in (tmpdir / "node_modules", tmpdir):
+        candidate = base / import_path
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def _flatten_file(
+    file: Path,
+    tmpdir: Path,
+    seen: set[str],
+    spdx_emitted: list[bool],
+    pragma_emitted: list[bool],
+) -> list[str]:
+    """Recursively inline imports, keeping one SPDX and one pragma (from the root file)."""
+    try:
+        real_key = str(file.resolve())
+    except Exception:
+        real_key = str(file)
+    if real_key in seen:
+        return []
+    seen.add(real_key)
+
+    try:
+        content = file.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return [f"// flatten: could not read {file.name}"]
+
+    output: list[str] = []
+    for line in content.splitlines():
+        # SPDX — emit only from the root file (first occurrence)
+        if _SPDX_LINE_RE.match(line):
+            if not spdx_emitted[0]:
+                output.append(line)
+                spdx_emitted[0] = True
+            continue
+
+        # pragma — emit only from the root file (first occurrence); skip OZ/lib pragmas
+        if _PRAGMA_LINE_RE.match(line):
+            if not pragma_emitted[0]:
+                output.append(line)
+                pragma_emitted[0] = True
+            continue
+
+        # import — inline recursively, no separator comment
+        m = _IMPORT_PATH_RE.match(line)
+        if m:
+            import_path = m.group(1)
+            resolved = _resolve_sol_import(import_path, file, tmpdir)
+            if resolved:
+                output.extend(_flatten_file(resolved, tmpdir, seen, spdx_emitted, pragma_emitted))
+            else:
+                output.append(f"// UNRESOLVED: {line.strip()}")
+            continue
+
+        output.append(line)
+
+    return output
+
+
+def _python_flatten(target: Path, tmpdir: Path) -> str:
+    """Flatten a Solidity file by recursively inlining all imports using Python."""
+    lines = _flatten_file(target, tmpdir, set(), [False], [False])
+    # Strip leading/trailing blank lines but keep internal structure
+    text = "\n".join(lines)
+    return text.strip() + "\n"
+
+
 @router.get(
     "/audits/{audit_id}/flatten",
     response_class=PlainTextResponse,
@@ -402,11 +578,17 @@ def get_flatten(
         target = tmpdir / rel
         if not target.exists():
             raise HTTPException(status_code=404, detail="Source file not found on disk")
+
+        # Try surya first — it produces cleaner output for simple projects.
         result = _run_surya(["flatten", str(rel)], cwd=str(tmpdir))
-        if not result.strip() or result.lstrip().startswith("Error:"):
-            raw = target.read_text(encoding="utf-8")
-            return f"// surya flatten: could not resolve imports — showing raw source\n\n{raw}"
-        return result
+        if result.strip() and not _SURYA_FATAL_RE.search(result):
+            return result
+
+        # Surya failed (Truffle remapping error, unresolved import, crash…).
+        # Fall back to our own Python flattener which follows symlinks into node_modules
+        # and handles both npm-style and Foundry-style import paths.
+        py_result = _python_flatten(target, tmpdir)
+        return py_result
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
 

@@ -1,0 +1,34 @@
+name: Dependabot Checks
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  actions: read
+  pull-requests: write
+  packages: write
+
+jobs:
+  ci:
+    if: github.actor == 'dependabot[bot]'
+    uses: ./.github/workflows/ci.yml
+    with:
+      is_workflow_call: true
+    secrets: inherit
+
+  unit-tests:
+    if: github.actor == 'dependabot[bot]'
+    uses: ./.github/workflows/unit-tests.yml
+    with:
+      is_workflow_call: true
+    secrets: inherit
+
+  integration:
+    if: github.actor == 'dependabot[bot]'
+    uses: ./.github/workflows/integration.yml
+    with:
+      is_workflow_call: true
+    secrets: inherit

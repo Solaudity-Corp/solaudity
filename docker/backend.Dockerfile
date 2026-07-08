@@ -27,8 +27,8 @@ RUN dpkg --add-architecture amd64 \
     && apt-get update \
     && apt-get full-upgrade -y \
     && apt-get install -y --no-install-recommends curl ca-certificates libc6:amd64 \
-       libgmp-dev libssl-dev libffi-dev build-essential pkg-config cmake \
-    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+       libgmp-dev libssl-dev libffi-dev build-essential pkg-config cmake rsync \
+    && curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
     && apt-get update \
     && apt-get install -y --no-install-recommends nodejs \
     && apt-get autoremove -y \
@@ -42,31 +42,40 @@ RUN cd /opt/surya \
     && npm cache clean --force
 ENV PATH="/opt/surya/node_modules/.bin:${PATH}"
 
-# Pre-install all major OpenZeppelin versions so surya can resolve any import.
-# Each version is installed in a temp dir, then merged with cp -n (no-clobber)
-# so v5 files take precedence, v4 fills deprecated files, v3/v2 fill the rest.
+# Pre-install OpenZeppelin in four separate node_modules sets, one per solc range.
+# The backend selects the right set at runtime based on the contract's pragma:
+#   nm-v3        → OZ v3  (solc 0.6.x / 0.7.x)
+#   nm-v4        → OZ v4  (solc 0.8.0  – 0.8.19)
+#   nm-v5-legacy → OZ 5.0.2 (solc 0.8.20 – 0.8.23, no transient storage)
+#   nm-v5-modern → OZ v5 latest (solc ≥ 0.8.24, uses transient ^0.8.24)
+# Each set also bundles ds-test and solady so it is self-contained.
 # NOTE: must be outside /data — that path is a host volume mount at runtime.
-RUN mkdir -p /usr/local/sol-libs/node_modules \
-    && npm install --prefix /tmp/oz2 @openzeppelin/contracts@2 @openzeppelin/contracts-upgradeable@2 || true \
-    && npm install --prefix /tmp/oz3 @openzeppelin/contracts@3 @openzeppelin/contracts-upgradeable@3 \
-    && npm install --prefix /tmp/oz4 @openzeppelin/contracts@4 @openzeppelin/contracts-upgradeable@4 \
-    && npm install --prefix /tmp/oz5 @openzeppelin/contracts@5 @openzeppelin/contracts-upgradeable@5 \
-    && cp -rn /tmp/oz5/node_modules/@openzeppelin /usr/local/sol-libs/node_modules/ \
-    && cp -rn /tmp/oz4/node_modules/@openzeppelin /usr/local/sol-libs/node_modules/ \
-    && cp -rn /tmp/oz3/node_modules/@openzeppelin /usr/local/sol-libs/node_modules/ \
-    && (cp -rn /tmp/oz2/node_modules/@openzeppelin /usr/local/sol-libs/node_modules/ 2>/dev/null || true) \
-    && rm -rf /tmp/oz2 /tmp/oz3 /tmp/oz4 /tmp/oz5 \
-    && chmod -R 777 /usr/local/sol-libs \
-    && mkdir -p /usr/local/sol-libs/node_modules/ds-test \
+RUN mkdir -p /usr/local/sol-libs \
+    && npm install --prefix /tmp/oz3    @openzeppelin/contracts@3     @openzeppelin/contracts-upgradeable@3 \
+    && npm install --prefix /tmp/oz4    @openzeppelin/contracts@4     @openzeppelin/contracts-upgradeable@4 \
+    && npm install --prefix /tmp/oz5leg @openzeppelin/contracts@5.0.2 @openzeppelin/contracts-upgradeable@5.0.2 \
+    && npm install --prefix /tmp/oz5mod @openzeppelin/contracts@5     @openzeppelin/contracts-upgradeable@5 \
+    && mkdir -p /usr/local/sol-libs/nm-v3/node_modules \
+    && mkdir -p /usr/local/sol-libs/nm-v4/node_modules \
+    && mkdir -p /usr/local/sol-libs/nm-v5-legacy/node_modules \
+    && mkdir -p /usr/local/sol-libs/nm-v5-modern/node_modules \
+    && cp -r /tmp/oz3/node_modules/@openzeppelin    /usr/local/sol-libs/nm-v3/node_modules/ \
+    && cp -r /tmp/oz4/node_modules/@openzeppelin    /usr/local/sol-libs/nm-v4/node_modules/ \
+    && cp -r /tmp/oz5leg/node_modules/@openzeppelin /usr/local/sol-libs/nm-v5-legacy/node_modules/ \
+    && cp -r /tmp/oz5mod/node_modules/@openzeppelin /usr/local/sol-libs/nm-v5-modern/node_modules/ \
+    && rm -rf /tmp/oz3 /tmp/oz4 /tmp/oz5leg /tmp/oz5mod \
     && curl -sL https://github.com/dapphub/ds-test/archive/refs/heads/master.tar.gz \
        | tar xz -C /tmp/ \
-    && cp -r /tmp/ds-test-master/src/. /usr/local/sol-libs/node_modules/ds-test/ \
-    && rm -rf /tmp/ds-test-master \
     && curl -sL https://github.com/Vectorized/solady/archive/refs/heads/main.tar.gz \
        | tar xz -C /tmp/ \
-    && cp -r /tmp/solady-main/. /usr/local/sol-libs/node_modules/@solady/ \
-    && cp -r /tmp/solady-main/. /usr/local/sol-libs/node_modules/solady/ \
-    && rm -rf /tmp/solady-main
+    && for SET in nm-v3 nm-v4 nm-v5-legacy nm-v5-modern; do \
+         mkdir -p /usr/local/sol-libs/$SET/node_modules/ds-test ; \
+         cp -r /tmp/ds-test-master/src/. /usr/local/sol-libs/$SET/node_modules/ds-test/ ; \
+         cp -r /tmp/solady-main/. /usr/local/sol-libs/$SET/node_modules/@solady/ ; \
+         cp -r /tmp/solady-main/src/. /usr/local/sol-libs/$SET/node_modules/solady/ ; \
+       done \
+    && rm -rf /tmp/ds-test-master /tmp/solady-main \
+    && chmod -R 777 /usr/local/sol-libs
 
 
 # Installing heimdall — amd64 from upstream, arm64 from fork (aircag/heimdall-rs)
@@ -94,8 +103,7 @@ RUN python3 -m venv /opt/venv-slither \
 
 # Pre-create the mythril venv directory (world-writable) so the runtime installer
 # can populate it regardless of which user the container runs as.
-# /opt/venv-mythril/bin is added to PATH below so 'myth' is found once installed —
-# no symlink into /usr/local/bin is needed (which would require root at runtime).
+# /opt/venv-mythril/bin is added to PATH below so 'myth' is found once installed.
 RUN mkdir -p /opt/venv-mythril && chmod 777 /opt/venv-mythril
 
 
@@ -110,10 +118,36 @@ ENV HOME=/opt/solc-home
 ENV PATH="/opt/venv-mythril/bin:${PATH}"
 
 # Pre-install common solc versions so Slither can compile without network access at runtime.
-# solc-select lives inside the slither venv (not on system PATH) since we moved slither out of requirements.txt.
-RUN /opt/venv-slither/bin/solc-select install 0.8.30 0.8.28 0.8.20 0.8.17 0.8.0 0.7.6 0.6.12 \
-    && /opt/venv-slither/bin/solc-select use 0.8.28 \
-    && chmod -R 777 /opt/solc-home/.solc-select
+# Downloads from binaries.soliditylang.org (the same source used by solc-select internally).
+# The list.json for each platform maps version → exact filename (includes commit hash), so we
+# fetch that first, then download each binary without running it — avoiding QEMU hangs on ARM64.
+RUN <<'EOF'
+set -e
+ARCH=$(uname -m)
+if [ "$ARCH" = "aarch64" ]; then NATIVE_PLAT="linux-aarch64"; else NATIVE_PLAT="linux-amd64"; fi
+mkdir -p /opt/solc-home/.solc-select/artifacts
+curl -fsSL https://binaries.soliditylang.org/linux-amd64/list.json -o /tmp/solc-amd64.json
+curl -fsSL https://binaries.soliditylang.org/linux-aarch64/list.json -o /tmp/solc-arm64.json 2>/dev/null || true
+for VERSION in 0.8.30 0.8.28 0.8.20 0.8.17 0.8.0 0.7.6 0.6.12; do
+    ARTIFACT="/opt/solc-home/.solc-select/artifacts/solc-${VERSION}"
+    ARM_FNAME=""
+    if [ "$NATIVE_PLAT" = "linux-aarch64" ] && [ -f /tmp/solc-arm64.json ]; then
+        ARM_FNAME=$(python3 -c "import json; print(json.load(open('/tmp/solc-arm64.json')).get('releases',{}).get('${VERSION}',''))" 2>/dev/null) || ARM_FNAME=""
+    fi
+    if [ -n "$ARM_FNAME" ]; then
+        echo "solc-${VERSION}: linux-aarch64 (native)"
+        curl -fsSL --max-time 120 "https://binaries.soliditylang.org/linux-aarch64/${ARM_FNAME}" -o "$ARTIFACT"
+    else
+        AMD_FNAME=$(python3 -c "import json; print(json.load(open('/tmp/solc-amd64.json'))['releases']['${VERSION}'])")
+        echo "solc-${VERSION}: linux-amd64"
+        curl -fsSL --max-time 120 "https://binaries.soliditylang.org/linux-amd64/${AMD_FNAME}" -o "$ARTIFACT"
+    fi
+    chmod +x "$ARTIFACT"
+done
+rm -f /tmp/solc-amd64.json /tmp/solc-arm64.json
+echo "0.8.28" > /opt/solc-home/.solc-select/global-version
+chmod -R 777 /opt/solc-home/.solc-select
+EOF
 
 # 4naly3er — TypeScript static analyser (Node.js is already present from the surya step)
 RUN curl -sL https://github.com/Picodes/4naly3er/archive/refs/heads/main.tar.gz \
@@ -123,6 +157,11 @@ RUN curl -sL https://github.com/Picodes/4naly3er/archive/refs/heads/main.tar.gz 
     && npm install --legacy-peer-deps \
     && npm cache clean --force
 COPY 4naly3er-run-json.ts /opt/4naly3er/run_json.ts
+
+# Remove build-only packages once all native extensions and Node tooling are in place.
+RUN apt-get purge -y --auto-remove build-essential pkg-config cmake libgmp-dev libssl-dev libffi-dev rsync \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
 
 # z3 SMT solver — required by solc's CHC engine (SMTChecker)
 RUN apt-get update \
@@ -169,25 +208,25 @@ RUN mkdir -p /tmp/certora-warmup \
 # Echidna — property-based smart contract fuzzer (Trail of Bits)
 # Queries the GitHub API via curl (not Python urllib) to get the latest release,
 # then downloads the Linux binary. unzip is added in case the asset is a zip.
+ARG ECHIDNA_VERSION=2.3.2
 RUN apt-get update \
     && apt-get install -y --no-install-recommends unzip \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* \
-    && curl -fsSL --max-time 60 \
-         -H "User-Agent: solaudity-dockerfile" \
-         "https://api.github.com/repos/crytic/echidna/releases/latest" \
-         -o /tmp/echidna_rel.json \
-    && URL=$(python3 -c "import json,sys; d=json.load(open('/tmp/echidna_rel.json')); a=d.get('assets',[]); u=next((x['browser_download_url'] for x in a if 'linux' in x['name'].lower() and not any(b in x['name'].lower() for b in ['macos','darwin','windows']) and any(x['name'].lower().endswith(e) for e in ['.tar.gz','.zip'])),None) or next((x['browser_download_url'] for x in a if not any(b in x['name'].lower() for b in ['macos','darwin','windows']) and any(x['name'].lower().endswith(e) for e in ['.tar.gz','.zip'])),None); print(u) if u else sys.exit(1)") \
-    && echo "Downloading echidna: $URL" \
+    && ARCH="$(dpkg --print-architecture)" \
+    && case "$ARCH" in \
+         amd64) FILE="echidna-${ECHIDNA_VERSION}-x86_64-linux.tar.gz" ;; \
+         arm64) FILE="echidna-${ECHIDNA_VERSION}-aarch64-linux.tar.gz" ;; \
+         *) echo "Unsupported architecture: $ARCH"; exit 1 ;; \
+       esac \
+    && URL="https://github.com/crytic/echidna/releases/download/v${ECHIDNA_VERSION}/${FILE}" \
+    && echo "Downloading echidna for $ARCH: $URL" \
     && curl -fsSL --max-time 300 "$URL" -o /tmp/echidna_dl \
     && mkdir -p /tmp/echidna_ex \
-    && (echo "$URL" | grep -qE '\.zip$' \
-        && unzip -o /tmp/echidna_dl -d /tmp/echidna_ex/ \
-        || tar -xf /tmp/echidna_dl -C /tmp/echidna_ex/) \
-    && find /tmp/echidna_ex -name echidna -type f | head -1 \
-       | xargs -I{} install -m 755 {} /usr/local/bin/echidna \
+    && tar -xzf /tmp/echidna_dl -C /tmp/echidna_ex \
+    && install -m 755 /tmp/echidna_ex/echidna /usr/local/bin/echidna \
     && echidna --version \
-    && rm -rf /tmp/echidna_dl /tmp/echidna_ex /tmp/echidna_rel.json
+    && rm -rf /tmp/echidna_dl /tmp/echidna_ex
 
 # Medusa — Go-based corpus fuzzer (Trail of Bits)
 RUN curl -fsSL --max-time 60 \

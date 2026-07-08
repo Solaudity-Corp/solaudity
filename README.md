@@ -1,153 +1,120 @@
-# SolAudity
+# Solaudity
 
-**Intelligent Audit Management Platform for EVM Smart Contracts**
+Solaudity is a unified, self-hosted workstation designed to simplify and structure smart contract security audits. Instead of juggling multiple tools, terminals, and documents, it provides a centralized interface to run analysis tools, browse contract code, track vulnerabilities, and generate professional reports.
 
-Solaudity is a comprehensive solution designed to streamline the lifecycle of smart contract security audits. From scope definition to final reporting, it provides a structured environment for auditors to manage their missions effectively, leveraging automated tools and manual review workflows.
+The platform organizes each audit into five distinct phases, ensuring consistency, thoroughness, and structural tracking from start to finish.
 
-<br>
+---
 
-## Goal
-
-The primary goal of Solaudity is to centralize and optimize the smart contract auditing process. It aims to:
--   **Simplify Scope Management**: Easily import contracts from various sources (GitHub, Etherscan, etc.).
--   **Automate Enumeration**: Quickly visualize contract structures and dependencies.
--   **Integrate Analysis Tools**: Seamless execution of static (Slither) and symbolic (Mythril) analysis.
--   **Leverage AI**: Extract audit metadata from free text using multi-provider LLM integration.
--   **Structure Manual Reviews**: Provide checklists and finding management to ensure thoroughness.
--   **Generate Reports**: Automatically produce professional Markdown and PDF reports.
-
-<br>
-
-## Technical Stack
-
-Built with modern, performance-oriented technologies.
-
-| Component | Technology | Description |
-| :--- | :--- | :--- |
-| **Frontend** | ![React](https://img.shields.io/badge/React_19-20232A?style=flat&logo=react&logoColor=61DAFB) ![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=flat&logo=typescript&logoColor=white) | **Vite**, **PandaCSS**, **Ark UI**, **Lucide React** for a responsive and accessible UI. |
-| **Backend** | ![FastAPI](https://img.shields.io/badge/FastAPI-005571?style=flat&logo=fastapi) ![Python](https://img.shields.io/badge/Python-3776AB?style=flat&logo=python&logoColor=white) | High-performance Python API with **SQLModel** + **SQLite** and **Alembic** migrations. |
-| **AI** | ![OpenAI](https://img.shields.io/badge/OpenAI-412991?style=flat&logo=openai&logoColor=white) ![Gemini](https://img.shields.io/badge/Gemini-4285F4?style=flat&logo=google&logoColor=white) | Multi-provider LLM support: **OpenAI**, **Groq**, **XAI (Grok)**, **Google Gemini**. |
-| **Deployment** | ![Docker](https://img.shields.io/badge/Docker-2496ED?style=flat&logo=docker&logoColor=white) | Containerized environment with dev/prod profiles and Docker Compose. |
-
-<br>
-
-## Key Features
-
-### 1. Authentication & User Management
-- **JWT Authentication**: Secure registration and login with bcrypt password hashing.
-- **User Profile**: Update email, configure AI provider and API key, manage Etherscan API key.
-- **Data Isolation**: Users can only access their own audits and scope data.
-
-### 2. Audit Management
-- **Full CRUD**: Create, list, update, pin/unpin, mark-opened, and delete audit missions.
-- **Dashboard**: Real-time statistics cards with live audit data aggregation.
-- **Filtering**: Search by title, filter by status, chain, network, or pinned state.
-- **AI Metadata Extraction**: Paste free text and let an LLM auto-fill audit fields (title, description, chain, dates, etc.).
-
-### 3. Scope Definition
-- **Sources**: Import contracts from multiple origins:
-  - `GitHub` repositories (clone by branch or commit)
-  - Block explorers: `Etherscan`, `Arbiscan`, `Polygonscan`, `BSCScan`, `BaseScan`, `Optimism`
-  - `Bug Bounty` platforms
-  - Manual `.sol` file uploads
-- **Contracts**: Upload, view source, toggle in-scope/out-of-scope with reason tracking.
-- **Addresses**: Register on-chain addresses with type classification (deployment, proxy, implementation, role, token, external). Auto-checks verification status and fetches bytecode via Etherscan API.
-
-### 4. Enumeration & Visualization *(planned)*
-- **Parsing**: Structural analysis of contracts (Functions, Events, State Variables) via Slither.
-- **Dependency Graph**: Visual representation of contract interactions.
-- **Filtering**: Advanced search and filtering by visibility, modifiers, etc.
-
-### 5. Automated Analysis *(planned)*
-- **Static Analysis**: Run Slither automatically.
-- **Symbolic Execution**: Run Mythril for deeper checks.
-- **Validation**: Review findings and mark false positives.
-
-### 6. Manual Review & Reporting *(planned)*
-- **Checklists**: Follow standard audit methodologies.
-- **Findings**: Create, tag, and associate findings with specific code.
-- **Reports**: Generate publication-ready Markdown and PDF reports.
-
-<br><br>
-
-## Workflow
+## The Audit Workflow
 
 ```mermaid
-graph TD
-    %% Styles
-    classDef step fill:#161618,stroke:#3a3a3e,stroke-width:1px,color:#fff,rx:4,ry:4,text-align:center;
-    classDef done fill:#161618,stroke:#22c55e,stroke-width:1.5px,color:#fff,rx:4,ry:4,text-align:center;
-    classDef planned fill:#161618,stroke:#3a3a3e,stroke-width:1px,stroke-dasharray:5 5,color:#888,rx:4,ry:4,text-align:center;
-    classDef startend fill:#b9b9b9,stroke:none,color:#121214,rx:10,ry:10;
+flowchart TD
+    classDef default fill:#1e1e24,stroke:#3a3d52,stroke-width:1px,color:#e0e0e0;
+    classDef active fill:#232946,stroke:#3f8efc,stroke-width:2px,color:#fffffe;
+    classDef terminal fill:#121629,stroke:#b8c1ec,stroke-width:1px,color:#eebbc3,stroke-dasharray: 4 4;
 
-    %% Flow
-    Start([Start]):::startend --> S1
+    Start([New Audit Project]) --> P1[1. Scope Definition]
+    P1 -->|Define boundaries| P2[2. Enumeration]
+    P2 -->|Inspect structure| P3[3. Static Analysis]
+    P3 -->|Automated scans| P4[4. Dynamic Analysis]
+    P4 -->|Fuzzing & simulation| P5[5. Reporting]
+    P5 -->|Compile findings| End([Audit Report Generated])
 
-    S1["<strong>Draft & Scope</strong><hr style='margin:5px -10px;border-top:1px solid #3a3a3e;opacity:0.5;'/><span style='font-size:0.9em'>- GitHub / Etherscan<br/>- Manual Upload<br/>- Out-of-Scope config</span>"]:::done
-    S1 --> S2
-
-    S2["<strong>Enumeration</strong><hr style='margin:5px -10px;border-top:1px solid #3a3a3e;opacity:0.5;'/><span style='font-size:0.9em'>- AST Parsing<br/>- Dependency Graph<br/>- Function visibility</span>"]:::planned
-    S2 --> S3
-
-    S3["<strong>Automated Analysis</strong><hr style='margin:5px -10px;border-top:1px solid #3a3a3e;opacity:0.5;'/><span style='font-size:0.9em'>- Slither (Static)<br/>- Mythril (Symbolic)<br/>- False Positive filtering</span>"]:::planned
-    S3 --> S4
-
-    S4["<strong>Manual Review</strong><hr style='margin:5px -10px;border-top:1px solid #3a3a3e;opacity:0.5;'/><span style='font-size:0.9em'>- Audit Checklist<br/>- Finding Association<br/>- Vulnerability Tagging</span>"]:::planned
-    S4 --> S5
-
-    S5([Reporting]):::startend
+    class P1,P2,P3,P4,P5 active;
+    class Start,End terminal;
 ```
 
-> **Legend**: Solid green border = implemented | Dashed gray border = planned
+### 1. Scope Definition
+Establish the audit boundaries at the beginning of the project. Import smart contracts directly from GitHub, block explorers (Etherscan, Arbiscan, and others), or via manual file uploads. Register on-chain deployment addresses and document excluded files with justifications to maintain a clear record of the scope.
 
-<br><br>
+### 2. Enumeration
+Gain a deep structural understanding of the target codebase before searching for vulnerabilities. Visualize and inspect:
+* Functions and state variables
+* Inheritance hierarchies and relationships
+* Events and execution call graphs
 
-## Getting Started
+### 3. Static Analysis
+Run automated tools directly from the web interface. Static analysis tools quickly detect common vulnerability patterns and generate an initial set of findings. The interface allows you to review each finding, dismiss false positives, and validate critical issues.
 
-### Prerequisites
-*   [Docker](https://www.docker.com/) and Docker Compose installed.
+### 4. Dynamic Analysis
+Execute advanced tools to simulate runtime behavior, perform fuzzing, or run formal verification. While slower, dynamic analysis checks complex logic paths and edge cases to find deep vulnerabilities that static tools miss.
 
-### Installation
+### 5. Reporting
+Compile all verified findings, context, and audit summaries collected during the previous phases. Solaudity automatically assembles this data into a structured, professional report ready for delivery.
 
-1.  **Clone the repository**
-    ```bash
-    git clone https://github.com/yourusername/solaudity.git
-    cd solaudity
-    ```
+---
 
-2.  **Start in Development Mode**
-    Runs the backend and frontend with live reload.
-    ```bash
-    ./start.sh dev
-    ```
-    -   Frontend: [http://localhost:5173](http://localhost:5173)
-    -   Backend: [http://localhost:8001](http://localhost:8001)
+## Installation and Quick Start
 
-3.  **Start in Production Mode**
-    ```bash
-    ./start.sh prod
-    ```
+### Requirements
+* Docker
+* Docker Compose
 
-### Stopping / Cleanup
+### Commands
+
+Clone the repository and run the startup script:
 
 ```bash
-./stop.sh              # Stop all containers
-./delete.sh            # Remove all containers, volumes, and images
+git clone https://github.com/Solaudity-Corp/solaudity.git
+cd solaudity
+
+# Start in development mode (with live reload)
+./start.sh dev
+
+# Start in production mode
+./start.sh prod
 ```
 
-<br>
+> [!NOTE]
+> The initial build may take several minutes as it downloads and configures the required analysis tools. Subsequent starts will be fast.
+
+### Services
+Once the services are running, access the interfaces at:
+* **Frontend:** http://localhost:5173
+* **Backend:** http://localhost:8001
+
+---
+
+## Configuration
+
+Two optional API keys can be configured directly in your user profile after logging in (no environment configuration required):
+
+* **Etherscan API Key:** Enables direct smart contract imports from block explorers (Etherscan, Arbiscan, Polygonscan, etc.).
+* **AI Provider Key:** Enables automatic metadata extraction. This feature parses free-text audit briefs and automatically populates structured audit fields. Supported providers include OpenAI, Groq, xAI, and Gemini.
+
+---
+
+> [!WARNING]
+> **Important Security Notice**
+> Do not expose the Solaudity service to the public internet. While the application requires authentication, it is designed strictly for local or internal network use. To run analysis tools, the application gives authenticated users access to system-level execution capabilities. Exposing this workstation publicly represents a critical security risk.
+
+---
 
 ## Testing
 
-Run tests via the interactive test runner:
+Ensure Docker is running and ports `8001` and `5173` are free before running the tests.
 
-```bash
-./test.sh              # Interactive menu
-./test.sh frontend     # Frontend unit tests (Vitest in Docker)
-./test.sh backend      # Backend unit tests (Pytest in Docker)
-./test.sh all          # Both unit test suites
-./test.sh smoke        # Post-upgrade integration tests (full stack)
-./test.sh full         # Unit + smoke tests
-```
+| Command | Scope | Description |
+| :--- | :--- | :--- |
+| `./test.sh` | Interactive Menu | Launches an interactive CLI helper to select and run tests. |
+| `./test.sh 1` | Unit Tests | Executes the backend and frontend unit test suites. |
+| `./test.sh 2` | API Security | Verifies API authorization, access controls, and authentication routes. |
+| `./test.sh 3` | Appsec Suite | Runs both the unit tests and the API security tests. |
+| `./test.sh 4` | Smoke Test | Performs a full end-to-end integration test: builds images, starts the stack, exercises all API endpoints, and cleans up. |
+| `./test.sh 5` | Complete Run | Runs all available tests sequentially. |
 
-The smoke tests build production images, spin up the full stack, and exercise every API surface (auth, CRUD, scope management, error handling, frontend serving).
+---
+
+## Management and Cleanup
+
+Use the helper scripts to stop the application or clean up local Docker resources:
+
+* **Stop Services:** Keep all configuration and data intact.
+  ```bash
+  ./stop.sh
+  ```
+* **Full Reset:** Destroy all containers, networks, volumes, and built images.
+  ```bash
+  ./delete.sh
+  ```

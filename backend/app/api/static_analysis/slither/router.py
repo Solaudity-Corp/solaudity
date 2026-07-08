@@ -17,6 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlmodel import Session, select
 
 from app.api.auth.auth import get_current_user
+from app.utils.sol_libs import select_oz_libs, build_remappings, summarize_compile_error
 from app.api.static_analysis.slither.schemas import (
     SlitherFindingRead,
     SlitherRunDetail,
@@ -202,7 +203,13 @@ def _slither_version() -> str | None:
         return None
 
 
-def _run_slither(file_path: Path, tmpdir: Path, preset: SlitherPreset = SlitherPreset.all, timeout: int = 120) -> tuple[int, dict | None, str]:
+def _run_slither(
+    file_path: Path,
+    tmpdir: Path,
+    preset: SlitherPreset = SlitherPreset.all,
+    timeout: int = 120,
+    via_ir: bool = False,
+) -> tuple[int, dict | None, str]:
     """
     Run `slither <file> --json - [preset flags]` inside tmpdir.
 
@@ -239,11 +246,20 @@ def _run_slither(file_path: Path, tmpdir: Path, preset: SlitherPreset = SlitherP
     env["HOME"] = str(request_home)
 
     node_modules = tmpdir / "node_modules"
-    remaps = _build_solc_remaps(node_modules)
+    remaps = _build_solc_remaps(node_modules, tmpdir)
     remaps_flags = ["--solc-remaps", remaps] if remaps else []
-    # Allow solc to read from node_modules (remapped paths resolve there)
-    allow_flags = ["--solc-args", f"--allow-paths {node_modules}"] if node_modules.exists() else []
-    cmd = ["slither", str(file_path), "--json", str(json_out)] + remaps_flags + allow_flags + extra_flags
+    # Pass-through solc args: allow reading node_modules (remapped paths resolve
+    # there) and, on a "deep" re-run, the IR pipeline + optimizer that resolves
+    # "stack too deep" errors the legacy codegen can't.
+    solc_args: list[str] = []
+    if node_modules.exists():
+        solc_args.append(f"--allow-paths {node_modules}")
+    if via_ir:
+        solc_args.append("--via-ir --optimize")
+    allow_flags = ["--solc-args", " ".join(solc_args)] if solc_args else []
+    # Exclude library files from findings (OZ, ds-test, solady…) to suppress false positives
+    filter_flags = ["--filter-paths", "node_modules"]
+    cmd = ["slither", str(file_path), "--json", str(json_out)] + remaps_flags + allow_flags + filter_flags + extra_flags
 
     logger.warning(
         "SLITHER CMD: %s | cwd=%s | file_exists=%s | HOME=%s",
@@ -288,27 +304,32 @@ def _run_slither(file_path: Path, tmpdir: Path, preset: SlitherPreset = SlitherP
     return result.returncode, raw_json, (stderr or stdout or f"(no output, exit {result.returncode})")
 
 
-def _build_solc_remaps(node_modules: Path) -> str | None:
+def _build_solc_remaps(node_modules: Path, tmpdir: Path | None = None) -> str | None:
     """
-    Scan node_modules and build a solc remapping string so that imports like
-    `forge-std/Script.sol` or `@openzeppelin/contracts/...` resolve correctly.
+    Build a solc remapping string from:
+    1. remappings.txt in the project root (Foundry convention), if present.
+    2. Auto-generated remappings from node_modules, including per-sub-package
+       aliases for scoped packages so that bare imports like
+       `openzeppelin-contracts/token/ERC20/ERC20.sol` resolve correctly.
     Returns a space-separated remapping string, or None if nothing to remap.
     """
-    if not node_modules.exists():
-        return None
-    parts: list[str] = []
-    try:
-        for entry in node_modules.iterdir():
-            if not entry.is_dir():
-                continue
-            if entry.name.startswith("@"):
-                # Scoped namespace — one remapping covers all sub-packages:
-                # @openzeppelin/ → node_modules/@openzeppelin/
-                parts.append(f"{entry.name}/={entry}/")
-            else:
-                parts.append(f"{entry.name}/={entry}/")
-    except Exception:
-        pass
+    # 1. Honour explicit remappings.txt if the project ships one
+    if tmpdir is not None:
+        remappings_file = tmpdir / "remappings.txt"
+        if remappings_file.exists():
+            try:
+                lines = [
+                    l.strip()
+                    for l in remappings_file.read_text().splitlines()
+                    if l.strip() and not l.strip().startswith("#")
+                ]
+                if lines:
+                    return " ".join(lines)
+            except Exception:
+                pass
+
+    # 2. Auto-generate from node_modules
+    parts = build_remappings(node_modules)
     return " ".join(parts) if parts else None
 
 
@@ -351,12 +372,18 @@ def _build_file_in_tempdir(sc: ScopeContract, session: Session) -> tuple[Path, P
             detail=f"Source file not found on disk: {sc.storage_key}",
         )
 
-    # Symlink pre-installed Solidity libs (OpenZeppelin, forge-std if installed, etc.)
-    sol_libs = Path("/usr/local/sol-libs/node_modules")
-    if sol_libs.exists():
+    # Symlink the OZ set that matches the contract's solc version
+    solc_binary, _ = _resolve_solc_binary(dst)
+    sol_libs = select_oz_libs(solc_binary)
+    if sol_libs is not None:
         (tmpdir / "node_modules").symlink_to(sol_libs)
 
     return tmpdir, dst
+
+
+def _is_stack_too_deep(error_message: str | None) -> bool:
+    """Whether a failed run hit solc's 'Stack too deep' — eligible for a --via-ir re-run."""
+    return bool(error_message and "stack too deep" in error_message.lower())
 
 
 def _parse_findings(
@@ -407,6 +434,7 @@ def trigger_run(
     audit_id: UUID,
     scope_contract_id: UUID,
     preset: SlitherPreset = Query(SlitherPreset.all),
+    via_ir: bool = Query(False, description="Compile with --via-ir --optimize (slower; resolves 'stack too deep')"),
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ) -> SlitherRunDetail:
@@ -431,7 +459,11 @@ def trigger_run(
     tmpdir: Path | None = None
     try:
         tmpdir, file_path = _build_file_in_tempdir(sc, session)
-        exit_code, raw_json, stderr = _run_slither(file_path, tmpdir, preset)
+        exit_code, raw_json, stderr = _run_slither(
+            file_path, tmpdir, preset,
+            timeout=300 if via_ir else 120,
+            via_ir=via_ir,
+        )
 
         finished_at = datetime.now(timezone.utc)
         duration_ms = int((finished_at - started_at).total_seconds() * 1000)
@@ -441,16 +473,17 @@ def trigger_run(
 
         if raw_json is not None:
             if not raw_json.get("success", False) and raw_json.get("error"):
-                error_message = raw_json["error"]
+                # Readable summary: missing-library hint or the real solc
+                # diagnostic — never the leading wall of remapping flags.
+                error_message = summarize_compile_error(raw_json["error"], exit_code)
 
             findings = _parse_findings(raw_json, run)
             for f in findings:
                 session.add(f)
 
         else:
-            # raw_json is None — show whatever slither actually printed
-            output_snippet = (stderr or "").strip()[:1500] or "(no output)"
-            error_message = f"exit {exit_code}: {output_snippet}"
+            # raw_json is None — slither crashed before producing JSON.
+            error_message = summarize_compile_error(stderr, exit_code)
 
         # Tally counts
         counts: dict[str, int] = {
@@ -477,7 +510,11 @@ def trigger_run(
         session.refresh(run)
 
         finding_reads = [SlitherFindingRead.model_validate(f) for f in findings]
-        return SlitherRunDetail(**SlitherRunRead.model_validate(run).model_dump(), findings=finding_reads)
+        return SlitherRunDetail(
+            **SlitherRunRead.model_validate(run).model_dump(),
+            findings=finding_reads,
+            stack_too_deep=_is_stack_too_deep(run.error_message),
+        )
 
     except HTTPException:
         # Mark the run as error before re-raising
@@ -558,7 +595,11 @@ def get_run(
     ).all()
 
     finding_reads = [SlitherFindingRead.model_validate(f) for f in findings]
-    return SlitherRunDetail(**SlitherRunRead.model_validate(run).model_dump(), findings=finding_reads)
+    return SlitherRunDetail(
+        **SlitherRunRead.model_validate(run).model_dump(),
+        findings=finding_reads,
+        stack_too_deep=_is_stack_too_deep(run.error_message),
+    )
 
 
 @router.get(

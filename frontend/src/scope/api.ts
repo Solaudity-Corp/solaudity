@@ -242,13 +242,14 @@ export async function listContracts(auditId: string, inScope?: boolean): Promise
 
 export async function uploadContract(auditId: string, file: File, sourceId?: string, filePath?: string): Promise<ScopeContractListResponse> {
     const formData = new FormData()
-    formData.append('files', file)
+    // Use filePath as the multipart filename so the backend stores the full relative
+    // path (e.g. "src/interfaces/token/IUsual.sol") rather than just the basename.
+    // This lets surya reconstruct the project directory structure in tmpdir and
+    // resolve bare imports like `import "src/interfaces/token/IUsual.sol"`.
+    formData.append('files', file, filePath ?? file.name)
     formData.append('is_in_scope', 'false')
     if (sourceId) {
         formData.append('source_id', sourceId)
-    }
-    if (filePath) {
-        formData.append('file_path', filePath)
     }
 
     const headers: Record<string, string> = getAuthHeader()

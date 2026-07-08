@@ -1,4 +1,5 @@
 import fs from 'fs';
+import path from 'path';
 import compileAndBuildAST from './src/compile';
 import issues from './src/issues';
 import { InputType, Instance } from './src/types';
@@ -9,7 +10,52 @@ const basePath = rawPath.endsWith('/') ? rawPath : rawPath + '/';
 // Optional: relative path of the single file to analyse (passed by the backend for per-contract runs)
 const targetFile: string | null = process.argv[3] ?? null;
 
+// Foundry bare-name imports → npm scoped equivalents.
+// Contracts installed via `forge install` use paths like "openzeppelin-contracts/token/ERC20/IERC20.sol"
+// while npm installs use "@openzeppelin/contracts/token/ERC20/IERC20.sol".
+// Both resolve to the same physical file through our node_modules symlinks, but solc treats them
+// as distinct compilation units and raises duplicate-declaration errors.
+// We rewrite all Foundry-style imports to npm-style before compilation so only one canonical
+// path exists for each file.
+const IMPORT_REMAPPINGS: [RegExp, string][] = [
+  [/(?<=['"])openzeppelin-contracts-upgradeable\//g, '@openzeppelin/contracts-upgradeable/'],
+  [/(?<=['"])openzeppelin-contracts\//g, '@openzeppelin/contracts/'],
+];
+
+function normalizeImports(content: string): string {
+  let out = content;
+  for (const [pattern, replacement] of IMPORT_REMAPPINGS) {
+    out = out.replace(pattern, replacement);
+  }
+  return out;
+}
+
+function normalizeAllSolFiles(dir: string): void {
+  const entries = fs.readdirSync(dir);
+  for (const entry of entries) {
+    const full = path.join(dir, entry);
+    const stat = fs.statSync(full);
+    if (stat.isDirectory()) {
+      normalizeAllSolFiles(full);
+    } else if (stat.isFile() && entry.endsWith('.sol')) {
+      const original = fs.readFileSync(full, 'utf8');
+      const normalized = normalizeImports(original);
+      if (normalized !== original) {
+        fs.writeFileSync(full, normalized, 'utf8');
+      }
+    }
+  }
+}
+
 async function main() {
+  // Normalize all .sol files in basePath before compilation so Foundry-style and
+  // npm-style imports for the same library don't end up as duplicate compilation units.
+  try {
+    normalizeAllSolFiles(basePath);
+  } catch {
+    // Non-fatal: best-effort normalization
+  }
+
   let fileNames: string[];
   try {
     fileNames = targetFile ? [targetFile] : recursiveExploration(basePath);

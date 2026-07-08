@@ -5,6 +5,11 @@ on:
     branches:
       - main
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      is_workflow_call:
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -14,12 +19,23 @@ permissions:
 jobs:
   backend:
     name: Backend Tests
+    if: github.actor != 'dependabot[bot]' || inputs.is_workflow_call == true
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd
+
       - name: Build backend test image
-        run: docker build -t solaudity-backend-tests:local -f docker/backend.test.Dockerfile backend/
+        uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294
+        with:
+          context: ./backend
+          file: ./docker/backend.test.Dockerfile
+          load: true
+          tags: solaudity-backend-tests:local
+          cache-from: type=gha,scope=backend-tests
+          cache-to: type=gha,mode=max,scope=backend-tests
 
       - name: Run backend unit tests
         id: tests
@@ -114,12 +130,23 @@ jobs:
 
   appsec:
     name: API Security Tests
+    if: github.actor != 'dependabot[bot]' || inputs.is_workflow_call == true
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd
+
       - name: Build backend test image
-        run: docker build -t solaudity-backend-tests:local -f docker/backend.test.Dockerfile backend/
+        uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294
+        with:
+          context: ./backend
+          file: ./docker/backend.test.Dockerfile
+          load: true
+          tags: solaudity-backend-tests:local
+          cache-from: type=gha,scope=backend-tests
+          cache-to: type=gha,mode=max,scope=backend-tests
 
       - name: Run API security tests
         id: tests
@@ -212,15 +239,28 @@ jobs:
 
   frontend:
     name: Frontend Tests
+    if: github.actor != 'dependabot[bot]' || inputs.is_workflow_call == true
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd
+
+      - name: Build frontend test image
+        uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294
+        with:
+          context: ./frontend
+          file: ./docker/frontend.test.Dockerfile
+          load: true
+          tags: solaudity-frontend-tests:local
+          cache-from: type=gha,scope=frontend-tests
+          cache-to: type=gha,mode=max,scope=frontend-tests
 
       - name: Run frontend unit tests
         id: tests
         run: |
           set -o pipefail
-          docker build -t solaudity-frontend-tests:local -f docker/frontend.test.Dockerfile frontend/
           docker run --rm solaudity-frontend-tests:local 2>&1 | tee frontend-test-output.txt
         continue-on-error: true
 

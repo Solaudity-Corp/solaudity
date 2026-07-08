@@ -26,7 +26,9 @@ TOOL_CATALOG: list[dict] = [
         # Pin z3-solver==4.12.2.0: it's the newest version within mythril's
         # allowed range (<=4.12.5.0) that ships a pre-built manylinux ARM64
         # wheel on PyPI — no source compilation needed on ARM64 Linux.
-        "packages": ["z3-solver==4.12.2.0", "mythril==0.24.8"],
+        # setuptools<72: versions >=72 no longer expose pkg_resources as a
+        # top-level module, which z3-solver 4.12.x imports at startup.
+        "packages": ["setuptools<72", "z3-solver==4.12.2.0", "mythril==0.24.8"],
     },
     {
         "id": "kevm",
@@ -107,7 +109,7 @@ async def _run_pip_install(tool: dict) -> None:
     if not ok:
         raise RuntimeError(f"venv creation failed: {err}")
 
-    await run(f"{venv}/bin/pip", "install", "--upgrade", "pip", "setuptools", "wheel")
+    await run(f"{venv}/bin/pip", "install", "--upgrade", "pip", "wheel")
 
     for pkg in tool["packages"]:
         logger.info("[tools] pip install %s", pkg)

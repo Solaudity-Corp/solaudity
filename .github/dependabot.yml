@@ -1,0 +1,49 @@
+# version: 2
+# updates:
+#   # --- Python backend ---
+#   - package-ecosystem: "pip"
+#     directory: "/backend"
+#     schedule:
+#       interval: "weekly"
+#     open-pull-requests-limit: 10
+#     groups:
+#       python-minor-patch:
+#         update-types:
+#           - "minor"
+#           - "patch"
+#     labels:
+#       - "dependencies"
+#       - "backend"
+
+#   # --- TypeScript / React frontend ---
+#   - package-ecosystem: "npm"
+#     directory: "/frontend"
+#     schedule:
+#       interval: "weekly"
+#     open-pull-requests-limit: 10
+#     groups:
+#       npm-minor-patch:
+#         update-types:
+#           - "minor"
+#           - "patch"
+#     labels:
+#       - "dependencies"
+#       - "frontend"
+
+#   # --- GitHub Actions themselves (keeps your SHA-pinned actions fresh) ---
+#   - package-ecosystem: "github-actions"
+#     directory: "/"
+#     schedule:
+#       interval: "weekly"
+#     labels:
+#       - "dependencies"
+#       - "ci"
+
+#   # --- Docker base images ---
+#   - package-ecosystem: "docker"
+#     directory: "/docker"
+#     schedule:
+#       interval: "weekly"
+#     labels:
+#       - "dependencies"
+#       - "docker"

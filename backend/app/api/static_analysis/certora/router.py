@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -16,6 +17,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from sqlmodel import Session, select
 
 from app.api.auth.auth import get_current_user
+from app.utils.sol_libs import select_oz_libs
 from app.api.static_analysis.certora.schemas import (
     CertoraRunDetail,
     CertoraRunRead,
@@ -122,9 +124,13 @@ def _build_tempdir(
     for sc in all_contracts:
         _copy_contract(sc, contracts_dir)
 
-    sol_libs = Path("/usr/local/sol-libs/node_modules")
-    if sol_libs.exists():
-        (contracts_dir / "node_modules").symlink_to(sol_libs)
+    target_src = _CONTRACTS_STORAGE_DIR / target_sc.storage_key
+    content = target_src.read_text(errors="replace") if target_src.exists() else ""
+    pragma_m = re.search(r'pragma\s+solidity\s+[^;]*?(\d+\.\d+\.\d+)', content)
+    fake_bin = f"solc-{pragma_m.group(1)}" if pragma_m else None
+    oz_libs = select_oz_libs(fake_bin)
+    if oz_libs:
+        (contracts_dir / "node_modules").symlink_to(oz_libs)
 
     spec_src = _SPECS_STORAGE_DIR / spec.storage_key
     spec_path = tmpdir / spec.filename
