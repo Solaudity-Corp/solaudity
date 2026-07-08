@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { css } from 'styled-system/css'
 import { Box, Flex } from 'styled-system/jsx'
 import { X, Download, Check, AlertCircle, ChevronRight, ChevronLeft, LayoutGrid, Cpu, Wrench } from 'lucide-react'
@@ -497,17 +498,17 @@ export function SideNav({ open, onClose, openToPanel }: SideNavProps) {
     : subPanel === 'tools' ? 'Tools'
     : 'Useful'
 
-  return (
+  return createPortal(
     <>
       {open && (
         <Box
           onClick={onClose}
-          style={{ position: 'fixed', inset: 0, zIndex: 40, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(2px)' }}
+          style={{ position: 'fixed', inset: 0, zIndex: 2000, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(2px)' }}
         />
       )}
 
       <Box style={{
-        position: 'fixed', top: 0, left: 0, bottom: 0, width: 300, zIndex: 41,
+        position: 'fixed', top: 0, left: 0, bottom: 0, width: 300, zIndex: 2001,
         background: cl.bg,
         borderRight: `1px solid ${cl.border}`,
         boxShadow: '12px 0 40px rgba(0,0,0,0.5)',
@@ -761,6 +762,7 @@ export function SideNav({ open, onClose, openToPanel }: SideNavProps) {
       </Box>
 
       <style>{`@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}`}</style>
-    </>
+    </>,
+    document.body,
   )
 }

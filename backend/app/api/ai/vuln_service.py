@@ -66,7 +66,9 @@ def run_vuln_scan(
 
     source_code = src_path.read_text(errors="replace")
 
-    selected_model = (payload.model or DEFAULT_MODELS.get(provider, "")).strip()
+    selected_model = (
+        payload.model or current_user.ai_model or DEFAULT_MODELS.get(provider, "")
+    ).strip()
     if not selected_model:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
                             detail="No model configured for this provider.")

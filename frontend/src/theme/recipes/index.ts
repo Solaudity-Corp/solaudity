@@ -1,4 +1,5 @@
 import { menu } from "./menu";
+import { combobox } from "./combobox";
 import { card } from "./card";
 import { badge } from "./badge";
 import { input } from "./input";
@@ -16,6 +17,7 @@ export const recipes = {
   field,
   input,
   card,
-  menu
+  menu,
+  combobox
 }
 export const slotRecipes = {}

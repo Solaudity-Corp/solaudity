@@ -112,6 +112,42 @@ class GenerateDocResponse(BaseModel):
     doc: GenerateDocRead
 
 
+class OpenRouterModelsRequest(BaseModel):
+    """Payload for listing OpenRouter models.
+
+    Fields:
+        api_key: Optional key to preview models with before saving it to the
+            profile. Falls back to the user's stored key when omitted.
+    """
+    api_key: str | None = Field(default=None, max_length=512)
+
+
+class OpenRouterModel(BaseModel):
+    """A single model entry from the OpenRouter catalog.
+
+    Fields:
+        id: Provider-namespaced model slug (e.g. ``openai/gpt-4o``).
+        name: Human-readable display name.
+        context_length: Maximum context window in tokens, when known.
+        is_free: True when both prompt and completion pricing are zero.
+    """
+    id: str
+    name: str
+    context_length: int | None = None
+    is_free: bool = False
+
+
+class OpenRouterModelsResponse(BaseModel):
+    """List of models available on OpenRouter (free models first).
+
+    Fields:
+        items: Ordered list of models (free first, then alphabetical).
+        total: Total count.
+    """
+    items: list[OpenRouterModel]
+    total: int
+
+
 class AiDocListResponse(BaseModel):
     """List of AI doc records for a contract or audit.
 

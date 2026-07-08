@@ -7,7 +7,7 @@ from typing import Any
 from urllib import error, parse, request
 
 
-SUPPORTED_AI_PROVIDERS = {"openai", "groq", "xai", "gemini", "claude"}
+SUPPORTED_AI_PROVIDERS = {"openai", "groq", "xai", "gemini", "claude", "openrouter"}
 
 DEFAULT_MODELS = {
     "openai": "gpt-4o-mini",
@@ -15,12 +15,22 @@ DEFAULT_MODELS = {
     "xai": "grok-2-latest",
     "gemini": "gemini-2.0-flash",
     "claude": "claude-sonnet-4-5-20250929",
+    # OpenRouter uses namespaced slugs; default to a free model.
+    "openrouter": "meta-llama/llama-3.3-70b-instruct:free",
 }
 
 OPENAI_COMPATIBLE_BASE_URL = {
     "openai": "https://api.openai.com",
     "groq": "https://api.groq.com/openai",
     "xai": "https://api.x.ai",
+    "openrouter": "https://openrouter.ai/api",
+}
+
+# OpenRouter recommends (but does not require) attribution headers on requests.
+OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models"
+OPENROUTER_EXTRA_HEADERS = {
+    "HTTP-Referer": "https://solaudity.local",
+    "X-Title": "Solaudity",
 }
 
 EXTRACTION_SYSTEM_PROMPT = """
@@ -298,6 +308,118 @@ def _post_json(
     return parsed
 
 
+def _get_json(
+    url: str,
+    headers: dict[str, str],
+    timeout_seconds: int,
+    *,
+    provider: str | None = None,
+) -> dict[str, Any]:
+    """Send a JSON GET request and return the parsed JSON response."""
+    request_headers = {
+        "Accept": "application/json",
+        "User-Agent": "SolaudityBackend/1.0",
+        **headers,
+    }
+    parsed_url = parse.urlparse(url)
+    if parsed_url.scheme not in ("https", "http"):
+        raise ValueError(f"Unsupported URL scheme: {parsed_url.scheme!r}")
+    req = request.Request(url=url, method="GET", headers=request_headers)
+
+    try:
+        with request.urlopen(req, timeout=timeout_seconds) as response:
+            raw = response.read().decode("utf-8")
+    except error.HTTPError as exc:
+        err_payload = exc.read().decode("utf-8", errors="replace")
+        raise AIProviderError(
+            _build_http_error_message(
+                provider=provider,
+                status_code=exc.code,
+                payload=err_payload,
+            )
+        ) from exc
+    except error.URLError as exc:
+        raise AIProviderError(f"Provider network error: {exc}") from exc
+
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise AIProviderError("Provider response was not valid JSON.") from exc
+
+    if not isinstance(parsed, dict):
+        raise AIProviderError("Provider response must be a JSON object.")
+    return parsed
+
+
+def _is_free_pricing(pricing: Any) -> bool:
+    """Return True when both prompt and completion token prices are zero."""
+    if not isinstance(pricing, dict):
+        return False
+
+    def _is_zero(value: Any) -> bool:
+        try:
+            return float(value) == 0.0
+        except (TypeError, ValueError):
+            return False
+
+    return _is_zero(pricing.get("prompt")) and _is_zero(pricing.get("completion"))
+
+
+def list_openrouter_models(*, api_key: str, timeout_seconds: int = 20) -> list[dict[str, Any]]:
+    """Fetch the catalog of models available on OpenRouter.
+
+    Args:
+        api_key: User's OpenRouter API key (used for auth + rate-limit scoping).
+        timeout_seconds: HTTP timeout in seconds.
+
+    Returns:
+        A list of dicts with keys: id, name, context_length, is_free.
+        Free models (zero prompt/completion pricing) are sorted first, then by name.
+
+    Raises:
+        AIProviderError: On empty key, HTTP/network failure, or malformed response.
+    """
+    if not api_key.strip():
+        raise AIProviderError("api_key cannot be empty.")
+
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        **OPENROUTER_EXTRA_HEADERS,
+    }
+    parsed = _get_json(
+        OPENROUTER_MODELS_URL,
+        headers,
+        timeout_seconds,
+        provider="openrouter",
+    )
+
+    data = parsed.get("data")
+    if not isinstance(data, list):
+        raise AIProviderError("OpenRouter response did not include a model list.")
+
+    models: list[dict[str, Any]] = []
+    for entry in data:
+        if not isinstance(entry, dict):
+            continue
+        model_id = entry.get("id")
+        if not isinstance(model_id, str) or not model_id:
+            continue
+        name = entry.get("name")
+        context_length = entry.get("context_length")
+        models.append(
+            {
+                "id": model_id,
+                "name": name if isinstance(name, str) and name else model_id,
+                "context_length": context_length if isinstance(context_length, int) else None,
+                "is_free": _is_free_pricing(entry.get("pricing")),
+            }
+        )
+
+    # Free models first, then alphabetical by display name.
+    models.sort(key=lambda m: (not m["is_free"], m["name"].lower()))
+    return models
+
+
 def _call_openai_compatible(
     *,
     provider: str,
@@ -319,6 +441,8 @@ def _call_openai_compatible(
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
     }
+    if provider == "openrouter":
+        headers.update(OPENROUTER_EXTRA_HEADERS)
     parsed = _post_json(
         url,
         payload,
@@ -524,6 +648,8 @@ def _call_provider_raw(
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
         }
+        if provider_name == "openrouter":
+            headers.update(OPENROUTER_EXTRA_HEADERS)
         parsed = _post_json(url, payload, headers, timeout_seconds, provider=provider_name)
         choices = parsed.get("choices")
         if not isinstance(choices, list) or not choices:

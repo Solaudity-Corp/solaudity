@@ -12,6 +12,8 @@ from app.api.ai.schemas import (
     GenerateDocRequest,
     GenerateDocRead,
     GenerateDocResponse,
+    OpenRouterModel,
+    OpenRouterModelsResponse,
 )
 from app.models.scope import AiDoc
 from app.models.user import User
@@ -22,7 +24,51 @@ from app.utils.ai_prompting import (
     extract_audit_fields,
     generate_doc,
     generate_doc_decompiled,
+    list_openrouter_models,
 )
+
+
+def list_openrouter_models_for_user(
+    current_user: User,
+    api_key_override: str | None = None,
+) -> OpenRouterModelsResponse:
+    """List OpenRouter models using a provided key or the user's stored key.
+
+    The optional ``api_key_override`` lets the frontend preview models with a
+    freshly-entered (not yet saved) key, avoiding a chicken-and-egg where the
+    user cannot save without picking a model nor list models without saving.
+
+    Args:
+        current_user: Authenticated user (used as the stored-key fallback).
+        api_key_override: Optional key entered in the profile form.
+
+    Returns:
+        OpenRouterModelsResponse: Free models first, then alphabetical.
+
+    Raises:
+        HTTPException: 400 when no key is available, 502 for OpenRouter failures.
+    """
+    api_key = (api_key_override or current_user.ai_api_key or "").strip()
+
+    if not api_key:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="An OpenRouter API key is required to list models.",
+        )
+
+    try:
+        models = list_openrouter_models(api_key=api_key)
+    except AIProviderError as exc:
+        message = str(exc)
+        error_status = (
+            status.HTTP_502_BAD_GATEWAY
+            if message.startswith("Provider ")
+            else status.HTTP_400_BAD_REQUEST
+        )
+        raise HTTPException(status_code=error_status, detail=message) from exc
+
+    items = [OpenRouterModel(**m) for m in models]
+    return OpenRouterModelsResponse(items=items, total=len(items))
 
 
 def _to_fields_read(data: ExtractedAuditFields) -> ExtractAuditFieldsRead:
@@ -78,12 +124,14 @@ def extract_audit_fields_for_user(
             detail="AI API key is not configured for this user.",
         )
 
+    requested_model = payload.model or current_user.ai_model
+
     try:
         extracted = extract_audit_fields(
             user_text=payload.text,
             provider=provider,
             api_key=api_key,
-            model=payload.model,
+            model=requested_model,
             timeout_seconds=payload.timeout_seconds,
         )
     except AIProviderError as exc:
@@ -95,7 +143,7 @@ def extract_audit_fields_for_user(
         )
         raise HTTPException(status_code=error_status, detail=message) from exc
 
-    selected_model = (payload.model or DEFAULT_MODELS.get(provider, "")).strip()
+    selected_model = (requested_model or DEFAULT_MODELS.get(provider, "")).strip()
     if not selected_model:
         selected_model = "unknown"
 
@@ -141,12 +189,14 @@ def generate_doc_for_user(
     use_decompiled_prompt = payload.address_id is not None and payload.contract_id is None
     doc_fn = generate_doc_decompiled if use_decompiled_prompt else generate_doc
 
+    requested_model = payload.model or current_user.ai_model
+
     try:
         markdown_content = doc_fn(
             code_text=payload.code_text,
             provider=provider,
             api_key=api_key,
-            model=payload.model,
+            model=requested_model,
             timeout_seconds=payload.timeout_seconds,
         )
     except AIProviderError as exc:
@@ -158,7 +208,7 @@ def generate_doc_for_user(
         )
         raise HTTPException(status_code=error_status, detail=message) from exc
 
-    selected_model = (payload.model or DEFAULT_MODELS.get(provider, "")).strip() or "unknown"
+    selected_model = (requested_model or DEFAULT_MODELS.get(provider, "")).strip() or "unknown"
 
     doc = AiDoc(
         audit_id=payload.audit_id,

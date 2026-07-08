@@ -29,7 +29,20 @@ export interface UserProfileUpdatePayload {
 export interface UserAIConfigRead {
   ai_provider: string | null
   ai_api_key: string | null
+  ai_model: string | null
   has_api_key: boolean
+}
+
+export interface OpenRouterModel {
+  id: string
+  name: string
+  context_length: number | null
+  is_free: boolean
+}
+
+interface OpenRouterModelsResponse {
+  items: OpenRouterModel[]
+  total: number
 }
 
 export interface UserAIProviderRead {
@@ -246,11 +259,23 @@ export function updateUserAIApiKey(aiApiKey: string | null): Promise<UserAPIKeyR
   })
 }
 
-export function updateUserAIConfig(aiProvider: string | null, aiApiKey: string | null): Promise<UserAIConfigRead> {
+export function updateUserAIConfig(
+  aiProvider: string | null,
+  aiApiKey: string | null,
+  aiModel: string | null = null,
+): Promise<UserAIConfigRead> {
   return requestAuthedJson<UserAIConfigRead>('/api/auth/me/ai-config', {
     method: 'PUT',
-    body: JSON.stringify({ ai_provider: aiProvider, ai_api_key: aiApiKey }),
+    body: JSON.stringify({ ai_provider: aiProvider, ai_api_key: aiApiKey, ai_model: aiModel }),
   })
+}
+
+export async function getOpenRouterModels(apiKey?: string | null): Promise<OpenRouterModel[]> {
+  const response = await requestAuthedJson<OpenRouterModelsResponse>('/ai/openrouter/models', {
+    method: 'POST',
+    body: JSON.stringify({ api_key: apiKey ?? null }),
+  })
+  return response.items
 }
 
 export function getUserEtherscanApiKey(): Promise<EtherscanAPIKeyRead> {

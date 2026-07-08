@@ -1,17 +1,20 @@
-import { useEffect, useState } from 'react'
-import { Check, ChevronDown, Eye, EyeOff, X } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { Check, ChevronDown, Eye, EyeOff, RefreshCw, X } from 'lucide-react'
 import { css, cx } from 'styled-system/css'
 import { Box, Flex, Stack } from 'styled-system/jsx'
 import { type MenuPath } from './Menu'
 import { type MenuSection, NavBar } from './components/NavBar'
-import { Card, Input } from './components/ui'
+import { Card, Combobox, Input } from './components/ui'
+import { createListCollection } from './components/ui/combobox'
 import {
   AuthApiError,
   getCurrentUser,
+  getOpenRouterModels,
   getSupportedAIProviders,
   getUserAIConfig,
   getUserEtherscanApiKey,
   type EtherscanAPIKeyRead,
+  type OpenRouterModel,
   type UserAIConfigRead,
   type UserRead,
   updateUserAIConfig,
@@ -55,8 +58,14 @@ export default function Profile({ onNavigateMenu, onOpenProfile }: ProfileProps)
 
   const [providerDraft, setProviderDraft] = useState('')
   const [apiKeyDraft, setApiKeyDraft] = useState('')
+  const [modelDraft, setModelDraft] = useState('')
   const [showApiKey, setShowApiKey] = useState(false)
   const [isSavingAiSettings, setIsSavingAiSettings] = useState(false)
+
+  const [orModels, setOrModels] = useState<OpenRouterModel[]>([])
+  const [isLoadingModels, setIsLoadingModels] = useState(false)
+  const [modelsError, setModelsError] = useState<string | null>(null)
+  const [modelQuery, setModelQuery] = useState('')
 
   const [etherscanKeyDraft, setEtherscanKeyDraft] = useState('')
   const [showEtherscanKey, setShowEtherscanKey] = useState(false)
@@ -87,6 +96,7 @@ export default function Profile({ onNavigateMenu, onOpenProfile }: ProfileProps)
         setEmailDraft(currentUser.email)
         setProviderDraft(config.ai_provider ?? '')
         setApiKeyDraft(config.ai_api_key ?? '')
+        setModelDraft(config.ai_model ?? '')
         setEtherscanKeyDraft(etherscan.etherscan_api_key ?? '')
       } catch (error) {
         if (!isMounted) return
@@ -105,16 +115,86 @@ export default function Profile({ onNavigateMenu, onOpenProfile }: ProfileProps)
   const currentEmail = user?.email ?? ''
   const currentProvider = aiConfig?.ai_provider ?? ''
   const currentApiKey = aiConfig?.ai_api_key ?? ''
+  const currentModel = aiConfig?.ai_model ?? ''
   const currentEtherscanKey = etherscanConfig?.etherscan_api_key ?? ''
+
+  const isOpenRouter = providerDraft === 'openrouter'
+  const modelDraftTrim = modelDraft.trim()
 
   const emailDirty = emailDraft.trim() !== currentEmail.trim()
   const providerDirty = providerDraft !== currentProvider
   const apiKeyDirty = apiKeyDraft.trim() !== currentApiKey
-  const aiSettingsDirty = providerDirty || apiKeyDirty
+  const modelDirty = modelDraftTrim !== currentModel
+  const aiSettingsDirty = providerDirty || apiKeyDirty || modelDirty
   const bothEmpty = !providerDraft && !apiKeyDraft.trim()
   const bothFilled = !!providerDraft && !!apiKeyDraft.trim()
-  const aiSettingsValid = aiSettingsDirty && (bothEmpty || bothFilled)
+  // OpenRouter requires an explicit model choice.
+  const modelOk = !isOpenRouter || !!modelDraftTrim
+  const aiSettingsValid = aiSettingsDirty && (bothEmpty || bothFilled) && modelOk
   const etherscanKeyDirty = etherscanKeyDraft.trim() !== currentEtherscanKey
+
+  // Keep a stored/typed model visible even if it isn't in the fetched catalog.
+  const allModels = useMemo<OpenRouterModel[]>(() => {
+    if (modelDraftTrim && !orModels.some((m) => m.id === modelDraftTrim)) {
+      return [
+        { id: modelDraftTrim, name: modelDraftTrim, context_length: null, is_free: false },
+        ...orModels,
+      ]
+    }
+    return orModels
+  }, [orModels, modelDraftTrim])
+
+  const filteredModels = useMemo<OpenRouterModel[]>(() => {
+    const q = modelQuery.trim().toLowerCase()
+    if (!q) return allModels
+    return allModels.filter(
+      (m) => m.id.toLowerCase().includes(q) || m.name.toLowerCase().includes(q),
+    )
+  }, [allModels, modelQuery])
+
+  const modelCollection = useMemo(
+    () =>
+      createListCollection({
+        items: filteredModels,
+        itemToValue: (m) => m.id,
+        itemToString: (m) => m.name,
+      }),
+    [filteredModels],
+  )
+
+  const freeFilteredModels = filteredModels.filter((m) => m.is_free)
+  const paidFilteredModels = filteredModels.filter((m) => !m.is_free)
+
+  const fetchOpenRouterModels = async () => {
+    const key = apiKeyDraft.trim() || currentApiKey
+    if (!key) {
+      setOrModels([])
+      setModelsError('Enter your OpenRouter API key first, then reload the model list.')
+      return
+    }
+    setIsLoadingModels(true)
+    setModelsError(null)
+    try {
+      const models = await getOpenRouterModels(key)
+      setOrModels(models)
+      if (models.length === 0) {
+        setModelsError('No models returned by OpenRouter.')
+      }
+    } catch (error) {
+      setOrModels([])
+      setModelsError(getErrorMessage(error))
+    } finally {
+      setIsLoadingModels(false)
+    }
+  }
+
+  // Auto-load the catalog the first time OpenRouter is selected with a key on hand.
+  useEffect(() => {
+    if (isOpenRouter && orModels.length === 0 && !isLoadingModels && !modelsError) {
+      void fetchOpenRouterModels()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpenRouter])
 
   const iconButtonClass = css({
     width: '2rem',
@@ -257,6 +337,8 @@ export default function Profile({ onNavigateMenu, onOpenProfile }: ProfileProps)
   const saveAiSettings = async () => {
     const normalizedProvider = providerDraft.trim().toLowerCase()
     const normalizedApiKey = apiKeyDraft.trim()
+    // Only OpenRouter persists a model; clear it for every other provider.
+    const normalizedModel = normalizedProvider === 'openrouter' ? modelDraft.trim() : ''
 
     if (normalizedProvider && !supportedProviders.includes(normalizedProvider)) {
       setStatus({ kind: 'error', message: 'Please choose a provider from the list.' })
@@ -270,6 +352,10 @@ export default function Profile({ onNavigateMenu, onOpenProfile }: ProfileProps)
       setStatus({ kind: 'error', message: 'API key is too long (max 512 characters).' })
       return
     }
+    if (normalizedProvider === 'openrouter' && !normalizedModel) {
+      setStatus({ kind: 'error', message: 'Please select a model for OpenRouter.' })
+      return
+    }
 
     setIsSavingAiSettings(true)
     setStatus(null)
@@ -277,10 +363,12 @@ export default function Profile({ onNavigateMenu, onOpenProfile }: ProfileProps)
       const updated = await updateUserAIConfig(
         normalizedProvider || null,
         normalizedApiKey || null,
+        normalizedModel || null,
       )
       setAiConfig(updated)
       setProviderDraft(updated.ai_provider ?? '')
       setApiKeyDraft(updated.ai_api_key ?? '')
+      setModelDraft(updated.ai_model ?? '')
       setStatus({ kind: 'success', message: 'AI settings updated.' })
     } catch (error) {
       setStatus({ kind: 'error', message: getErrorMessage(error) })
@@ -489,6 +577,101 @@ export default function Profile({ onNavigateMenu, onOpenProfile }: ProfileProps)
                       </Box>
                     </Box>
 
+                    {isOpenRouter && (
+                      <Box className={rowClass}>
+                        <Box className={rowLabelClass}>Model</Box>
+                        <Box className={fieldWithActionsClass}>
+                          <Combobox.Root
+                            collection={modelCollection}
+                            value={modelDraftTrim ? [modelDraftTrim] : []}
+                            onValueChange={(details) => {
+                              setModelDraft(details.value[0] ?? '')
+                              setStatus(null)
+                            }}
+                            onInputValueChange={(details) => setModelQuery(details.inputValue)}
+                            openOnClick
+                            disabled={isLoading || isSavingAiSettings || isLoadingModels}
+                            className={css({ w: 'full' })}
+                          >
+                            <Combobox.Control>
+                              <Combobox.Input
+                                placeholder={isLoadingModels ? 'Loading models…' : 'Search a model…'}
+                                className={cx(inputClass, css({ w: 'full', pr: '9' }))}
+                              />
+                              <Combobox.Trigger>
+                                <ChevronDown size={14} />
+                              </Combobox.Trigger>
+                            </Combobox.Control>
+                            <Combobox.Positioner>
+                              <Combobox.Content>
+                                {freeFilteredModels.length > 0 && (
+                                  <Combobox.ItemGroup>
+                                    <Combobox.ItemGroupLabel>Free</Combobox.ItemGroupLabel>
+                                    {freeFilteredModels.map((model) => (
+                                      <Combobox.Item key={model.id} item={model}>
+                                        <Combobox.ItemText>{model.name}</Combobox.ItemText>
+                                        <Combobox.ItemIndicator>
+                                          <Check size={14} />
+                                        </Combobox.ItemIndicator>
+                                      </Combobox.Item>
+                                    ))}
+                                  </Combobox.ItemGroup>
+                                )}
+                                {paidFilteredModels.length > 0 && (
+                                  <Combobox.ItemGroup>
+                                    <Combobox.ItemGroupLabel>Paid</Combobox.ItemGroupLabel>
+                                    {paidFilteredModels.map((model) => (
+                                      <Combobox.Item key={model.id} item={model}>
+                                        <Combobox.ItemText>{model.name}</Combobox.ItemText>
+                                        <Combobox.ItemIndicator>
+                                          <Check size={14} />
+                                        </Combobox.ItemIndicator>
+                                      </Combobox.Item>
+                                    ))}
+                                  </Combobox.ItemGroup>
+                                )}
+                                {filteredModels.length === 0 && (
+                                  <Box
+                                    className={css({
+                                      px: '2',
+                                      py: '2',
+                                      fontSize: 'sm',
+                                      color: 'rgba(191, 191, 200, 0.6)',
+                                    })}
+                                  >
+                                    {isLoadingModels ? 'Loading…' : 'No model found'}
+                                  </Box>
+                                )}
+                              </Combobox.Content>
+                            </Combobox.Positioner>
+                          </Combobox.Root>
+                          <Box className={actionGroupClass}>
+                            <button
+                              type="button"
+                              className={iconButtonClass}
+                              onClick={() => { void fetchOpenRouterModels() }}
+                              aria-label="Reload models"
+                              disabled={isLoadingModels || isSavingAiSettings}
+                            >
+                              <RefreshCw size={14} />
+                            </button>
+                          </Box>
+                        </Box>
+                      </Box>
+                    )}
+
+                    {isOpenRouter && modelsError && (
+                      <Box
+                        className={css({
+                          fontSize: 'xs',
+                          color: 'rgba(255, 174, 180, 0.9)',
+                          pl: { base: '0', md: '110px' },
+                        })}
+                      >
+                        {modelsError}
+                      </Box>
+                    )}
+
                     <Box className={rowClass}>
                       <Box className={rowLabelClass}>API Key</Box>
                       <Box className={fieldWithActionsClass}>
@@ -532,6 +715,7 @@ export default function Profile({ onNavigateMenu, onOpenProfile }: ProfileProps)
                             onClick={() => {
                               setProviderDraft(currentProvider)
                               setApiKeyDraft(currentApiKey)
+                              setModelDraft(currentModel)
                               setStatus(null)
                             }}
                             aria-label="Reset AI settings"

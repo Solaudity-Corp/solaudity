@@ -3,6 +3,7 @@ export { AccentLink } from "./accent-link";
 export { Badge, type BadgeProps } from "./badge";
 export { Button, ButtonGroup, type ButtonGroupProps, type ButtonProps } from "./button";
 export * as Card from "./card";
+export * as Combobox from "./combobox";
 export * as Field from "./field";
 export { Group, type GroupProps } from "./group";
 export { Input, type InputProps } from "./input";
