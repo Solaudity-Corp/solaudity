@@ -174,13 +174,40 @@ def build_remappings(node_modules: Path) -> list[str]:
 # an actionable message pointing the user at the Libraries panel.
 # ---------------------------------------------------------------------------
 _MISSING_SOURCE_RE = re.compile(r'Source "([^"]+)" not found')
+# Fallback: extract import paths directly from source snippets in the error
+# (used when crytic-compile emits an absolute resolved path instead of the
+# original import string, which makes the primary extraction return "").
+_IMPORT_IN_ERR_RE  = re.compile(r'import\s+["\']([^"\']+)["\']')
 
 
 def extract_missing_imports(text: str | None) -> list[str]:
     """Top-level import prefixes solc/4naly3er could not resolve (in order, de-duplicated)."""
     if not text:
         return []
-    prefixes = [path.split("/")[0] for path in _MISSING_SOURCE_RE.findall(text)]
+
+    prefixes: list[str] = []
+    absolute_hits = 0
+
+    for path in _MISSING_SOURCE_RE.findall(text):
+        if path.startswith("/"):
+            # crytic-compile resolved the import to an absolute path before
+            # reporting the error — the raw path is useless as a package name.
+            absolute_hits += 1
+        else:
+            prefix = path.split("/")[0]
+            if prefix:
+                prefixes.append(prefix)
+
+    # When every "Source not found" hit was an absolute path, extract the
+    # import strings directly from the source-code snippet in the error instead.
+    if absolute_hits and not prefixes:
+        for imp in _IMPORT_IN_ERR_RE.findall(text):
+            # Strip relative-path prefix (./  ../) then take first component
+            clean = imp.lstrip("./")
+            prefix = clean.split("/")[0]
+            if prefix and not prefix.startswith("."):
+                prefixes.append(prefix)
+
     return list(dict.fromkeys(prefixes))
 
 

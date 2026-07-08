@@ -253,7 +253,15 @@ def _run_slither(
     # "stack too deep" errors the legacy codegen can't.
     solc_args: list[str] = []
     if node_modules.exists():
-        solc_args.append(f"--allow-paths {node_modules}")
+        # node_modules is a symlink to the versioned sol-libs set. Include both
+        # the symlink path AND its real target so solc can access files that are
+        # themselves symlinks inside that set (e.g. openzeppelin-contracts-06 →
+        # @openzeppelin/contracts) without allow-paths rejections.
+        nm_real = node_modules.resolve()
+        allow = str(node_modules)
+        if nm_real != node_modules:
+            allow = f"{allow},{nm_real}"
+        solc_args.append(f"--allow-paths {allow}")
     if via_ir:
         solc_args.append("--via-ir --optimize")
     allow_flags = ["--solc-args", " ".join(solc_args)] if solc_args else []
