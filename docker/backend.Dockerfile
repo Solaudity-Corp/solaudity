@@ -63,6 +63,8 @@ RUN mkdir -p /usr/local/sol-libs \
     && cp -r /tmp/oz4/node_modules/@openzeppelin    /usr/local/sol-libs/nm-v4/node_modules/ \
     && cp -r /tmp/oz5leg/node_modules/@openzeppelin /usr/local/sol-libs/nm-v5-legacy/node_modules/ \
     && cp -r /tmp/oz5mod/node_modules/@openzeppelin /usr/local/sol-libs/nm-v5-modern/node_modules/ \
+    && ln -s /usr/local/sol-libs/nm-v3/node_modules/@openzeppelin/contracts /usr/local/sol-libs/nm-v3/node_modules/openzeppelin-contracts-06 \
+    && ln -s /usr/local/sol-libs/nm-v3/node_modules/@openzeppelin/contracts /usr/local/sol-libs/nm-v3/node_modules/openzeppelin-contracts-07 \
     && rm -rf /tmp/oz3 /tmp/oz4 /tmp/oz5leg /tmp/oz5mod \
     && curl -sL https://github.com/dapphub/ds-test/archive/refs/heads/master.tar.gz \
        | tar xz -C /tmp/ \
