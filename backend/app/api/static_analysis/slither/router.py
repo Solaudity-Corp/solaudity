@@ -224,26 +224,21 @@ def _run_slither(
     if solc_err:
         raise HTTPException(status_code=422, detail=solc_err)
 
-    # Give each request its own HOME with the correct solc global-version so the
-    # `solc` shim selects the right binary.  This avoids passing the raw binary
-    # path directly (which breaks on ARM64 where x86_64 ELFs need the shim to
-    # invoke QEMU) and prevents race conditions between concurrent requests.
-    request_home = tmpdir / "_solc_home"
-    solc_dir = request_home / ".solc-select"
-    solc_dir.mkdir(parents=True)
-    # Symlink artifacts to the shared store so we don't copy gigabytes of binaries
-    (solc_dir / "artifacts").symlink_to(_SOLC_ARTIFACTS)
-    if solc_binary:
-        # Extract version string from binary path e.g. ".../solc-0.8.30" → "0.8.30"
-        version_str = Path(solc_binary).name.replace("solc-", "")
-        (solc_dir / "global-version").write_text(version_str)
-    else:
-        # No specific version resolved — inherit whatever is globally active
-        global_ver = Path("/opt/solc-home/.solc-select/global-version")
-        if global_ver.exists():
-            (solc_dir / "global-version").write_text(global_ver.read_text())
+    # Pass the binary path directly to slither with --solc, bypassing the
+    # solc-select shim entirely. solc-select 1.2.0 runs upgrade_architecture()
+    # on every shim invocation and raises an error against our pre-downloaded
+    # binaries. binfmt_misc on the host handles x86_64→QEMU transparently for
+    # any exec() call, so the shim adds no value for ARM64 compatibility.
+    if solc_binary is None:
+        # No pragma in file — fall back to the globally pinned default.
+        global_ver_file = Path("/opt/solc-home/.solc-select/global-version")
+        if global_ver_file.exists():
+            ver = global_ver_file.read_text().strip()
+            candidate = _SOLC_ARTIFACTS / f"solc-{ver}"
+            if candidate.exists():
+                solc_binary = str(candidate)
 
-    env["HOME"] = str(request_home)
+    solc_flags = ["--solc", solc_binary] if solc_binary else []
 
     node_modules = tmpdir / "node_modules"
     remaps = _build_solc_remaps(node_modules, tmpdir)
@@ -267,7 +262,7 @@ def _run_slither(
     allow_flags = ["--solc-args", " ".join(solc_args)] if solc_args else []
     # Exclude library files from findings (OZ, ds-test, solady…) to suppress false positives
     filter_flags = ["--filter-paths", "node_modules"]
-    cmd = ["slither", str(file_path), "--json", str(json_out)] + remaps_flags + allow_flags + filter_flags + extra_flags
+    cmd = ["slither", str(file_path), "--json", str(json_out)] + solc_flags + remaps_flags + allow_flags + filter_flags + extra_flags
 
     logger.warning(
         "SLITHER CMD: %s | cwd=%s | file_exists=%s | HOME=%s",

@@ -98,7 +98,6 @@ RUN pip install --upgrade pip setuptools wheel "jaraco.context>=6.1.1" \
 RUN python3 -m venv /opt/venv-slither \
     && /opt/venv-slither/bin/pip install --upgrade pip \
     && /opt/venv-slither/bin/pip install slither-analyzer==0.11.5 \
-    && /opt/venv-slither/bin/solc-select upgrade \
     && ln -sf /opt/venv-slither/bin/slither /usr/local/bin/slither \
     && ln -sf /opt/venv-slither/bin/crytic-compile /usr/local/bin/crytic-compile \
     && ln -sf /opt/venv-slither/bin/solc-select /usr/local/bin/solc-select \
