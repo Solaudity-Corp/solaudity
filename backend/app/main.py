@@ -22,6 +22,7 @@ from app.api.solc_versions.router import router as solc_versions_router
 from app.api.tools.router import router as tools_router
 from app.api.terminal.router import router as terminal_router
 from app.api.reports.router import router as reports_router
+from app.api.ai_agent.router import router as ai_agent_router
 
 app = FastAPI()
 
@@ -67,6 +68,13 @@ app.include_router(solc_versions_router)
 app.include_router(tools_router)
 app.include_router(terminal_router)
 app.include_router(reports_router)
+app.include_router(ai_agent_router)
+
+
+@app.on_event("startup")
+def _reset_stale_agent_runs():
+    from app.api.ai_agent.router import reset_stale_runs
+    reset_stale_runs()
 
 
 @app.get("/health")

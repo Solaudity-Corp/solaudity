@@ -824,3 +824,172 @@ def generate_doc_decompiled(
         timeout_seconds=timeout_seconds,
         max_tokens=4096,
     )
+
+
+# ---------------------------------------------------------------------------
+# Multi-turn agent completions (Verified Exploit Agent)
+# ---------------------------------------------------------------------------
+
+# Strong coding models to fall back through when the primary errors out.
+# Only used for the openrouter provider (namespaced slugs). Ordered best-first.
+AGENT_FALLBACK_MODELS: dict[str, list[str]] = {
+    "openrouter": [
+        "anthropic/claude-sonnet-4.5",
+        "openai/gpt-4o",
+        "deepseek/deepseek-chat-v3.1",
+    ],
+}
+
+
+def _call_messages_openai_compatible(
+    *, provider: str, api_key: str, model: str,
+    system_prompt: str, messages: list[dict[str, str]],
+    timeout_seconds: int, max_tokens: int,
+) -> str:
+    base_url = OPENAI_COMPATIBLE_BASE_URL[provider]
+    url = f"{base_url}/v1/chat/completions"
+    payload = {
+        "model": model,
+        "temperature": 0,
+        "max_tokens": max_tokens,
+        "messages": [{"role": "system", "content": system_prompt}, *messages],
+    }
+    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+    if provider == "openrouter":
+        headers.update(OPENROUTER_EXTRA_HEADERS)
+    parsed = _post_json(url, payload, headers, timeout_seconds, provider=provider)
+    choices = parsed.get("choices")
+    if not isinstance(choices, list) or not choices:
+        raise AIProviderError("Provider response did not include choices.")
+    content = choices[0].get("message", {}).get("content")
+    if not isinstance(content, str) or not content.strip():
+        raise AIProviderError("Provider response did not include message content.")
+    return content
+
+
+def _call_messages_claude(
+    *, api_key: str, model: str, system_prompt: str,
+    messages: list[dict[str, str]], timeout_seconds: int, max_tokens: int,
+) -> str:
+    url = "https://api.anthropic.com/v1/messages"
+    payload = {
+        "model": model,
+        "max_tokens": max_tokens,
+        "system": system_prompt,
+        "messages": messages,
+    }
+    headers = {
+        "x-api-key": api_key,
+        "anthropic-version": "2023-06-01",
+        "Content-Type": "application/json",
+    }
+    parsed = _post_json(url, payload, headers, timeout_seconds, provider="claude")
+    blocks = parsed.get("content")
+    if not isinstance(blocks, list) or not blocks:
+        raise AIProviderError("Claude response did not include content blocks.")
+    text = blocks[0].get("text")
+    if not isinstance(text, str) or not text.strip():
+        raise AIProviderError("Claude response did not include text.")
+    return text
+
+
+def _call_messages_gemini(
+    *, api_key: str, model: str, system_prompt: str,
+    messages: list[dict[str, str]], timeout_seconds: int, max_tokens: int,
+) -> str:
+    model_name = parse.quote(model, safe="")
+    # Pass the key as a header (not a URL query param) so it cannot leak into
+    # logs, error messages, or a persisted transcript.
+    url = (
+        "https://generativelanguage.googleapis.com/v1beta/models/"
+        f"{model_name}:generateContent"
+    )
+    contents = [
+        {"role": ("model" if m.get("role") == "assistant" else "user"),
+         "parts": [{"text": m.get("content", "")}]}
+        for m in messages
+    ]
+    payload = {
+        "system_instruction": {"parts": [{"text": system_prompt}]},
+        "contents": contents,
+        "generationConfig": {"temperature": 0, "maxOutputTokens": max_tokens},
+    }
+    headers = {"Content-Type": "application/json", "x-goog-api-key": api_key}
+    parsed = _post_json(url, payload, headers, timeout_seconds, provider="gemini")
+    candidates = parsed.get("candidates")
+    if not isinstance(candidates, list) or not candidates:
+        raise AIProviderError("Gemini response did not include candidates.")
+    parts = candidates[0].get("content", {}).get("parts", [])
+    if not isinstance(parts, list) or not parts:
+        raise AIProviderError("Gemini response did not include content parts.")
+    text = parts[0].get("text")
+    if not isinstance(text, str) or not text.strip():
+        raise AIProviderError("Gemini response did not include text.")
+    return text
+
+
+def call_agent_completion(
+    *,
+    provider: str,
+    api_key: str,
+    model: str | None,
+    system_prompt: str,
+    messages: list[dict[str, str]],
+    timeout_seconds: int = 180,
+    max_tokens: int = 8192,
+) -> tuple[str, str]:
+    """Provider-agnostic multi-turn completion for the agent loop.
+
+    `messages` is an ordered list of {"role": "user"|"assistant", "content": str}
+    (the system prompt is passed separately). For the openrouter provider, the
+    call transparently falls back through AGENT_FALLBACK_MODELS on provider-level
+    errors so a transient outage on one model does not kill a run.
+
+    Returns (response_text, model_actually_used).
+
+    Raises AIProviderError if every candidate model fails.
+    """
+    provider_name = provider.strip().lower()
+    if provider_name not in SUPPORTED_AI_PROVIDERS:
+        raise AIProviderError(
+            "Unsupported provider. Allowed values: "
+            f"{', '.join(sorted(SUPPORTED_AI_PROVIDERS))}"
+        )
+    if not api_key.strip():
+        raise AIProviderError("api_key cannot be empty.")
+    if not messages:
+        raise AIProviderError("messages cannot be empty.")
+
+    primary = (model or DEFAULT_MODELS[provider_name]).strip() or DEFAULT_MODELS[provider_name]
+
+    # Build the candidate chain: primary first, then any provider fallbacks not already tried.
+    candidates = [primary]
+    for fb in AGENT_FALLBACK_MODELS.get(provider_name, []):
+        if fb not in candidates:
+            candidates.append(fb)
+
+    last_error: AIProviderError | None = None
+    for candidate in candidates:
+        try:
+            if provider_name in OPENAI_COMPATIBLE_BASE_URL:
+                text = _call_messages_openai_compatible(
+                    provider=provider_name, api_key=api_key, model=candidate,
+                    system_prompt=system_prompt, messages=messages,
+                    timeout_seconds=timeout_seconds, max_tokens=max_tokens,
+                )
+            elif provider_name == "claude":
+                text = _call_messages_claude(
+                    api_key=api_key, model=candidate, system_prompt=system_prompt,
+                    messages=messages, timeout_seconds=timeout_seconds, max_tokens=max_tokens,
+                )
+            else:
+                text = _call_messages_gemini(
+                    api_key=api_key, model=candidate, system_prompt=system_prompt,
+                    messages=messages, timeout_seconds=timeout_seconds, max_tokens=max_tokens,
+                )
+            return text, candidate
+        except AIProviderError as exc:
+            last_error = exc
+            continue
+
+    raise last_error or AIProviderError("All candidate models failed.")

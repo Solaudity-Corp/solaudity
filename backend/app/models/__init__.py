@@ -13,3 +13,4 @@ from . import kevm  # noqa: F401
 from . import ai_vuln  # noqa: F401
 from . import note  # noqa: F401
 from . import report  # noqa: F401
+from . import agent  # noqa: F401

@@ -1,0 +1,19 @@
+# Dev override: live backend reload for iterating on Python without rebuilding the image.
+# Usage:
+#   docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml --profile dev \
+#     up -d solaudity-backend solaudity-frontend-dev
+# The base image still bakes app/ for production; this only mounts the host source over it
+# and swaps uvicorn into --reload mode so edits under backend/app take effect instantly.
+services:
+  solaudity-backend:
+    volumes:
+      - ../data:/data
+      - ../backend/app:/app/app
+    environment:
+      - DB_PATH=/data/solaudity.db
+      # Stable dev key so JWTs survive reloads (production still generates an ephemeral one).
+      - SECRET_KEY=dev-stable-secret-key-solaudity-local-iteration-0001
+    command:
+      - sh
+      - -c
+      - cd /app/app && alembic upgrade head && cd /app && exec uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload --reload-dir /app/app
