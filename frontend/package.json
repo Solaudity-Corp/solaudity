@@ -29,7 +29,7 @@
     "@xterm/xterm": "^5.5.0",
     "@xterm/addon-fit": "^0.10.0",
     "framer-motion": "^12.34.0",
-    "lucide-react": "^0.563.0",
+    "lucide-react": "^1.24.0",
     "marked": "^18.0.4",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
