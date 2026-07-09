@@ -24,4 +24,5 @@ export const List = withContext(Combobox.List, 'list')
 export const Positioner = withContext(Combobox.Positioner, 'positioner')
 export const Trigger = withContext(Combobox.Trigger, 'trigger')
 
+// eslint-disable-next-line react-refresh/only-export-components -- re-export includes the createListCollection helper alongside the context component
 export { ComboboxContext as Context, createListCollection } from '@ark-ui/react/combobox'

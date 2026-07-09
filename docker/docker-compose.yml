@@ -4,6 +4,10 @@ services:
     build:
       context: ../backend
       dockerfile: ../docker/backend.Dockerfile
+    # Explicit image name so `docker compose up --no-build` (used by CI after a
+    # buildx --load) can find the pre-built image instead of the compose
+    # auto-generated `solaudity-solaudity-backend` name.
+    image: docker-backend:latest
     ports:
       - "8001:8001"
     volumes:
@@ -15,6 +19,7 @@ services:
     build:
       context: ../frontend
       dockerfile: ../docker/frontend.Dockerfile
+    image: docker-frontend:latest
     ports:
       - "5173:80"
     depends_on:
